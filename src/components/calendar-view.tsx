@@ -17,7 +17,7 @@ export function CalendarView() {
     }))
 
   return (
-    <div className="h-full w-full bg-card p-4 rounded-xl border">
+    <div className="h-full w-full">
       <FullCalendar
         plugins={[dayGridPlugin, timeGridPlugin, interactionPlugin]}
         initialView="dayGridMonth"
@@ -28,6 +28,8 @@ export function CalendarView() {
         }}
         events={events}
         height="100%"
+        expandRows={true}
+        stickyHeaderDates={true}
       />
     </div>
   )
