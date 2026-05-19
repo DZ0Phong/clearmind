@@ -1,4 +1,5 @@
 import { Calendar, CheckSquare, LayoutDashboard, Settings } from "lucide-react"
+import { NavLink } from "react-router-dom"
 
 export function Sidebar() {
   return (
@@ -14,25 +15,37 @@ export function Sidebar() {
       </div>
 
       <nav className="flex-1 px-4 space-y-1.5 mt-4">
-        <a href="#" className="flex items-center gap-3 px-3 py-2.5 rounded-lg bg-primary/10 text-primary transition-colors font-medium">
+        <NavLink 
+          to="/dashboard" 
+          className={({ isActive }) => `flex items-center gap-3 px-3 py-2.5 rounded-lg font-medium transition-all duration-300 ${isActive ? 'bg-primary/10 text-primary' : 'text-muted-foreground hover:bg-muted/50 hover:text-foreground'}`}
+        >
           <LayoutDashboard className="h-4 w-4" />
           <span>Dashboard</span>
-        </a>
-        <a href="#" className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-muted-foreground hover:bg-muted/50 hover:text-foreground transition-all duration-300 font-medium">
+        </NavLink>
+        <NavLink 
+          to="/calendar" 
+          className={({ isActive }) => `flex items-center gap-3 px-3 py-2.5 rounded-lg font-medium transition-all duration-300 ${isActive ? 'bg-primary/10 text-primary' : 'text-muted-foreground hover:bg-muted/50 hover:text-foreground'}`}
+        >
           <Calendar className="h-4 w-4" />
           <span>Calendar</span>
-        </a>
-        <a href="#" className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-muted-foreground hover:bg-muted/50 hover:text-foreground transition-all duration-300 font-medium">
+        </NavLink>
+        <NavLink 
+          to="/tasks" 
+          className={({ isActive }) => `flex items-center gap-3 px-3 py-2.5 rounded-lg font-medium transition-all duration-300 ${isActive ? 'bg-primary/10 text-primary' : 'text-muted-foreground hover:bg-muted/50 hover:text-foreground'}`}
+        >
           <CheckSquare className="h-4 w-4" />
           <span>Tasks</span>
-        </a>
+        </NavLink>
       </nav>
 
       <div className="p-4 border-t border-border/50">
-        <a href="#" className="flex items-center gap-3 px-3 py-2 rounded-lg text-muted-foreground hover:bg-muted/50 hover:text-foreground transition-all duration-300 font-medium">
+        <NavLink 
+          to="/settings" 
+          className={({ isActive }) => `flex items-center gap-3 px-3 py-2.5 rounded-lg font-medium transition-all duration-300 ${isActive ? 'bg-primary/10 text-primary' : 'text-muted-foreground hover:bg-muted/50 hover:text-foreground'}`}
+        >
           <Settings className="h-4 w-4" />
           <span>Settings</span>
-        </a>
+        </NavLink>
       </div>
     </aside>
   )

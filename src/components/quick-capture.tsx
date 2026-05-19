@@ -14,9 +14,10 @@ import { Input } from "@/components/ui/input"
 import { useTasks } from "@/hooks/use-tasks"
 import type { TaskType, TaskPriority } from "@/hooks/use-tasks"
 
-export function QuickCapture() {
+export function QuickCapture({ className }: { className?: string }) {
   const [open, setOpen] = useState(false)
   const [title, setTitle] = useState("")
+  const [description, setDescription] = useState("")
   const { addTask } = useTasks()
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -37,19 +38,22 @@ export function QuickCapture() {
 
     addTask({
       title,
+      description,
       type,
       priority,
     })
 
     setTitle("")
+    setDescription("")
     setOpen(false)
   }
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
-        <Button size="icon" className="fixed bottom-8 right-8 h-14 w-14 rounded-full shadow-lg hover:shadow-xl transition-all z-50">
-          <Plus className="h-6 w-6" />
+        <Button className={`h-14 rounded-xl shadow-sm hover:shadow-md transition-all gap-2 text-md font-medium ${className || ""}`}>
+          <Plus className="h-5 w-5" />
+          Quick Capture
         </Button>
       </DialogTrigger>
       <DialogContent className="sm:max-w-[425px]">
@@ -68,6 +72,13 @@ export function QuickCapture() {
               value={title}
               onChange={(e) => setTitle(e.target.value)}
               className="col-span-3"
+            />
+            <textarea
+              id="description"
+              placeholder="Details or location (optional)..."
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              className="col-span-3 min-h-[80px] rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
             />
           </div>
           <DialogFooter>
