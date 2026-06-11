@@ -388,6 +388,29 @@ export const STATUS_LABEL: Record<"todo" | "in-progress" | "done", string> = {
   done: "Đã xong",
 };
 
+/**
+ * Auto-suggest tags từ title + description khi user tạo task mới.
+ * Phát hiện 3 pattern phổ biến nhất của sinh viên:
+ *   1. Mã môn học (PRN222, MLN111, EXE101g) → tag chính mã môn lowercase
+ *   2. "bài tập" / homework / btvn / asm → tag "bai-tap"
+ *   3. "thi" / "kiểm tra" / "exam" / "midterm" / "final" → tag "thi"
+ * Existing tags được preserve; chỉ thêm tag mới, không bao giờ xoá tag user.
+ */
+const SUBJECT_CODE_RE = /\b([A-Z]{2,4}\d{2,3}[a-z]?)\b/g;
+const BAITAP_RE = /\b(bai tap|homework|assignment|btvn|asm)\b/;
+const THI_RE = /\b(thi|kiem tra|de thi|exam|test|midterm|final|quiz)\b/;
+
+export function suggestTags(input: string, existing: string[] = []): string[] {
+  const text = " " + stripDiacritics(input).toLowerCase() + " ";
+  const out = new Set(existing.map((t) => t.toLowerCase()));
+  // Subject codes — giữ chữ in để dễ đọc nhưng lowercase trong tag store.
+  const codes = input.match(SUBJECT_CODE_RE);
+  if (codes) for (const c of codes) out.add(c.toLowerCase());
+  if (BAITAP_RE.test(text)) out.add("bai-tap");
+  if (THI_RE.test(text)) out.add("thi");
+  return Array.from(out);
+}
+
 export function classifyTitle(input: string): Classification {
   const text = " " + stripDiacritics(input) + " ";
   const best = (Object.keys(TYPE_KEYWORDS) as TaskType[]).reduce<{

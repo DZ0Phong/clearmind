@@ -55,8 +55,16 @@ const SORT_STORAGE_KEY = "clearmind_tasks_sort";
 const COLLAPSED_STORAGE_KEY = "clearmind_tasks_collapsed";
 const VIEW_STORAGE_KEY = "clearmind_tasks_view";
 
-// Một buổi học recurring → noise trong default view. Helper để chia.
-const isRecurringClass = (t: Task) => !!t.recurrence && t.type === "academic";
+// Một buổi học recurring (= buổi lên lớp) → vào tab "Lịch học". Bài tập
+// & bài thi dù gán type academic + recurrence vẫn là việc PHẢI LÀM, không
+// phải buổi học → kiểm tra tag override để route đúng tab.
+const HOMEWORK_TAGS = new Set(["bai-tap", "bai_tap", "thi", "thi-fe", "homework", "exam"]);
+const isRecurringClass = (t: Task) => {
+  if (!t.recurrence || t.type !== "academic") return false;
+  const tags = (t.tags || []).map((x) => x.toLowerCase());
+  if (tags.some((tag) => HOMEWORK_TAGS.has(tag))) return false;
+  return true;
+};
 
 const PRIORITY_RANK: Record<string, number> = { high: 0, medium: 1, low: 2 };
 

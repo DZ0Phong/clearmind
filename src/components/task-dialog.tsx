@@ -33,7 +33,7 @@ import {
   type RecurrenceRule,
   type ReminderPref,
 } from "@/hooks/use-tasks";
-import { classifyTitle, parseNlDeadline, formatDeadline, cn } from "@/lib/utils";
+import { classifyTitle, parseNlDeadline, formatDeadline, suggestTags, cn } from "@/lib/utils";
 import { useT } from "@/lib/i18n";
 
 export interface CreatePrefill {
@@ -177,9 +177,14 @@ export function TaskDialog(props: Mode) {
     if (!isEdit && !autoApplied && title.length > 6) {
       setType(classification.type);
       setPriority(classification.priority);
+      // Auto-suggest tag từ title + description: mã môn (PRN222 → prn222),
+      // "bài tập" → bai-tap, "thi" → thi. Merge với tag user đã gõ, không
+      // bao giờ xoá tag đã có.
+      const suggested = suggestTags(title + " " + description, tags);
+      if (suggested.length > tags.length) setTags(suggested);
       setAutoApplied(true);
     }
-  }, [title, classification, isEdit, autoApplied]);
+  }, [title, description, classification, isEdit, autoApplied, tags]);
 
   // NL deadline guess
   useEffect(() => {
