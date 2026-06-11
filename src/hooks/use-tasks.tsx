@@ -7,7 +7,7 @@ import React, {
   createContext,
   useContext,
 } from "react";
-import { isCliMode, cliFetchTasks, cliPutTasks, cliMigrate } from "@/lib/cli-bridge";
+import { isCliMode, cliFetchTasks, cliPutTasks, cliMigrate, inlineTasks, inlineMtime } from "@/lib/cli-bridge";
 
 export type TaskType = "academic" | "personal" | "work" | "other";
 export type TaskPriority = "high" | "medium" | "low";
@@ -126,12 +126,14 @@ function reminderOffsetMs(pref: ReminderPref): number {
 type LoadState = "loading" | "loaded" | "error";
 
 export function TasksProvider({ children }: { children: React.ReactNode }) {
-  const [tasks, setTasks] = useState<Task[]>([]);
-  // CRITICAL: this is the guard against the data-wipe bug. We MUST NOT save
-  // anything to the server until the initial fetch has SUCCEEDED. If it
-  // failed (network blip, server slow to start), `loadState` stays "error"
-  // and saves are blocked — the on-disk file remains intact.
-  const [loadState, setLoadState] = useState<LoadState>("loading");
+  // Hydrate from the inline payload injected by the CLI server (if any).
+  // This makes first paint render real tasks — no fetch round-trip needed.
+  const hydrated = isCliMode() ? inlineTasks() : null;
+  const [tasks, setTasks] = useState<Task[]>(hydrated ?? []);
+  // CRITICAL: guard against the data-wipe bug. We MUST NOT save until the
+  // store is known-good. With inline hydration we start "loaded" instantly;
+  // otherwise we wait for the fetch (or localStorage read) to succeed.
+  const [loadState, setLoadState] = useState<LoadState>(hydrated ? "loaded" : "loading");
   const [notificationsEnabled, setNotificationsEnabled] = useState(
     typeof Notification !== "undefined" && Notification.permission === "granted"
   );
@@ -142,45 +144,57 @@ export function TasksProvider({ children }: { children: React.ReactNode }) {
   // tasks already match this — prevents a no-op flush after initial load
   // from overwriting the file with a possibly-different shape.
   const lastSyncedRef = useRef<string | null>(null);
+  // Version stamp từ server. SSE event nào có mtime ≤ này thì bỏ qua (stale).
+  const lastMtimeRef = useRef<number>(0);
   const cli = isCliMode();
 
   useEffect(() => {
     let cancelled = false;
     (async () => {
       if (cli) {
-        try {
-          let serverTasks = await cliFetchTasks();
-          // First-run migration — only meaningful if origin's localStorage
-          // happens to hold legacy data AND the server is empty.
+        // Fast path: inline payload hydrated trong useState init. Set ref +
+        // chạy migration nếu có. SSE effect bên dưới sẽ tự reconcile nếu
+        // inline stale (vd vừa F5 lúc PUT chưa landed).
+        const inline = inlineTasks();
+        if (inline) {
+          lastSyncedRef.current = JSON.stringify(inline);
+          lastMtimeRef.current = inlineMtime();
           const local = localStorage.getItem(STORAGE_KEY);
-          if (local) {
+          if (local && inline.length === 0) {
             try {
               const parsed = JSON.parse(local);
               const localTasks: Task[] = Array.isArray(parsed) ? parsed : [];
-              if (localTasks.length && serverTasks.length === 0) {
+              if (localTasks.length) {
                 await cliMigrate(localTasks);
-                const after = await cliFetchTasks();
+                const { tasks: after, mtimeMs } = await cliFetchTasks();
                 if (after.length >= localTasks.length) {
                   localStorage.setItem(STORAGE_KEY + "_legacy", local);
                   localStorage.removeItem(STORAGE_KEY);
-                  serverTasks = after;
-                } else {
-                  console.warn(
-                    "[clearmind] Migration didn't reach the server — keeping localStorage intact."
-                  );
+                  if (!cancelled) {
+                    setTasks(after);
+                    lastSyncedRef.current = JSON.stringify(after);
+                    lastMtimeRef.current = mtimeMs;
+                  }
                 }
               }
             } catch (e) {
-              console.warn("[clearmind] localStorage parse failed — leaving it untouched:", e);
+              console.warn("[clearmind] localStorage migration skipped:", e);
             }
           }
+          return;
+        }
+
+        // Slow path (no inline marker — shouldn't happen in CLI mode).
+        try {
+          const { tasks: serverTasks, mtimeMs } = await cliFetchTasks();
           if (!cancelled) {
             setTasks(serverTasks);
             lastSyncedRef.current = JSON.stringify(serverTasks);
+            lastMtimeRef.current = mtimeMs;
             setLoadState("loaded");
           }
         } catch (e) {
-          console.error("[clearmind] CLI initial fetch FAILED — saves disabled to prevent data loss:", e);
+          console.error("[clearmind] CLI initial fetch FAILED:", e);
           if (!cancelled) setLoadState("error");
         }
       } else {
@@ -203,6 +217,42 @@ export function TasksProvider({ children }: { children: React.ReactNode }) {
     return () => { cancelled = true; };
   }, [cli]);
 
+  // Real-time sync qua Server-Sent Events. Server push mọi thay đổi tasks
+  // tới mọi client kết nối — không cần poll, không cần focus. EventSource
+  // tự reconnect khi server restart hoặc network blip.
+  useEffect(() => {
+    if (!cli) return;
+    const es = new EventSource("/api/events");
+
+    const applyServer = (incoming: Task[], mtimeMs: number) => {
+      // Bỏ qua nếu version cũ hơn cái ta đang có (chống echo lệch order).
+      if (mtimeMs > 0 && mtimeMs < lastMtimeRef.current) return;
+      const serialized = JSON.stringify(incoming);
+      // Echo của chính ta vừa PUT → chỉ cập nhật mtime, không re-render.
+      if (serialized === lastSyncedRef.current) {
+        if (mtimeMs > lastMtimeRef.current) lastMtimeRef.current = mtimeMs;
+        return;
+      }
+      // Có edit chưa save? Bỏ qua — debounced PUT sẽ flush trước, event
+      // tiếp theo sẽ là phiên bản đã merge edit của ta.
+      if (lastSyncedRef.current !== JSON.stringify(tasksRef.current)) return;
+      setTasks(incoming);
+      lastSyncedRef.current = serialized;
+      lastMtimeRef.current = mtimeMs;
+    };
+
+    es.addEventListener("snapshot", (ev) => {
+      const { tasks: t, mtimeMs } = JSON.parse((ev as MessageEvent).data);
+      applyServer(t, mtimeMs);
+    });
+    es.addEventListener("tasks-updated", (ev) => {
+      const { tasks: t, mtimeMs } = JSON.parse((ev as MessageEvent).data);
+      applyServer(t, mtimeMs);
+    });
+
+    return () => es.close();
+  }, [cli]);
+
   // Persist on change. Only fires when the initial load succeeded AND the
   // current snapshot actually differs from what we last persisted.
   useEffect(() => {
@@ -215,14 +265,18 @@ export function TasksProvider({ children }: { children: React.ReactNode }) {
       lastSyncedRef.current = serialized;
       return;
     }
+    // Debounce ngắn (80ms) — coalesce rapid edits trong cùng tick, nhưng
+    // window race với F5/unload nhỏ. keepalive trong cliPutTasks lo phần
+    // còn lại nếu user navigate giữa chừng.
     const handle = window.setTimeout(async () => {
       try {
-        await cliPutTasks(tasks);
+        const mtimeMs = await cliPutTasks(tasks);
         lastSyncedRef.current = serialized;
+        if (mtimeMs > lastMtimeRef.current) lastMtimeRef.current = mtimeMs;
       } catch (e) {
         console.warn("[clearmind] PUT /api/tasks failed:", e);
       }
-    }, 400);
+    }, 80);
     return () => window.clearTimeout(handle);
   }, [tasks, loadState, cli]);
 
@@ -245,6 +299,44 @@ export function TasksProvider({ children }: { children: React.ReactNode }) {
     };
     window.addEventListener("beforeunload", handler);
     return () => window.removeEventListener("beforeunload", handler);
+  }, [cli, loadState]);
+
+  // Fallback refetch khi focus/online — SSE thường lo việc này, nhưng nếu
+  // EventSource bị block (extension, proxy, etc) thì đây là safety net.
+  useEffect(() => {
+    if (!cli) return;
+    if (loadState !== "loaded") return;
+
+    let inFlight = false;
+    const refetch = async () => {
+      if (inFlight) return;
+      if (JSON.stringify(tasksRef.current) !== lastSyncedRef.current) return;
+      inFlight = true;
+      try {
+        const { tasks: server, mtimeMs } = await cliFetchTasks();
+        if (mtimeMs > 0 && mtimeMs <= lastMtimeRef.current) return;
+        const serialized = JSON.stringify(server);
+        if (serialized !== lastSyncedRef.current) {
+          setTasks(server);
+          lastSyncedRef.current = serialized;
+          lastMtimeRef.current = mtimeMs;
+        }
+      } catch (_) {}
+      finally { inFlight = false; }
+    };
+
+    const onFocus = () => refetch();
+    const onVisible = () => { if (document.visibilityState === "visible") refetch(); };
+    window.addEventListener("focus", onFocus);
+    document.addEventListener("visibilitychange", onVisible);
+    window.addEventListener("online", onFocus);
+    window.addEventListener("pageshow", onFocus);
+    return () => {
+      window.removeEventListener("focus", onFocus);
+      document.removeEventListener("visibilitychange", onVisible);
+      window.removeEventListener("online", onFocus);
+      window.removeEventListener("pageshow", onFocus);
+    };
   }, [cli, loadState]);
 
   // Schedule local Notifications for tasks with notify + future deadline within 24h.

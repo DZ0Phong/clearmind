@@ -151,21 +151,31 @@ function writeTasks(dataDir, tasks) {
     try { fs.renameSync(legacy, slot1); } catch (_) { /* best-effort */ }
   }
 
-  // Rotate history. Safety guard: if the new write is empty AND we already
-  // have ANY non-empty slot, do NOT shift — that would let a wipe→wipe
-  // sequence push the good snapshots out of the chain. We only shift when
-  // the new state is real progress (or there's no real progress to lose).
-  if (fs.existsSync(file)) {
+  const newCount = tasks.length;
+  const currentExists = fs.existsSync(file);
+  const currentCount = currentExists ? countTasksInFile(file) : 0;
+  const anySlotHasData = HISTORY_FILES.some((name) => {
+    const p = path.join(dataDir, name);
+    return fs.existsSync(p) && countTasksInFile(p) > 0;
+  });
+
+  // Safety net: if this PUT REDUCES the task count by ≥ 1 (or drops to zero),
+  // snapshot the soon-to-be-overwritten state to backups/ first. Cheap and
+  // gives the user an extra undo level beyond the 3 history slots.
+  if (currentCount > 0 && newCount < currentCount) {
+    try { makeBackup(dataDir); } catch (_) { /* non-fatal */ }
+  }
+
+  // Rotate history. Two safety guards:
+  //   (a) Don't shift an EMPTY current into slot[0] — that pollutes the chain
+  //       after a wipe and cascades good data out of the bottom over a few
+  //       follow-up edits. Wait until current has real data again.
+  //   (b) Don't shift when the NEW write is empty AND we already have a
+  //       non-empty slot — same wipe→wipe protection as before.
+  if (currentExists) {
     let shouldRotate = true;
-    const newCount = tasks.length;
-    if (newCount === 0) {
-      const anySlotHasData = HISTORY_FILES.some((name) => {
-        const p = path.join(dataDir, name);
-        return fs.existsSync(p) && countTasksInFile(p) > 0;
-      });
-      const currentCount = countTasksInFile(file);
-      if (anySlotHasData && currentCount === 0) shouldRotate = false;
-    }
+    if (currentCount === 0 && anySlotHasData) shouldRotate = false;       // (a)
+    if (newCount === 0 && currentCount === 0 && anySlotHasData) shouldRotate = false; // (b) — redundant with (a), kept for clarity
     if (shouldRotate) {
       try {
         // Shift from oldest to newest: slot[N-2] → slot[N-1], ..., slot[0] → slot[1]

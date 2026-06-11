@@ -62,90 +62,71 @@ export function CommandPalette({ open, onOpenChange, onCreate, onPickTask }: Pro
     () => [
       {
         id: "new",
-        label: "New task",
+        label: "Tạo task mới",
         hint: "⌘N",
         icon: <Plus className="h-4 w-4" />,
-        run: () => {
-          onOpenChange(false);
-          onCreate();
-        },
+        run: () => { onOpenChange(false); onCreate(); },
       },
       {
         id: "dashboard",
-        label: "Go to Dashboard",
+        label: "Mở Dashboard",
         icon: <LayoutDashboard className="h-4 w-4" />,
-        run: () => {
-          onOpenChange(false);
-          navigate("/dashboard");
-        },
+        run: () => { onOpenChange(false); navigate("/dashboard"); },
       },
       {
         id: "calendar",
-        label: "Go to Calendar",
+        label: "Mở Lịch",
         icon: <Calendar className="h-4 w-4" />,
-        run: () => {
-          onOpenChange(false);
-          navigate("/calendar");
-        },
+        run: () => { onOpenChange(false); navigate("/calendar"); },
       },
       {
         id: "tasks",
-        label: "Go to Tasks",
+        label: "Mở danh sách Task",
         icon: <CheckSquare className="h-4 w-4" />,
-        run: () => {
-          onOpenChange(false);
-          navigate("/tasks");
-        },
+        run: () => { onOpenChange(false); navigate("/tasks"); },
       },
       {
         id: "focus",
-        label: "Focus mode (Pomodoro)",
+        label: "Vào chế độ Focus (Pomodoro)",
         icon: <Timer className="h-4 w-4" />,
-        run: () => {
-          onOpenChange(false);
-          navigate("/focus");
-        },
+        run: () => { onOpenChange(false); navigate("/focus"); },
       },
       {
         id: "review",
-        label: "Weekly review",
+        label: "Tổng kết tuần",
         icon: <TrendingUp className="h-4 w-4" />,
-        run: () => {
-          onOpenChange(false);
-          navigate("/review");
-        },
+        run: () => { onOpenChange(false); navigate("/review"); },
       },
       {
         id: "import",
         label: "Import lịch học",
         hint: "Paste / ICS",
         icon: <CalendarPlus className="h-4 w-4" />,
-        run: () => {
-          onOpenChange(false);
-          navigate("/import");
-        },
+        run: () => { onOpenChange(false); navigate("/import"); },
       },
       {
         id: "guide",
-        label: "Mở Hướng dẫn",
+        label: "Hướng dẫn",
         icon: <Sparkles className="h-4 w-4" />,
-        run: () => {
-          onOpenChange(false);
-          navigate("/guide");
-        },
+        run: () => { onOpenChange(false); navigate("/guide"); },
       },
       {
         id: "settings",
-        label: "Settings",
+        label: "Cài đặt",
         icon: <Settings className="h-4 w-4" />,
-        run: () => {
-          onOpenChange(false);
-          navigate("/settings");
-        },
+        run: () => { onOpenChange(false); navigate("/settings"); },
       },
     ],
-    [navigate, onCreate]
+    [navigate, onCreate, onOpenChange]
   );
+
+  // Type label tiếng Việt cho task hint trong palette.
+  const TYPE_VI: Record<string, string> = {
+    academic: "Học tập",
+    personal: "Cá nhân",
+    work: "Công việc",
+    other: "Khác",
+  };
 
   const q = query.trim().toLowerCase();
   const filteredActions = actions.filter((a) =>
@@ -163,7 +144,7 @@ export function CommandPalette({ open, onOpenChange, onCreate, onPickTask }: Pro
     ...filteredTasks.map<CommandAction>((t) => ({
       id: "task:" + t.id,
       label: t.title,
-      hint: t.type,
+      hint: TYPE_VI[t.type] || t.type,
       icon: <CheckSquare className="h-4 w-4 text-muted-foreground" />,
       run: () => {
         onOpenChange(false);
@@ -202,11 +183,14 @@ export function CommandPalette({ open, onOpenChange, onCreate, onPickTask }: Pro
             ref={inputRef}
             value={query}
             onChange={(e) => {
+              const prev = query;
               setQuery(e.target.value);
-              setActiveIdx(0);
+              // Chỉ reset cursor khi vừa bắt đầu / vừa xoá hết — không reset
+              // mỗi keystroke (sẽ làm hover nhảy lung tung).
+              if (!prev !== !e.target.value) setActiveIdx(0);
             }}
             onKeyDown={handleKey}
-            placeholder="Type a command or search tasks…"
+            placeholder="Gõ lệnh hoặc tìm task…"
             className="flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground"
           />
           <kbd className="text-[10px] text-muted-foreground border rounded px-1.5 py-0.5 font-mono">
@@ -222,7 +206,7 @@ export function CommandPalette({ open, onOpenChange, onCreate, onPickTask }: Pro
             <>
               {filteredActions.length > 0 && (
                 <p className="text-[10px] uppercase tracking-wider text-muted-foreground px-2 py-1.5">
-                  Actions
+                  Lệnh
                 </p>
               )}
               {filteredActions.map((a, i) => (
@@ -244,7 +228,7 @@ export function CommandPalette({ open, onOpenChange, onCreate, onPickTask }: Pro
               ))}
               {filteredTasks.length > 0 && (
                 <p className="text-[10px] uppercase tracking-wider text-muted-foreground px-2 py-1.5 mt-2">
-                  Tasks
+                  Task
                 </p>
               )}
               {filteredTasks.map((t, i) => {
@@ -264,8 +248,8 @@ export function CommandPalette({ open, onOpenChange, onCreate, onPickTask }: Pro
                   >
                     <CheckSquare className="h-4 w-4 text-muted-foreground" />
                     <span className="flex-1 truncate">{t.title}</span>
-                    <span className="text-xs text-muted-foreground capitalize">
-                      {t.type}
+                    <span className="text-xs text-muted-foreground">
+                      {TYPE_VI[t.type] || t.type}
                     </span>
                   </button>
                 );

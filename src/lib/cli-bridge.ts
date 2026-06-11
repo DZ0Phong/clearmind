@@ -22,6 +22,8 @@ export interface CliInfo {
 declare global {
   interface Window {
     __CLEARMIND_CLI__?: CliInfo;
+    __CLEARMIND_TASKS__?: Task[];
+    __CLEARMIND_MTIME__?: number;
   }
 }
 
@@ -34,6 +36,18 @@ export function isCliMode(): boolean {
   return !!cliInfo();
 }
 
+// Inline-hydrated tasks injected by the CLI server into index.html.
+// Returns null when running outside CLI mode (dev, static build).
+export function inlineTasks(): Task[] | null {
+  if (typeof window === "undefined") return null;
+  const t = window.__CLEARMIND_TASKS__;
+  return Array.isArray(t) ? t : null;
+}
+export function inlineMtime(): number {
+  if (typeof window === "undefined") return 0;
+  return window.__CLEARMIND_MTIME__ || 0;
+}
+
 /** Same-origin fetch — the CLI server binds 127.0.0.1 and serves the SPA. */
 async function apiJson<T>(input: string, init?: RequestInit): Promise<T> {
   const res = await fetch(input, {
@@ -44,16 +58,23 @@ async function apiJson<T>(input: string, init?: RequestInit): Promise<T> {
   return res.json() as Promise<T>;
 }
 
-export async function cliFetchTasks(): Promise<Task[]> {
-  const j = await apiJson<{ tasks: Task[] }>("/api/tasks");
-  return Array.isArray(j.tasks) ? j.tasks : [];
+export async function cliFetchTasks(): Promise<{ tasks: Task[]; mtimeMs: number }> {
+  const j = await apiJson<{ tasks: Task[]; mtimeMs?: number }>("/api/tasks");
+  return { tasks: Array.isArray(j.tasks) ? j.tasks : [], mtimeMs: j.mtimeMs || 0 };
 }
 
-export async function cliPutTasks(tasks: Task[]): Promise<void> {
-  await apiJson<{ ok: boolean }>("/api/tasks", {
+// keepalive: true → browser tiếp tục gửi nếu user F5/đóng tab giữa chừng.
+// Giới hạn 64KB body (đủ cho vài trăm task) — đổi lại không mất edit nào.
+export async function cliPutTasks(tasks: Task[]): Promise<number> {
+  const r = await fetch("/api/tasks", {
     method: "PUT",
+    headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ tasks }),
+    keepalive: true,
   });
+  if (!r.ok) throw new Error(`PUT /api/tasks → HTTP ${r.status}`);
+  const j = (await r.json()) as { mtimeMs?: number };
+  return j.mtimeMs || 0;
 }
 
 /** Merge localStorage tasks into the on-disk store. Skips IDs that already exist. */

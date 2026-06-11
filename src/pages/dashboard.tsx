@@ -230,7 +230,7 @@ export function Dashboard() {
               <div>
                 <CardTitle className="flex items-center gap-2 text-lg">
                   <CalendarIcon className="h-5 w-5 text-primary" />
-                  Today's agenda
+                  Lịch hôm nay
                 </CardTitle>
                 <CardDescription>
                   {todayList.length === 0

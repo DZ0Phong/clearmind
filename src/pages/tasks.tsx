@@ -28,6 +28,8 @@ import {
   CalendarRange,
   Sun,
   Hash,
+  Layers,
+  GraduationCap,
 } from "lucide-react";
 import { QuickCapture } from "@/components/quick-capture";
 import { Button } from "@/components/ui/button";
@@ -47,6 +49,8 @@ import { cn } from "@/lib/utils";
 
 type Filter = "all" | "todo" | "done";
 type SortMode = "deadline" | "priority" | "recent";
+// 3 góc nhìn: việc cần làm (ẩn buổi học lặp), lịch học (gộp theo môn), tất cả
+type ViewMode = "tasks" | "schedule" | "all";
 
 const SORT_LABEL: Record<SortMode, string> = {
   deadline: "Deadline",
@@ -56,6 +60,10 @@ const SORT_LABEL: Record<SortMode, string> = {
 
 const SORT_STORAGE_KEY = "clearmind_tasks_sort";
 const COLLAPSED_STORAGE_KEY = "clearmind_tasks_collapsed";
+const VIEW_STORAGE_KEY = "clearmind_tasks_view";
+
+// Một buổi học recurring → noise trong default view. Helper để chia.
+const isRecurringClass = (t: Task) => !!t.recurrence && t.type === "academic";
 
 const PRIORITY_RANK: Record<string, number> = { high: 0, medium: 1, low: 2 };
 
@@ -74,13 +82,17 @@ function StatusCycler({
   status: TaskStatus;
   onClick: () => void;
 }) {
+  const label = status === "todo" ? "Chưa làm"
+    : status === "in-progress" ? "Đang làm"
+    : "Đã xong";
   return (
     <button
       onClick={(e) => {
         e.stopPropagation();
         onClick();
       }}
-      title={`Status: ${status}`}
+      title={`Trạng thái: ${label} (bấm để đổi)`}
+      aria-label={`Đổi trạng thái — hiện tại: ${label}`}
       className={cn(
         "h-5 w-5 rounded-full border-2 mt-0.5 shrink-0 transition-all relative",
         status === "todo" && "border-primary/50 hover:border-primary",
@@ -249,6 +261,7 @@ function TaskRow({
               onClick={handleSnooze(DAY_MS, "+1 ngày")}
               className="text-muted-foreground hover:text-primary opacity-0 group-hover:opacity-100 transition-opacity"
               title="Đẩy lùi 1 ngày"
+              aria-label="Đẩy lùi 1 ngày"
             >
               <Clock4 className="h-4 w-4" />
             </Button>
@@ -258,6 +271,7 @@ function TaskRow({
               onClick={handleSnooze(7 * DAY_MS, "+1 tuần")}
               className="text-muted-foreground hover:text-primary opacity-0 group-hover:opacity-100 transition-opacity"
               title="Đẩy lùi 1 tuần"
+              aria-label="Đẩy lùi 1 tuần"
             >
               <CalendarClock className="h-4 w-4" />
             </Button>
@@ -273,6 +287,7 @@ function TaskRow({
             }}
             className="text-muted-foreground hover:text-primary opacity-0 group-hover:opacity-100 transition-opacity"
             title="Thêm bài tập"
+            aria-label="Thêm bài tập cho môn này"
           >
             <BookOpen className="h-4 w-4" />
           </Button>
@@ -283,6 +298,7 @@ function TaskRow({
           onClick={handleDelete}
           className="text-muted-foreground hover:text-destructive"
           title="Xoá"
+          aria-label={`Xoá task: ${task.title}`}
         >
           <Trash2 className="h-4 w-4" />
         </Button>
@@ -323,6 +339,11 @@ export function TasksPage() {
     const saved = localStorage.getItem(SORT_STORAGE_KEY);
     return saved === "priority" || saved === "recent" ? saved : "deadline";
   });
+  const [view, setView] = useState<ViewMode>(() => {
+    const saved = localStorage.getItem(VIEW_STORAGE_KEY);
+    return saved === "schedule" || saved === "all" ? saved : "tasks";
+  });
+  useEffect(() => { localStorage.setItem(VIEW_STORAGE_KEY, view); }, [view]);
   const [collapsed, setCollapsed] = useState<Set<DateBucket>>(() => {
     try {
       const raw = localStorage.getItem(COLLAPSED_STORAGE_KEY);
@@ -361,6 +382,16 @@ export function TasksPage() {
     return { all: tasks.length, todo, done };
   }, [tasks]);
 
+  // Đếm cho tab strip — biết được view nào có bao nhiêu task open.
+  const viewCounts = useMemo(() => {
+    let cls = 0, work = 0;
+    for (const t of tasks) {
+      if (t.status === "done") continue;
+      if (isRecurringClass(t)) cls++; else work++;
+    }
+    return { tasks: work, schedule: cls, all: work + cls };
+  }, [tasks]);
+
   const taskById = useMemo(() => {
     const m = new Map<string, Task>();
     for (const t of tasks) m.set(t.id, t);
@@ -371,6 +402,9 @@ export function TasksPage() {
 
   const filtered = useMemo(() => {
     let xs = tasks;
+    // View filter — chạy trước cùng để giảm sớm số lượng cần xử lý.
+    if (view === "tasks") xs = xs.filter((t) => !isRecurringClass(t));
+    else if (view === "schedule") xs = xs.filter(isRecurringClass);
     if (filter === "todo") xs = xs.filter((t) => t.status !== "done");
     else if (filter === "done") xs = xs.filter((t) => t.status === "done");
     if (activeTag) {
@@ -387,7 +421,40 @@ export function TasksPage() {
       );
     }
     return xs;
-  }, [tasks, filter, query, activeTag]);
+  }, [tasks, view, filter, query, activeTag]);
+
+  // Lịch học hôm nay — strip compact đầu tab "Việc cần làm" để vẫn nắm được
+  // mà không bị flood. Đếm từ FULL tasks (không qua filter).
+  const todayClasses = useMemo(() => {
+    const now = new Date();
+    const y = now.getFullYear(), m = now.getMonth(), d = now.getDate();
+    return tasks
+      .filter((t) => {
+        if (!isRecurringClass(t) || !t.deadline || t.status === "done") return false;
+        const dt = new Date(t.deadline);
+        return dt.getFullYear() === y && dt.getMonth() === m && dt.getDate() === d;
+      })
+      .sort((a, b) => (a.deadline || "").localeCompare(b.deadline || ""));
+  }, [tasks]);
+
+  // Schedule view — gộp các buổi cùng title (= mã môn) vào 1 card.
+  const bySubject = useMemo(() => {
+    if (view !== "schedule") return [];
+    const m = new Map<string, Task[]>();
+    for (const t of filtered) {
+      const key = t.title.trim();
+      const arr = m.get(key) ?? [];
+      arr.push(t);
+      m.set(key, arr);
+    }
+    return Array.from(m.entries())
+      .map(([title, instances]) => ({
+        title,
+        instances: instances.sort((a, b) => (a.deadline || "").localeCompare(b.deadline || "")),
+      }))
+      // Sort các môn theo buổi gần nhất.
+      .sort((a, b) => (a.instances[0]?.deadline || "").localeCompare(b.instances[0]?.deadline || ""));
+  }, [filtered, view]);
 
   const grouped = useMemo(() => {
     const g = groupByBucket(filtered);
@@ -469,12 +536,24 @@ export function TasksPage() {
     <div className="h-full flex flex-col gap-6">
       <div className="shrink-0 flex items-center justify-between gap-4 flex-wrap">
         <div>
-          <h2 className="text-3xl font-bold tracking-tight">All Tasks</h2>
+          <h2 className="text-3xl font-bold tracking-tight">
+            {view === "schedule" ? "Lịch học" : view === "all" ? "Tất cả" : "Việc cần làm"}
+          </h2>
           <p className="text-muted-foreground mt-1">
-            {filtered.length} task{filtered.length === 1 ? "" : "s"} · grouped by deadline
+            {view === "schedule"
+              ? `${bySubject.length} môn · ${filtered.length} buổi sắp tới`
+              : `${filtered.length} task · nhóm theo deadline`}
           </p>
         </div>
         <QuickCapture />
+      </div>
+
+      {/* View tabs — góc nhìn chính (không phải filter status). Default
+          "Việc cần làm" ẩn buổi lớp lặp để list không bị flood theo tuần. */}
+      <div className="flex items-center gap-1 p-1 rounded-xl bg-muted/40 border w-fit">
+        <ViewTab active={view === "tasks"} onClick={() => setView("tasks")} icon={ListTodo} label="Việc cần làm" count={viewCounts.tasks} />
+        <ViewTab active={view === "schedule"} onClick={() => setView("schedule")} icon={GraduationCap} label="Lịch học" count={viewCounts.schedule} />
+        <ViewTab active={view === "all"} onClick={() => setView("all")} icon={Layers} label="Tất cả" count={viewCounts.all} />
       </div>
 
       <div className="flex items-center gap-2 flex-wrap">
@@ -484,7 +563,7 @@ export function TasksPage() {
           onClick={() => setFilter("all")}
           className="rounded-full gap-1.5"
         >
-          All Tasks
+          Tất cả
           <span className="text-[10px] tabular-nums opacity-70">
             {filterCounts.all}
           </span>
@@ -495,7 +574,7 @@ export function TasksPage() {
           onClick={() => setFilter("todo")}
           className="rounded-full gap-1.5"
         >
-          <ListTodo className="h-4 w-4" /> To Do
+          <ListTodo className="h-4 w-4" /> Chưa xong
           <span className="text-[10px] tabular-nums opacity-70">
             {filterCounts.todo}
           </span>
@@ -506,7 +585,7 @@ export function TasksPage() {
           onClick={() => setFilter("done")}
           className="rounded-full gap-1.5"
         >
-          <CheckCircle2 className="h-4 w-4" /> Done
+          <CheckCircle2 className="h-4 w-4" /> Đã xong
           <span className="text-[10px] tabular-nums opacity-70">
             {filterCounts.done}
           </span>
@@ -603,6 +682,12 @@ export function TasksPage() {
       )}
 
       <div className="flex-1 overflow-y-auto space-y-4">
+        {/* Hôm nay có buổi học — chỉ hiện ở view "Việc cần làm" để user
+            vẫn nắm được lịch mà không phải mở list buổi lớp. */}
+        {view === "tasks" && todayClasses.length > 0 && (
+          <TodayClassesStrip tasks={todayClasses} onSwitch={() => setView("schedule")} />
+        )}
+
         {/* Overdue compact alert — kept separate from the main list to
             reduce visual noise; expand inline to triage individual items. */}
         {grouped.overdue.length > 0 && (
@@ -616,11 +701,39 @@ export function TasksPage() {
           />
         )}
 
+        {/* Schedule view: gộp theo môn, không xài bucket. */}
+        {view === "schedule" ? (
+          <Card className="border-primary/10 shadow-sm bg-card min-h-[400px]">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <GraduationCap className="h-5 w-5 text-primary" /> Gộp theo môn
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              {bySubject.length === 0 ? (
+                <div className="text-center py-12 text-muted-foreground">
+                  <p className="font-medium">Chưa có buổi học lặp lại nào.</p>
+                  <p className="text-xs mt-1">Import lịch học từ trang trường để tự tạo.</p>
+                </div>
+              ) : (
+                bySubject.map((s) => (
+                  <SubjectGroup
+                    key={s.title}
+                    title={s.title}
+                    instances={s.instances}
+                    taskById={taskById}
+                    onTagClick={setActiveTag}
+                  />
+                ))
+              )}
+            </CardContent>
+          </Card>
+        ) : (
         <Card className="border-primary/10 shadow-sm bg-card min-h-[400px]">
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <CheckSquare className="h-5 w-5 text-primary" />
-              Your Tasks
+              Danh sách
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-6">
@@ -743,7 +856,142 @@ export function TasksPage() {
             )}
           </CardContent>
         </Card>
+        )}
       </div>
+    </div>
+  );
+}
+
+function ViewTab({
+  active,
+  onClick,
+  icon: Icon,
+  label,
+  count,
+}: {
+  active: boolean;
+  onClick: () => void;
+  icon: typeof ListTodo;
+  label: string;
+  count: number;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={cn(
+        "inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors",
+        active
+          ? "bg-background shadow-sm text-foreground"
+          : "text-muted-foreground hover:text-foreground hover:bg-background/50"
+      )}
+    >
+      <Icon className="h-4 w-4" />
+      {label}
+      <span className={cn("text-[10px] tabular-nums px-1.5 rounded-full", active ? "bg-primary/15 text-primary" : "opacity-60")}>
+        {count}
+      </span>
+    </button>
+  );
+}
+
+function TodayClassesStrip({ tasks, onSwitch }: { tasks: Task[]; onSwitch: () => void }) {
+  return (
+    <div className="rounded-xl border border-primary/20 bg-primary/5 p-3 flex items-center gap-3 flex-wrap">
+      <div className="h-8 w-8 rounded-lg bg-primary/15 text-primary flex items-center justify-center shrink-0">
+        <GraduationCap className="h-4 w-4" />
+      </div>
+      <div className="flex items-center gap-2 flex-wrap flex-1 min-w-0">
+        <span className="text-sm font-semibold text-primary">
+          Hôm nay {tasks.length} buổi
+        </span>
+        {tasks.map((t) => {
+          const c = subjectColor(t.title);
+          const hh = t.deadline ? new Date(t.deadline).getHours().toString().padStart(2, "0") : "";
+          const mm = t.deadline ? new Date(t.deadline).getMinutes().toString().padStart(2, "0") : "";
+          return (
+            <span
+              key={t.id}
+              className={cn("inline-flex items-center gap-1.5 text-xs px-2 py-1 rounded-md border", c.border, c.bg, c.text)}
+            >
+              <span className="tabular-nums font-medium">{hh}:{mm}</span>
+              <span className="font-semibold">{t.title}</span>
+              {t.location && <span className="opacity-70">· {t.location}</span>}
+            </span>
+          );
+        })}
+      </div>
+      <button
+        type="button"
+        onClick={onSwitch}
+        className="text-xs text-muted-foreground hover:text-primary inline-flex items-center gap-1 shrink-0"
+      >
+        Xem lịch học <ChevronDown className="h-3 w-3 -rotate-90" />
+      </button>
+    </div>
+  );
+}
+
+function SubjectGroup({
+  title,
+  instances,
+  taskById,
+  onTagClick,
+}: {
+  title: string;
+  instances: Task[];
+  taskById: Map<string, Task>;
+  onTagClick?: (tag: string) => void;
+}) {
+  const [expanded, setExpanded] = useState(false);
+  const color = subjectColor(title);
+  const next = instances.find((t) => t.status !== "done") || instances[0];
+  // Tóm tắt: thứ + giờ + phòng của buổi kế tiếp.
+  const summary = (() => {
+    if (!next?.deadline) return null;
+    const d = new Date(next.deadline);
+    const dow = ["CN", "T2", "T3", "T4", "T5", "T6", "T7"][d.getDay()];
+    const hh = d.getHours().toString().padStart(2, "0");
+    const mm = d.getMinutes().toString().padStart(2, "0");
+    const dd = d.getDate().toString().padStart(2, "0");
+    const mo = (d.getMonth() + 1).toString().padStart(2, "0");
+    return `${dow} · ${hh}:${mm} · ${dd}/${mo}`;
+  })();
+
+  return (
+    <div className={cn("rounded-xl border bg-card overflow-hidden", color.border)}>
+      <button
+        type="button"
+        onClick={() => setExpanded((v) => !v)}
+        className="w-full flex items-center gap-3 p-3 text-left hover:bg-accent/40 transition-colors"
+      >
+        <span className={cn("h-9 w-9 rounded-lg flex items-center justify-center font-bold text-sm shrink-0", color.bg, color.text)}>
+          {title.slice(0, 3)}
+        </span>
+        <div className="flex-1 min-w-0">
+          <p className={cn("font-semibold leading-tight", color.text)}>{title}</p>
+          <p className="text-xs text-muted-foreground mt-0.5 truncate">
+            Tiếp theo: {summary || "—"}
+            {next?.location && <span className="ml-1.5 inline-flex items-center gap-0.5"><MapPin className="h-3 w-3" />{next.location}</span>}
+          </p>
+        </div>
+        <span className="text-xs text-muted-foreground tabular-nums px-2 py-0.5 rounded bg-muted/60 shrink-0">
+          {instances.length} buổi
+        </span>
+        <ChevronDown className={cn("h-4 w-4 text-muted-foreground transition-transform shrink-0", !expanded && "-rotate-90")} />
+      </button>
+      {expanded && (
+        <div className="px-3 pb-3 pt-1 space-y-2 border-t bg-muted/10">
+          {instances.map((t) => (
+            <TaskRow
+              key={t.id}
+              task={t}
+              parent={t.parentId ? taskById.get(t.parentId) : undefined}
+              onTagClick={onTagClick}
+            />
+          ))}
+        </div>
+      )}
     </div>
   );
 }

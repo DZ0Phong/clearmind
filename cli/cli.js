@@ -47,6 +47,8 @@ function parseArgs(argv) {
     help: false,
     version: false,
     dataDir: null,
+    menu: false,
+    noMenu: false,
   };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
@@ -56,6 +58,8 @@ function parseArgs(argv) {
     else if (a === "--no-tray") opts.noTray = true;
     else if (a === "--tray") opts.tray = true;
     else if (a === "--skip-update") opts.skipUpdate = true;
+    else if (a === "--menu") opts.menu = true;
+    else if (a === "--no-menu") opts.noMenu = true;
     else if (a === "--port") opts.port = parseInt(argv[++i], 10) || DEFAULT_PORT;
     else if (a.startsWith("--port=")) opts.port = parseInt(a.slice(7), 10) || DEFAULT_PORT;
     else if (a === "--data-dir") opts.dataDir = argv[++i];
@@ -68,7 +72,8 @@ function printHelp() {
   console.log(`Clearmind v${VERSION} — chạy ngầm bộ não phụ trên máy bạn.
 
 Cách dùng:
-  clearmind                 Mở dashboard (chạy nền nếu chưa có)
+  clearmind                 Mở menu tương tác (đề xuất)
+  clearmind --no-menu       Mở dashboard ngay (legacy, không hiện menu)
   clearmind --tray          Chạy nền + system tray icon (dùng cho autostart)
   clearmind --no-browser    Không tự mở browser
   clearmind --no-tray       Không khởi động tray
@@ -166,6 +171,20 @@ async function main() {
   if (opts.version) return console.log(VERSION);
 
   const dataDir = opts.dataDir ? path.resolve(opts.dataDir) : storage.defaultDataDir();
+
+  // Default UX: when user runs `clearmind` from a terminal with no flags,
+  // show the interactive menu (instead of force-opening browser + exiting).
+  // Skip menu when: --tray (VBS autostart), --no-menu (legacy), or stdout
+  // isn't a TTY (piped, GUI launcher, etc.).
+  const wantsMenu =
+    opts.menu || (!opts.tray && !opts.noMenu && process.stdin.isTTY && process.stdout.isTTY);
+
+  if (wantsMenu) {
+    storage.ensureDir(dataDir);
+    const menu = require("./menu");
+    await menu.runMenu({ dataDir, port: opts.port, version: VERSION });
+    return;
+  }
 
   // 1) If something is already serving, just open the browser & exit.
   const existing = await checkExisting(dataDir);

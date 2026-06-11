@@ -9,6 +9,19 @@ const autostart = require("./autostart");
 const notifications = require("./notifications");
 const { openFolder } = require("./open-browser");
 
+// SSE clients hiện đang lắng nghe /api/events. Broadcast mỗi khi tasks đổi.
+const sseClients = new Set();
+function sseBroadcast(eventType, data) {
+  const msg = `event: ${eventType}\ndata: ${JSON.stringify(data)}\n\n`;
+  for (const res of [...sseClients]) {
+    try { res.write(msg); } catch (_) { sseClients.delete(res); }
+  }
+}
+function getMtime(dataDir) {
+  try { return fs.statSync(storage.getDataFilePath(dataDir)).mtimeMs; }
+  catch (_) { return 0; }
+}
+
 const MIME = {
   ".html": "text/html; charset=utf-8",
   ".js":   "application/javascript; charset=utf-8",
@@ -64,13 +77,18 @@ function safeJoin(root, rel) {
   return target;
 }
 
+// Escape `</script` so a task title containing it can't break out of our tag.
+function safeJson(value) {
+  return JSON.stringify(value).replace(/<\/(script)/gi, "<\\/$1");
+}
+
 function injectMarker(html, ctx) {
-  const tag = `<script>window.__CLEARMIND_CLI__=${JSON.stringify({
-    port: ctx.port,
-    version: ctx.version,
-    dataDir: ctx.dataDir,
-    platform: process.platform,
-  })};</script>`;
+  // Hydrate tasks inline + mtime → client biết version để so với SSE snapshot.
+  let tasks = [];
+  try { tasks = storage.readTasks(ctx.dataDir); } catch (_) {}
+  const mtimeMs = getMtime(ctx.dataDir);
+  const cli = { port: ctx.port, version: ctx.version, dataDir: ctx.dataDir, platform: process.platform };
+  const tag = `<script>window.__CLEARMIND_CLI__=${safeJson(cli)};window.__CLEARMIND_TASKS__=${safeJson(tasks)};window.__CLEARMIND_MTIME__=${mtimeMs};</script>`;
   if (html.includes("</head>")) return html.replace("</head>", `${tag}</head>`);
   return tag + html;
 }
@@ -129,7 +147,23 @@ function makeHandler({ distDir, dataDir, port, version }) {
         });
       }
       if (p === "/api/tasks" && req.method === "GET") {
-        return sendJson(res, 200, { tasks: storage.readTasks(dataDir) });
+        return sendJson(res, 200, { tasks: storage.readTasks(dataDir), mtimeMs: getMtime(dataDir) });
+      }
+      // SSE: server push tasks mỗi khi đĩa thay đổi → client sync real-time
+      // không cần poll. Trên connect cũng gửi snapshot ngay → tab vừa mở
+      // / vừa F5 đều có version mới nhất kể cả nếu inline payload stale.
+      if (p === "/api/events" && req.method === "GET") {
+        res.writeHead(200, {
+          "Content-Type": "text/event-stream; charset=utf-8",
+          "Cache-Control": "no-cache, no-transform",
+          "Connection": "keep-alive",
+          "X-Accel-Buffering": "no",
+        });
+        res.write(`event: snapshot\ndata: ${JSON.stringify({ tasks: storage.readTasks(dataDir), mtimeMs: getMtime(dataDir) })}\n\n`);
+        sseClients.add(res);
+        const hb = setInterval(() => { try { res.write(":hb\n\n"); } catch (_) {} }, 15000);
+        req.on("close", () => { clearInterval(hb); sseClients.delete(res); });
+        return;
       }
       if (p === "/api/tasks" && req.method === "PUT") {
         const body = await readBody(req);
@@ -147,7 +181,9 @@ function makeHandler({ distDir, dataDir, port, version }) {
         }
         storage.writeTasks(dataDir, tasks);
         notifications.scheduleAll(tasks);
-        return sendJson(res, 200, { ok: true, count: tasks.length, dropped });
+        const mtimeMs = getMtime(dataDir);
+        sseBroadcast("tasks-updated", { tasks, mtimeMs });
+        return sendJson(res, 200, { ok: true, count: tasks.length, dropped, mtimeMs });
       }
       if (p === "/api/migrate" && req.method === "POST") {
         const body = await readBody(req);
@@ -158,6 +194,7 @@ function makeHandler({ distDir, dataDir, port, version }) {
         const tasks = Array.isArray(parsedBody) ? parsedBody : parsedBody && parsedBody.tasks;
         if (!Array.isArray(tasks)) return sendJson(res, 400, { ok: false, error: "Expect {tasks:[]}" });
         const r = storage.mergeTasks(dataDir, tasks);
+        sseBroadcast("tasks-updated", { tasks: storage.readTasks(dataDir), mtimeMs: getMtime(dataDir) });
         return sendJson(res, 200, { ok: true, ...r });
       }
       if (p === "/api/backup" && req.method === "POST") {
@@ -174,6 +211,7 @@ function makeHandler({ distDir, dataDir, port, version }) {
         const versionParam = parsed.searchParams.get("version");
         const version = versionParam ? parseInt(versionParam, 10) : 1;
         const r = storage.recover(dataDir, version);
+        if (r.ok) sseBroadcast("tasks-updated", { tasks: storage.readTasks(dataDir), mtimeMs: getMtime(dataDir) });
         return sendJson(res, r.ok ? 200 : 404, r);
       }
       if (p === "/api/scheduled-notifications" && req.method === "GET") {
@@ -186,6 +224,19 @@ function makeHandler({ distDir, dataDir, port, version }) {
       if (p === "/api/open-data-dir" && req.method === "POST") {
         openFolder(dataDir);
         return sendJson(res, 200, { ok: true });
+      }
+      if (p === "/api/quit" && req.method === "POST") {
+        // Acknowledge first, then shut down a beat later so the client gets
+        // a clean 200 instead of ECONNRESET. SIGTERM lets cli.js run its
+        // shutdown(): tray.kill() + server.close() + lock release. On
+        // Windows SIGTERM via process.kill(self) sometimes terminates
+        // without running listeners, so we keep a hard-exit fallback.
+        sendJson(res, 200, { ok: true });
+        setTimeout(() => {
+          try { process.kill(process.pid, "SIGTERM"); } catch (_) {}
+          setTimeout(() => process.exit(0), 500);
+        }, 100);
+        return;
       }
       if (p === "/api/autostart" && req.method === "GET") {
         return sendJson(res, 200, { enabled: autostart.isEnabled() });

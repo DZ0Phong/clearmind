@@ -85,7 +85,7 @@ export function TagInput({
               type="button"
               onClick={() => remove(t)}
               className="opacity-60 hover:opacity-100"
-              aria-label={`Remove ${t}`}
+              aria-label={`Xoá tag ${t}`}
             >
               <X className="h-3 w-3" />
             </button>
@@ -101,8 +101,10 @@ export function TagInput({
           onKeyDown={handleKey}
           onFocus={() => setFocused(true)}
           onBlur={() => {
-            // Delay so click on suggestion can register before hide
-            setTimeout(() => setFocused(false), 120);
+            // mousedown trên suggestion preventDefault → blur không fire khi
+            // chọn gợi ý. Khi blur thật (click ngoài) thì đóng ngay, không
+            // cần setTimeout race-prone.
+            setFocused(false);
             if (draft) add(draft);
           }}
           placeholder={value.length ? "" : placeholder}
