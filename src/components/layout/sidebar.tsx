@@ -9,7 +9,6 @@ import {
   Command,
   Sparkles,
   CalendarPlus,
-  Hash,
 } from "lucide-react";
 import { NavLink } from "react-router-dom";
 import { useTaskCommands } from "@/components/task-commands";
@@ -19,11 +18,11 @@ import { Logo } from "@/components/logo";
 import { MiniCalendar } from "@/components/mini-calendar";
 
 const navItems = [
-  { to: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
-  { to: "/calendar", label: "Calendar", icon: Calendar },
-  { to: "/tasks", label: "Tasks", icon: CheckSquare },
-  { to: "/focus", label: "Focus", icon: Timer },
-  { to: "/review", label: "Review", icon: TrendingUp },
+  { to: "/dashboard", label: "Tổng quan", icon: LayoutDashboard },
+  { to: "/calendar", label: "Lịch", icon: Calendar },
+  { to: "/tasks", label: "Task", icon: CheckSquare },
+  { to: "/focus", label: "Tập trung", icon: Timer },
+  { to: "/review", label: "Tổng kết", icon: TrendingUp },
 ];
 
 export function Sidebar() {
@@ -81,23 +80,14 @@ export function Sidebar() {
           ))}
         </nav>
 
-        <div className="mt-4 mx-4 border-t pt-3">
-          <p className="text-[10px] uppercase tracking-wider text-muted-foreground/70 font-semibold mb-1.5 px-1">
-            Tổng quan
-          </p>
-        </div>
+        <div className="mt-4 mx-4 border-t pt-3" />
         <MiniCalendar />
 
         {topTags.length > 0 && (
           <div className="mt-2 mx-4 border-t pt-3 pb-2">
-            <div className="flex items-center justify-between px-1 mb-1.5">
-              <p className="text-[10px] uppercase tracking-wider text-muted-foreground/70 font-semibold inline-flex items-center gap-1">
-                <Hash className="h-3 w-3" /> Tags
-              </p>
-              <span className="text-[10px] text-muted-foreground/60 tabular-nums">
-                top {topTags.length}
-              </span>
-            </div>
+            <p className="text-[10px] uppercase tracking-[0.08em] text-muted-foreground/70 font-semibold mb-1.5 px-1">
+              Tags
+            </p>
             <div className="flex flex-wrap gap-1">
               {topTags.map((s) => (
                 <NavLink
@@ -134,10 +124,10 @@ export function Sidebar() {
         <NavLink
           to="/guide"
           className={({ isActive }) =>
-            `flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors group ${
+            `flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
               isActive
                 ? "bg-primary/10 text-primary"
-                : "text-muted-foreground hover:bg-primary/5 hover:text-primary"
+                : "text-muted-foreground hover:bg-muted/50 hover:text-foreground"
             }`
           }
         >
@@ -155,7 +145,7 @@ export function Sidebar() {
           }
         >
           <Settings className="h-4 w-4" />
-          <span>Settings</span>
+          <span>Cài đặt</span>
         </NavLink>
       </div>
     </aside>

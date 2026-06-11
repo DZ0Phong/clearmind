@@ -777,9 +777,8 @@ export function TasksPage() {
                   </>
                 ) : filter === "todo" ? (
                   <>
-                    <p className="text-3xl">🎉</p>
-                    <p className="font-medium">Inbox zero — không còn task nào!</p>
-                    <p className="text-xs">Tạo task mới bằng Quick Capture ở trên.</p>
+                    <p className="font-medium">Không còn task nào cần làm.</p>
+                    <p className="text-xs">Tạo task mới bằng Quick Capture phía trên.</p>
                   </>
                 ) : filter === "done" ? (
                   <>
@@ -788,7 +787,7 @@ export function TasksPage() {
                   </>
                 ) : (
                   <>
-                    <p className="font-medium">Welcome 👋</p>
+                    <p className="font-medium">Chưa có task nào.</p>
                     <p className="text-xs">
                       Bắt đầu bằng Quick Capture, hoặc import lịch học từ trang trường.
                     </p>

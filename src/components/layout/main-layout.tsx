@@ -14,10 +14,6 @@ import { useCliHealth } from "@/lib/use-cli-health";
 export function MainLayout({ children }: { children: ReactNode }) {
   return (
     <div className="flex min-h-screen bg-background relative selection:bg-primary/30">
-      {/* Ambient gradients */}
-      <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top_right,_var(--tw-gradient-stops))] from-primary/10 via-background to-background pointer-events-none" />
-      <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_bottom_left,_var(--tw-gradient-stops))] from-accent/20 via-transparent to-transparent pointer-events-none" />
-
       <Sidebar />
       <main className="flex-1 flex flex-col relative z-10 min-w-0">
         <TopBar />

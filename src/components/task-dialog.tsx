@@ -72,11 +72,11 @@ function toLocalInput(iso?: string): string {
   )}:${pad(d.getMinutes())}`;
 }
 
-const TYPE_OPTIONS: Array<{ value: TaskType; label: string; emoji: string }> = [
-  { value: "academic", label: "Học tập", emoji: "🎓" },
-  { value: "work", label: "Công việc", emoji: "💼" },
-  { value: "personal", label: "Cá nhân", emoji: "✨" },
-  { value: "other", label: "Khác", emoji: "📌" },
+const TYPE_OPTIONS: Array<{ value: TaskType; label: string; color: string }> = [
+  { value: "academic", label: "Học tập", color: "#6366f1" },
+  { value: "work", label: "Công việc", color: "#f97316" },
+  { value: "personal", label: "Cá nhân", color: "#10b981" },
+  { value: "other", label: "Khác", color: "#64748b" },
 ];
 
 const PRIORITY_OPTIONS: Array<{
@@ -335,22 +335,28 @@ export function TaskDialog(props: Mode) {
                 Loại
               </label>
               <div className="grid grid-cols-4 gap-1.5 mt-1.5">
-                {TYPE_OPTIONS.map((opt) => (
-                  <button
-                    key={opt.value}
-                    type="button"
-                    onClick={() => setType(opt.value)}
-                    className={cn(
-                      "flex flex-col items-center gap-1 py-2 rounded-lg border text-xs font-medium transition-all",
-                      type === opt.value
-                        ? "bg-primary/10 border-primary/40 text-primary"
-                        : "border-input bg-background hover:bg-accent/50 text-muted-foreground"
-                    )}
-                  >
-                    <span className="text-base leading-none">{opt.emoji}</span>
-                    {opt.label}
-                  </button>
-                ))}
+                {TYPE_OPTIONS.map((opt) => {
+                  const active = type === opt.value;
+                  return (
+                    <button
+                      key={opt.value}
+                      type="button"
+                      onClick={() => setType(opt.value)}
+                      className={cn(
+                        "inline-flex items-center justify-center gap-1.5 py-2 rounded-lg border text-xs font-medium transition-colors",
+                        active
+                          ? "bg-accent border-input text-foreground"
+                          : "border-input bg-background hover:bg-accent/50 text-muted-foreground"
+                      )}
+                    >
+                      <span
+                        className="h-2 w-2 rounded-full"
+                        style={{ background: opt.color, opacity: active ? 1 : 0.6 }}
+                      />
+                      {opt.label}
+                    </button>
+                  );
+                })}
               </div>
             </div>
 

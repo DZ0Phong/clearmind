@@ -16,7 +16,6 @@ import {
   Clock,
   Clock4,
   Coffee,
-  Filter,
   Flame,
   Hash,
   List,
@@ -190,15 +189,17 @@ export function CalendarView({ initialDate }: CalendarViewProps = {}) {
     () =>
       filteredTasks.map((t) => {
         const color = eventColor(t);
+        // Chip tint nhẹ + viền trái màu chủ đề — kiểu Linear/Things 3.
+        // textColor = màu bão hòa để đọc rõ trên nền tint.
+        const bg = `color-mix(in srgb, ${color} 14%, transparent)`;
         return {
           id: t.id,
           title: t.title,
           start: t.deadline,
           allDay: t.deadline ? !t.deadline.includes("T") : true,
-          backgroundColor: color,
-          borderColor:
-            t.priority === "high" ? "var(--destructive)" : color,
-          textColor: "#ffffff",
+          backgroundColor: bg,
+          borderColor: color,
+          textColor: color,
           extendedProps: {
             type: t.type,
             priority: t.priority,
@@ -484,13 +485,13 @@ function CalendarToolbar({
               onClick={() => onToggleType(t)}
               title={hidden ? `Hiện ${TYPE[t].label}` : `Ẩn ${TYPE[t].label}`}
               className={cn(
-                "inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-medium border transition-all",
+                "inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium border transition-colors",
                 hidden
-                  ? "bg-background border-dashed border-input text-muted-foreground/60 line-through"
-                  : "bg-primary/10 border-primary/20 text-primary"
+                  ? "border-input text-muted-foreground/60 line-through bg-transparent"
+                  : "border-input bg-background hover:bg-accent text-foreground"
               )}
             >
-              <span>{TYPE[t].emoji}</span>
+              <span className="h-1.5 w-1.5 rounded-full" style={{ background: TYPE[t].color, opacity: hidden ? 0.35 : 1 }} />
               {TYPE[t].label}
             </button>
           );
@@ -499,13 +500,13 @@ function CalendarToolbar({
           onClick={onToggleDone}
           title="Ẩn task đã hoàn thành"
           className={cn(
-            "inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-medium border transition-all ml-1",
+            "inline-flex items-center rounded-full px-2.5 py-1 text-xs font-medium border transition-colors ml-1",
             hideDone
-              ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-700 dark:text-emerald-300"
-              : "bg-background border-dashed text-muted-foreground/70 hover:border-input"
+              ? "border-input text-muted-foreground bg-muted"
+              : "border-input text-muted-foreground/70 bg-background hover:bg-accent"
           )}
         >
-          <Filter className="h-3 w-3" /> Ẩn done
+          Ẩn done
         </button>
       </div>
     </div>
@@ -672,9 +673,7 @@ function WeekEvent({ event }: { event: RenderArg["event"] }) {
  */
 function DayEvent({ event }: { event: RenderArg["event"] }) {
   const p = event.extendedProps;
-  const isUrgent = p.priority === "high";
   const isDone = p.status === "done";
-  const emoji = TYPE[p.type].emoji;
   const startStr = event.start ? fmtHm(event.start) : "";
   const endStr = event.end ? fmtHm(event.end) : "";
   const timeRange = event.allDay
@@ -683,20 +682,16 @@ function DayEvent({ event }: { event: RenderArg["event"] }) {
     ? `${startStr} – ${endStr}`
     : startStr;
 
-  // All-day rows are short; render the same 1-liner as tiny events.
   if (event.allDay) {
     return (
       <div
         className={cn(
           "flex items-center gap-1.5 px-2 h-full overflow-hidden text-[12px]",
-          isDone && "line-through opacity-60"
+          isDone && "line-through opacity-50"
         )}
       >
-        {isUrgent && (
-          <Flame className="h-2.5 w-2.5 shrink-0 text-white drop-shadow-sm" />
-        )}
-        <span className="text-[11px] shrink-0">{emoji}</span>
-        <span className="font-semibold truncate flex-1">{event.title}</span>
+        <span className="font-semibold tabular-nums shrink-0 opacity-70 text-[11px]">Cả ngày</span>
+        <span className="font-medium truncate flex-1 tracking-tight">{event.title}</span>
       </div>
     );
   }
@@ -710,16 +705,12 @@ function DayEvent({ event }: { event: RenderArg["event"] }) {
     return (
       <div
         className={cn(
-          "flex items-center gap-1.5 px-2 h-full overflow-hidden text-[12px] leading-tight",
-          isDone && "line-through opacity-60"
+          "flex items-baseline gap-1.5 px-2 h-full overflow-hidden text-[12px] leading-tight",
+          isDone && "line-through opacity-50"
         )}
       >
-        {isUrgent && (
-          <Flame className="h-2.5 w-2.5 shrink-0 text-white drop-shadow-sm" />
-        )}
-        <span className="font-bold tabular-nums shrink-0">{startStr}</span>
-        <span className="text-[11px] shrink-0">{emoji}</span>
-        <span className="font-semibold truncate flex-1">{event.title}</span>
+        <span className="font-semibold tabular-nums shrink-0 opacity-80">{startStr}</span>
+        <span className="font-medium truncate flex-1 tracking-tight">{event.title}</span>
       </div>
     );
   }
@@ -732,19 +723,15 @@ function DayEvent({ event }: { event: RenderArg["event"] }) {
     <div
       className={cn(
         "flex flex-col h-full w-full px-2 py-1 overflow-hidden gap-0.5",
-        isDone && "line-through opacity-60"
+        isDone && "line-through opacity-50"
       )}
     >
-      <div className="flex items-center gap-1.5 text-[11px] leading-none">
-        {isUrgent && (
-          <Flame className="h-3 w-3 shrink-0 text-white drop-shadow-sm" />
-        )}
-        <span className="font-bold tabular-nums shrink-0">{timeRange}</span>
-        <span className="ml-auto text-[13px]">{emoji}</span>
-      </div>
+      <span className="font-semibold tabular-nums shrink-0 text-[11px] opacity-80">
+        {timeRange}
+      </span>
 
       <p
-        className="font-bold text-[13px] line-clamp-2"
+        className="font-semibold text-[13px] line-clamp-2 tracking-tight"
         style={{ lineHeight: 1.15 }}
       >
         {event.title}
@@ -752,7 +739,7 @@ function DayEvent({ event }: { event: RenderArg["event"] }) {
 
       {showDesc && (
         <p
-          className="text-[10.5px] opacity-90 line-clamp-2"
+          className="text-[10.5px] opacity-75 line-clamp-2"
           style={{ lineHeight: 1.3 }}
         >
           {p.description}
@@ -760,20 +747,13 @@ function DayEvent({ event }: { event: RenderArg["event"] }) {
       )}
 
       {(p.location || p.tags?.length) && (
-        <div className="flex items-center gap-1.5 flex-wrap text-[10px] opacity-95 mt-auto pt-0.5">
-          {p.location && (
-            <span className="inline-flex items-center gap-0.5 font-medium">
-              <MapPin className="h-2.5 w-2.5" />
-              {p.location}
-            </span>
-          )}
+        <div className="flex items-center gap-1.5 flex-wrap text-[10px] opacity-80 mt-auto pt-0.5">
+          {p.location && <span className="font-medium">{p.location}</span>}
           {p.tags?.slice(0, tagLimit).map((t) => (
-            <span key={t} className="font-medium opacity-90">
-              #{t}
-            </span>
+            <span key={t} className="opacity-80">#{t}</span>
           ))}
           {(p.tags?.length || 0) > tagLimit && (
-            <span className="opacity-70">+{p.tags!.length - tagLimit}</span>
+            <span className="opacity-60">+{p.tags!.length - tagLimit}</span>
           )}
         </div>
       )}
@@ -841,34 +821,26 @@ function EventDetailDialog({
         {task && (
           <>
             <DialogHeader>
-              <DialogTitle className="text-xl pr-8 flex items-start gap-2">
-                {task.priority === "high" && (
-                  <Flame className="h-5 w-5 text-destructive shrink-0 mt-1" />
-                )}
-                <span className="flex-1 min-w-0 break-words">{task.title}</span>
+              <DialogTitle className="text-xl pr-8 leading-snug">
+                <span className="min-w-0 break-words">{task.title}</span>
               </DialogTitle>
-              <div className="flex flex-wrap gap-1.5 mt-2">
-                <span className="text-xs bg-primary/10 text-primary px-2 py-1 rounded-md font-medium">
-                  {TYPE[task.type].emoji} {TYPE[task.type].label}
+              <div className="flex flex-wrap gap-1.5 mt-2.5 items-center">
+                <span className="inline-flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
+                  <span className="h-1.5 w-1.5 rounded-full" style={{ background: TYPE[task.type].color }} />
+                  {TYPE[task.type].label}
                 </span>
-                <span
-                  className={cn(
-                    "text-xs px-2 py-1 rounded-md font-medium",
-                    task.priority === "high"
-                      ? "bg-destructive/10 text-destructive"
-                      : task.priority === "medium"
-                      ? "bg-orange-500/10 text-orange-600 dark:text-orange-400"
-                      : "bg-secondary text-secondary-foreground"
-                  )}
-                >
-                  Ưu tiên {task.priority === "high" ? "cao" : task.priority === "medium" ? "vừa" : "thấp"}
-                </span>
+                {task.priority === "high" && (
+                  <span className="text-xs font-medium text-destructive">· Ưu tiên cao</span>
+                )}
+                {task.tags && task.tags.length > 0 && (
+                  <span className="text-xs text-muted-foreground">·</span>
+                )}
                 {task.tags?.map((t) => (
                   <button
                     key={t}
                     onClick={() => onTagClick(t)}
                     title={`Xem mọi task có #${t}`}
-                    className="text-xs bg-muted text-muted-foreground hover:bg-primary/10 hover:text-primary px-2 py-1 rounded-md font-medium transition-colors"
+                    className="text-xs text-muted-foreground hover:text-primary font-medium transition-colors"
                   >
                     #{t}
                   </button>
@@ -1082,8 +1054,9 @@ function DayTaskRow({ task, onClick }: { task: Task; onClick: () => void }) {
           {task.title}
         </p>
         <div className="flex items-center gap-2 mt-1 flex-wrap text-xs text-muted-foreground">
-          <span className="capitalize">
-            {TYPE[task.type].emoji} {TYPE[task.type].label}
+          <span className="inline-flex items-center gap-1.5">
+            <span className="h-1.5 w-1.5 rounded-full" style={{ background: TYPE[task.type].color }} />
+            {TYPE[task.type].label}
           </span>
           {task.location && (
             <span className="inline-flex items-center gap-1">
@@ -1331,19 +1304,14 @@ function AgendaItem({ task, onPick }: { task: Task; onPick: () => void }) {
       <span className={cn("w-1 rounded-full shrink-0", col.dot)} aria-hidden />
       <div className="w-14 shrink-0 flex flex-col items-start justify-center pt-0.5">
         {time ? (
-          <>
-            <span
-              className={cn(
-                "text-sm font-bold tabular-nums leading-none",
-                isDone && "line-through text-muted-foreground"
-              )}
-            >
-              {time}
-            </span>
-            <span className="text-[9px] text-muted-foreground mt-0.5 uppercase tracking-wider">
-              {TYPE[task.type].emoji}
-            </span>
-          </>
+          <span
+            className={cn(
+              "text-sm font-semibold tabular-nums leading-none",
+              isDone && "line-through text-muted-foreground"
+            )}
+          >
+            {time}
+          </span>
         ) : (
           <span className="text-[10px] text-muted-foreground uppercase tracking-wider">
             Cả ngày

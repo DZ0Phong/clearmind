@@ -769,7 +769,7 @@ function dashboardSubline(stats: {
     return "Không có deadline cứng hôm nay — tập trung vào sâu.";
   }
   if (stats.doneToday === stats.totalToday) {
-    return "Đã xong hết việc hôm nay. Thư giãn đi 🎉";
+    return "Đã xong hết việc hôm nay. Thư giãn đi.";
   }
   return `Bạn đã làm ${stats.doneToday}/${stats.totalToday} việc hôm nay. Đẩy nốt nhé.`;
 }
@@ -798,7 +798,7 @@ function insight(
   }
   const top = [...map.entries()].sort((a, b) => b[1] - a[1])[0];
   if (stats.streak >= 3) {
-    return `🔥 Streak ${stats.streak} ngày liên tiếp. Đừng để vỡ.`;
+    return `Streak ${stats.streak} ngày liên tiếp. Đừng để vỡ.`;
   }
   if (top && top[1] >= 30) {
     return `Bạn đã focus ${top[1]}m vào "${top[0]}" — chủ đề nóng tuần này.`;
