@@ -370,6 +370,24 @@ export interface Classification {
   priority: TaskPriority;
 }
 
+// Label tiếng Việt cho enum task — dùng chung cho dashboard, palette, dialog.
+export const TYPE_LABEL: Record<TaskType, string> = {
+  academic: "Học tập",
+  personal: "Cá nhân",
+  work: "Công việc",
+  other: "Khác",
+};
+export const PRIORITY_LABEL: Record<TaskPriority, string> = {
+  high: "Cao",
+  medium: "Vừa",
+  low: "Thấp",
+};
+export const STATUS_LABEL: Record<"todo" | "in-progress" | "done", string> = {
+  todo: "Chưa làm",
+  "in-progress": "Đang làm",
+  done: "Đã xong",
+};
+
 export function classifyTitle(input: string): Classification {
   const text = " " + stripDiacritics(input) + " ";
   const best = (Object.keys(TYPE_KEYWORDS) as TaskType[]).reduce<{

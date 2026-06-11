@@ -34,6 +34,7 @@ import {
   sortByTimeOfDay,
   subjectColor,
   cn,
+  TYPE_LABEL,
 } from "@/lib/utils";
 
 export function Dashboard() {
@@ -498,8 +499,8 @@ function UpNextHero({
                 {task.location}
               </span>
             )}
-            <span className="capitalize text-xs px-2 py-0.5 rounded-full bg-muted">
-              {task.type}
+            <span className="text-xs px-2 py-0.5 rounded-full bg-muted">
+              {TYPE_LABEL[task.type]}
             </span>
           </div>
         </div>
@@ -570,7 +571,7 @@ function AgendaRow({ task, onClick }: { task: Task; onClick: () => void }) {
               <Flame className="h-2.5 w-2.5" /> Gấp
             </span>
           )}
-          <span className="capitalize text-muted-foreground">{task.type}</span>
+          <span className="text-muted-foreground">{TYPE_LABEL[task.type]}</span>
         </div>
       </div>
     </div>

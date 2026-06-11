@@ -13,7 +13,7 @@ import {
   Sparkles,
 } from "lucide-react";
 import { useTasks } from "@/hooks/use-tasks";
-import { cn } from "@/lib/utils";
+import { cn, TYPE_LABEL } from "@/lib/utils";
 
 interface CommandAction {
   id: string;
@@ -120,13 +120,6 @@ export function CommandPalette({ open, onOpenChange, onCreate, onPickTask }: Pro
     [navigate, onCreate, onOpenChange]
   );
 
-  // Type label tiếng Việt cho task hint trong palette.
-  const TYPE_VI: Record<string, string> = {
-    academic: "Học tập",
-    personal: "Cá nhân",
-    work: "Công việc",
-    other: "Khác",
-  };
 
   const q = query.trim().toLowerCase();
   const filteredActions = actions.filter((a) =>
@@ -144,7 +137,7 @@ export function CommandPalette({ open, onOpenChange, onCreate, onPickTask }: Pro
     ...filteredTasks.map<CommandAction>((t) => ({
       id: "task:" + t.id,
       label: t.title,
-      hint: TYPE_VI[t.type] || t.type,
+      hint: TYPE_LABEL[t.type] || t.type,
       icon: <CheckSquare className="h-4 w-4 text-muted-foreground" />,
       run: () => {
         onOpenChange(false);
@@ -249,7 +242,7 @@ export function CommandPalette({ open, onOpenChange, onCreate, onPickTask }: Pro
                     <CheckSquare className="h-4 w-4 text-muted-foreground" />
                     <span className="flex-1 truncate">{t.title}</span>
                     <span className="text-xs text-muted-foreground">
-                      {TYPE_VI[t.type] || t.type}
+                      {TYPE_LABEL[t.type] || t.type}
                     </span>
                   </button>
                 );

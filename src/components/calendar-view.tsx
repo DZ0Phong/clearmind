@@ -812,6 +812,32 @@ const SNOOZE_OPTS = [
   { label: "1 tuần", ms: 7 * 24 * 60 * 60_000 },
 ];
 
+// Auto-link URL trong text — task description hay có link Drive/Google Doc.
+// String.split với capture group → parts xen kẽ plain/match/plain/match…
+function RichText({ text }: { text: string }) {
+  const parts = text.split(/(https?:\/\/[^\s]+)/g);
+  return (
+    <>
+      {parts.map((p, i) =>
+        i % 2 === 1 ? (
+          <a
+            key={i}
+            href={p}
+            target="_blank"
+            rel="noopener noreferrer"
+            onClick={(e) => e.stopPropagation()}
+            className="text-primary underline underline-offset-2 hover:text-primary/80 [overflow-wrap:anywhere]"
+          >
+            {p}
+          </a>
+        ) : (
+          <span key={i}>{p}</span>
+        )
+      )}
+    </>
+  );
+}
+
 function EventDetailDialog({
   task,
   onClose,
@@ -832,15 +858,15 @@ function EventDetailDialog({
                 {task.priority === "high" && (
                   <Flame className="h-5 w-5 text-destructive shrink-0 mt-1" />
                 )}
-                <span className="flex-1">{task.title}</span>
+                <span className="flex-1 min-w-0 break-words">{task.title}</span>
               </DialogTitle>
               <div className="flex flex-wrap gap-1.5 mt-2">
-                <span className="text-xs bg-primary/10 text-primary px-2 py-1 rounded-md font-medium capitalize">
-                  {TYPE[task.type].emoji} {task.type}
+                <span className="text-xs bg-primary/10 text-primary px-2 py-1 rounded-md font-medium">
+                  {TYPE[task.type].emoji} {TYPE[task.type].label}
                 </span>
                 <span
                   className={cn(
-                    "text-xs px-2 py-1 rounded-md font-medium capitalize",
+                    "text-xs px-2 py-1 rounded-md font-medium",
                     task.priority === "high"
                       ? "bg-destructive/10 text-destructive"
                       : task.priority === "medium"
@@ -848,7 +874,7 @@ function EventDetailDialog({
                       : "bg-secondary text-secondary-foreground"
                   )}
                 >
-                  {task.priority} priority
+                  Ưu tiên {task.priority === "high" ? "cao" : task.priority === "medium" ? "vừa" : "thấp"}
                 </span>
                 {task.tags?.map((t) => (
                   <button
@@ -885,8 +911,8 @@ function EventDetailDialog({
               {task.description && (
                 <div className="flex gap-3 text-muted-foreground bg-muted/40 p-3 rounded-lg border">
                   <AlignLeft className="w-4 h-4 shrink-0 mt-0.5" />
-                  <p className="text-sm whitespace-pre-wrap leading-relaxed">
-                    {task.description}
+                  <p className="text-sm whitespace-pre-wrap leading-relaxed flex-1 min-w-0 break-words [overflow-wrap:anywhere]">
+                    <RichText text={task.description} />
                   </p>
                 </div>
               )}
@@ -911,8 +937,8 @@ function EventDetailDialog({
                 <div className="flex items-center justify-between flex-wrap gap-2">
                   <span className="text-sm font-medium">
                     Trạng thái:{" "}
-                    <span className="capitalize text-muted-foreground">
-                      {task.status}
+                    <span className="text-muted-foreground">
+                      {task.status === "todo" ? "Chưa làm" : task.status === "in-progress" ? "Đang làm" : "Đã xong"}
                     </span>
                   </span>
                   <div className="flex gap-2 flex-wrap">
@@ -1062,7 +1088,7 @@ function DayTaskRow({ task, onClick }: { task: Task; onClick: () => void }) {
       <div className="min-w-0 flex-1">
         <p
           className={cn(
-            "font-medium text-sm",
+            "font-medium text-sm break-words",
             task.status === "done" && "line-through text-muted-foreground"
           )}
         >
@@ -1352,7 +1378,7 @@ function AgendaItem({ task, onPick }: { task: Task; onPick: () => void }) {
           </p>
         </div>
         {task.description && (
-          <p className="text-xs text-muted-foreground mt-0.5 line-clamp-1">
+          <p className="text-xs text-muted-foreground mt-0.5 line-clamp-1 break-words">
             {task.description}
           </p>
         )}
