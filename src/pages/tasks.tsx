@@ -34,11 +34,11 @@ import {
 import { QuickCapture } from "@/components/quick-capture";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { useT } from "@/lib/i18n";
 import { HomeworkDialog } from "@/components/homework-dialog";
 import {
   formatDeadline,
   groupByBucket,
-  BUCKET_LABEL,
   BUCKET_ORDER,
   bucketByDate,
   subjectColor,
@@ -49,14 +49,7 @@ import { cn } from "@/lib/utils";
 
 type Filter = "all" | "todo" | "done";
 type SortMode = "deadline" | "priority" | "recent";
-// 3 góc nhìn: việc cần làm (ẩn buổi học lặp), lịch học (gộp theo môn), tất cả
 type ViewMode = "tasks" | "schedule" | "all";
-
-const SORT_LABEL: Record<SortMode, string> = {
-  deadline: "Deadline",
-  priority: "Ưu tiên",
-  recent: "Mới nhất",
-};
 
 const SORT_STORAGE_KEY = "clearmind_tasks_sort";
 const COLLAPSED_STORAGE_KEY = "clearmind_tasks_collapsed";
@@ -82,17 +75,18 @@ function StatusCycler({
   status: TaskStatus;
   onClick: () => void;
 }) {
-  const label = status === "todo" ? "Chưa làm"
-    : status === "in-progress" ? "Đang làm"
-    : "Đã xong";
+  const t = useT();
+  const label = status === "todo" ? t("status.todo")
+    : status === "in-progress" ? t("status.inProgress")
+    : t("status.done");
   return (
     <button
       onClick={(e) => {
         e.stopPropagation();
         onClick();
       }}
-      title={`Trạng thái: ${label} (bấm để đổi)`}
-      aria-label={`Đổi trạng thái — hiện tại: ${label}`}
+      title={t("tooltip.toggleStatus", { label })}
+      aria-label={t("tooltip.toggleStatus", { label })}
       className={cn(
         "h-5 w-5 rounded-full border-2 mt-0.5 shrink-0 transition-all relative",
         status === "todo" && "border-primary/50 hover:border-primary",
@@ -124,14 +118,15 @@ function TaskRow({
   const { cycleStatus, removeTask, snoozeTask } = useTasks();
   const { openEdit } = useTaskCommands();
   const { toast } = useToast();
+  const t = useT();
 
   const handleDelete = (e: React.MouseEvent) => {
     e.stopPropagation();
     const { restore } = removeTask(task.id);
     toast({
-      title: "Đã xoá task",
+      title: t("tasks.deletedToast"),
       description: task.title,
-      action: { label: "Hoàn tác", onClick: restore },
+      action: { label: t("common.undo"), onClick: restore },
     });
   };
 
@@ -139,7 +134,7 @@ function TaskRow({
     e.stopPropagation();
     snoozeTask(task.id, deltaMs);
     toast({
-      title: `Đẩy lùi · ${label}`,
+      title: t("tasks.snoozedToast", { label }),
       description: task.title,
       variant: "success",
     });
@@ -310,6 +305,7 @@ function TaskRow({
 export function TasksPage() {
   const { tasks, rollForwardOverdueRecurring, clearDuplicates } = useTasks();
   const { toast } = useToast();
+  const t = useT();
   // Force re-render every 30s so the Overdue / Today / This-week buckets
   // re-classify tasks crossing midnight or going overdue without a manual
   // refresh. groupByBucket reads `new Date()` inline on each render.
@@ -505,20 +501,13 @@ export function TasksPage() {
       return false;
     });
     toast({
-      title:
-        moved > 0
-          ? `Đẩy ${moved} task lặp lại lên buổi tiếp theo`
-          : "Không có task lặp lại nào quá hạn",
-      description:
-        moved > 0 && dupesLikely
-          ? "Có thể có task trùng — bấm dọn dẹp để gộp."
-          : undefined,
+      title: moved > 0 ? t("tasks.recurringCleared", { n: moved }) : t("tasks.noRecurringOverdue"),
       variant: moved > 0 ? "success" : "default",
       action:
         moved > 0
           ? dupesLikely
-            ? { label: "Dọn trùng", onClick: handleClearDuplicates }
-            : { label: "Hoàn tác", onClick: restore }
+            ? { label: t("tasks.clearDuplicates"), onClick: handleClearDuplicates }
+            : { label: t("common.undo"), onClick: restore }
           : undefined,
     });
   };
@@ -526,9 +515,9 @@ export function TasksPage() {
   const handleClearDuplicates = () => {
     const { removed, restore } = clearDuplicates();
     toast({
-      title: removed > 0 ? `Đã xoá ${removed} task trùng lặp` : "Không có task trùng",
+      title: removed > 0 ? t("tasks.duplicatesCleared", { n: removed }) : t("tasks.noDuplicates"),
       variant: removed > 0 ? "success" : "default",
-      action: removed > 0 ? { label: "Hoàn tác", onClick: restore } : undefined,
+      action: removed > 0 ? { label: t("common.undo"), onClick: restore } : undefined,
     });
   };
 
@@ -537,23 +526,21 @@ export function TasksPage() {
       <div className="shrink-0 flex items-center justify-between gap-4 flex-wrap">
         <div>
           <h2 className="text-3xl font-bold tracking-tight">
-            {view === "schedule" ? "Lịch học" : view === "all" ? "Tất cả" : "Việc cần làm"}
+            {view === "schedule" ? t("tasks.viewSchedule") : view === "all" ? t("tasks.viewAll") : t("tasks.viewTasks")}
           </h2>
           <p className="text-muted-foreground mt-1">
             {view === "schedule"
-              ? `${bySubject.length} môn · ${filtered.length} buổi sắp tới`
-              : `${filtered.length} task · nhóm theo deadline`}
+              ? t("tasks.subtitleSchedule", { subjects: bySubject.length, sessions: filtered.length })
+              : t("tasks.subtitleCount", { n: filtered.length })}
           </p>
         </div>
         <QuickCapture />
       </div>
 
-      {/* View tabs — góc nhìn chính (không phải filter status). Default
-          "Việc cần làm" ẩn buổi lớp lặp để list không bị flood theo tuần. */}
       <div className="flex items-center gap-1 p-1 rounded-xl bg-muted/40 border w-fit">
-        <ViewTab active={view === "tasks"} onClick={() => setView("tasks")} icon={ListTodo} label="Việc cần làm" count={viewCounts.tasks} />
-        <ViewTab active={view === "schedule"} onClick={() => setView("schedule")} icon={GraduationCap} label="Lịch học" count={viewCounts.schedule} />
-        <ViewTab active={view === "all"} onClick={() => setView("all")} icon={Layers} label="Tất cả" count={viewCounts.all} />
+        <ViewTab active={view === "tasks"} onClick={() => setView("tasks")} icon={ListTodo} label={t("tasks.viewTasks")} count={viewCounts.tasks} />
+        <ViewTab active={view === "schedule"} onClick={() => setView("schedule")} icon={GraduationCap} label={t("tasks.viewSchedule")} count={viewCounts.schedule} />
+        <ViewTab active={view === "all"} onClick={() => setView("all")} icon={Layers} label={t("tasks.viewAll")} count={viewCounts.all} />
       </div>
 
       <div className="flex items-center gap-2 flex-wrap">
@@ -563,10 +550,8 @@ export function TasksPage() {
           onClick={() => setFilter("all")}
           className="rounded-full gap-1.5"
         >
-          Tất cả
-          <span className="text-[10px] tabular-nums opacity-70">
-            {filterCounts.all}
-          </span>
+          {t("tasks.filterAll")}
+          <span className="text-[10px] tabular-nums opacity-70">{filterCounts.all}</span>
         </Button>
         <Button
           variant={filter === "todo" ? "default" : "outline"}
@@ -574,10 +559,8 @@ export function TasksPage() {
           onClick={() => setFilter("todo")}
           className="rounded-full gap-1.5"
         >
-          <ListTodo className="h-4 w-4" /> Chưa xong
-          <span className="text-[10px] tabular-nums opacity-70">
-            {filterCounts.todo}
-          </span>
+          <ListTodo className="h-4 w-4" /> {t("tasks.filterTodo")}
+          <span className="text-[10px] tabular-nums opacity-70">{filterCounts.todo}</span>
         </Button>
         <Button
           variant={filter === "done" ? "default" : "outline"}
@@ -585,10 +568,8 @@ export function TasksPage() {
           onClick={() => setFilter("done")}
           className="rounded-full gap-1.5"
         >
-          <CheckCircle2 className="h-4 w-4" /> Đã xong
-          <span className="text-[10px] tabular-nums opacity-70">
-            {filterCounts.done}
-          </span>
+          <CheckCircle2 className="h-4 w-4" /> {t("tasks.filterDone")}
+          <span className="text-[10px] tabular-nums opacity-70">{filterCounts.done}</span>
         </Button>
 
         <div className="relative ml-auto w-full sm:w-[260px]">
@@ -596,7 +577,7 @@ export function TasksPage() {
           <Input
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="Tìm theo title, tag, phòng…"
+            placeholder={t("tasks.searchPlaceholder")}
             className="pl-8 pr-8"
           />
           {query && (
@@ -642,17 +623,16 @@ export function TasksPage() {
         </div>
       )}
 
-      {/* Bulk-action toolbar + sort */}
       <div className="flex items-center gap-2 flex-wrap text-xs">
         <Button
           variant="outline"
           size="sm"
           onClick={handleClearDuplicates}
           className="h-8 gap-1.5"
-          title="Tìm task có cùng title + giờ + dow và giữ bản mới nhất"
+          title={t("tasks.clearDuplicates")}
         >
           <Wand2 className="h-3.5 w-3.5" />
-          Xoá trùng lặp
+          {t("tasks.clearDuplicates")}
         </Button>
 
         <div className="ml-auto relative inline-flex items-center">
@@ -661,11 +641,10 @@ export function TasksPage() {
             value={sortMode}
             onChange={(e) => setSortMode(e.target.value as SortMode)}
             className="h-8 pl-7 pr-7 rounded-md border border-input bg-background text-xs shadow-xs appearance-none cursor-pointer outline-none transition-[color,box-shadow] hover:bg-accent/30 focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50"
-            title="Sắp xếp trong mỗi nhóm"
           >
-            {(Object.keys(SORT_LABEL) as SortMode[]).map((m) => (
+            {(["deadline", "priority", "recent"] as SortMode[]).map((m) => (
               <option key={m} value={m}>
-                {SORT_LABEL[m]}
+                {t(`tasks.sort.${m}`)}
               </option>
             ))}
           </select>
@@ -746,7 +725,10 @@ export function TasksPage() {
                 {activeTag ? (
                   <>
                     <p className="font-medium">
-                      Không có task nào gắn #{activeTag}{filter === "todo" ? " còn mở" : ""}.
+                      {t("empty.noTagFiltered", {
+                        tag: activeTag,
+                        filter: filter === "todo" ? t("empty.noTagFiltered.todoSuffix") : "",
+                      })}
                     </p>
                     <Button
                       variant="link"
@@ -754,43 +736,33 @@ export function TasksPage() {
                       onClick={() => setActiveTag(null)}
                       className="text-xs h-auto p-0"
                     >
-                      Bỏ lọc tag
+                      {t("empty.removeTagFilter")}
                     </Button>
                   </>
                 ) : query ? (
                   <>
-                    <p className="font-medium">
-                      Không thấy task nào khớp "{query}"
-                    </p>
-                    <p className="text-xs">
-                      Thử bỏ filter hoặc tìm từ khoá khác.
-                    </p>
+                    <p className="font-medium">{t("empty.searchEmpty", { q: query })}</p>
+                    <p className="text-xs">{t("empty.searchHint")}</p>
                   </>
                 ) : grouped.overdue.length > 0 ? (
                   <>
-                    <p className="font-medium">
-                      Chỉ còn task quá hạn — xem khung đỏ ở trên.
-                    </p>
-                    <p className="text-xs">
-                      Bấm "Đẩy → buổi tiếp" để chuyển sang tuần tới.
-                    </p>
+                    <p className="font-medium">{t("empty.onlyOverdueTitle")}</p>
+                    <p className="text-xs">{t("empty.onlyOverdueHint")}</p>
                   </>
                 ) : filter === "todo" ? (
                   <>
-                    <p className="font-medium">Không còn task nào cần làm.</p>
-                    <p className="text-xs">Tạo task mới bằng Quick Capture phía trên.</p>
+                    <p className="font-medium">{t("empty.noTodoTasks")}</p>
+                    <p className="text-xs">{t("empty.noTodoHint")}</p>
                   </>
                 ) : filter === "done" ? (
                   <>
-                    <p className="font-medium">Chưa có task nào hoàn thành.</p>
-                    <p className="text-xs">Tick task xong sẽ hiện ở đây.</p>
+                    <p className="font-medium">{t("empty.noDoneTasks")}</p>
+                    <p className="text-xs">{t("empty.noDoneHint")}</p>
                   </>
                 ) : (
                   <>
-                    <p className="font-medium">Chưa có task nào.</p>
-                    <p className="text-xs">
-                      Bắt đầu bằng Quick Capture, hoặc import lịch học từ trang trường.
-                    </p>
+                    <p className="font-medium">{t("empty.noTasksTitle")}</p>
+                    <p className="text-xs">{t("empty.noTasksHint")}</p>
                   </>
                 )}
               </div>
@@ -829,7 +801,7 @@ export function TasksPage() {
                           bucket === "this-week" && "text-orange-600 dark:text-orange-400"
                         )}
                       >
-                        {BUCKET_LABEL[bucket]}
+                        {t(bucket === "this-week" ? "bucket.thisWeek" : `bucket.${bucket}`)}
                       </span>
                       <span className="text-xs text-muted-foreground tabular-nums px-1.5 py-0.5 rounded bg-muted/60">
                         {xs.length}
@@ -895,6 +867,7 @@ function ViewTab({
 }
 
 function TodayClassesStrip({ tasks, onSwitch }: { tasks: Task[]; onSwitch: () => void }) {
+  const t = useT();
   return (
     <div className="rounded-xl border border-primary/20 bg-primary/5 p-3 flex items-center gap-3 flex-wrap">
       <div className="h-8 w-8 rounded-lg bg-primary/15 text-primary flex items-center justify-center shrink-0">
@@ -902,20 +875,20 @@ function TodayClassesStrip({ tasks, onSwitch }: { tasks: Task[]; onSwitch: () =>
       </div>
       <div className="flex items-center gap-2 flex-wrap flex-1 min-w-0">
         <span className="text-sm font-semibold text-primary">
-          Hôm nay {tasks.length} buổi
+          {t("tasks.todayClasses", { n: tasks.length })}
         </span>
-        {tasks.map((t) => {
-          const c = subjectColor(t.title);
-          const hh = t.deadline ? new Date(t.deadline).getHours().toString().padStart(2, "0") : "";
-          const mm = t.deadline ? new Date(t.deadline).getMinutes().toString().padStart(2, "0") : "";
+        {tasks.map((task) => {
+          const c = subjectColor(task.title);
+          const hh = task.deadline ? new Date(task.deadline).getHours().toString().padStart(2, "0") : "";
+          const mm = task.deadline ? new Date(task.deadline).getMinutes().toString().padStart(2, "0") : "";
           return (
             <span
-              key={t.id}
+              key={task.id}
               className={cn("inline-flex items-center gap-1.5 text-xs px-2 py-1 rounded-md border", c.border, c.bg, c.text)}
             >
               <span className="tabular-nums font-medium">{hh}:{mm}</span>
-              <span className="font-semibold">{t.title}</span>
-              {t.location && <span className="opacity-70">· {t.location}</span>}
+              <span className="font-semibold">{task.title}</span>
+              {task.location && <span className="opacity-70">· {task.location}</span>}
             </span>
           );
         })}
@@ -925,7 +898,7 @@ function TodayClassesStrip({ tasks, onSwitch }: { tasks: Task[]; onSwitch: () =>
         onClick={onSwitch}
         className="text-xs text-muted-foreground hover:text-primary inline-flex items-center gap-1 shrink-0"
       >
-        Xem lịch học <ChevronDown className="h-3 w-3 -rotate-90" />
+        {t("tasks.viewSchedule.link")} <ChevronDown className="h-3 w-3 -rotate-90" />
       </button>
     </div>
   );
@@ -943,8 +916,9 @@ function SubjectGroup({
   onTagClick?: (tag: string) => void;
 }) {
   const [expanded, setExpanded] = useState(false);
+  const t = useT();
   const color = subjectColor(title);
-  const next = instances.find((t) => t.status !== "done") || instances[0];
+  const next = instances.find((x) => x.status !== "done") || instances[0];
   // Tóm tắt: thứ + giờ + phòng của buổi kế tiếp.
   const summary = (() => {
     if (!next?.deadline) return null;
@@ -970,22 +944,22 @@ function SubjectGroup({
         <div className="flex-1 min-w-0">
           <p className={cn("font-semibold leading-tight", color.text)}>{title}</p>
           <p className="text-xs text-muted-foreground mt-0.5 truncate">
-            Tiếp theo: {summary || "—"}
+            {t("tasks.nextOccurrence", { label: summary || "—" })}
             {next?.location && <span className="ml-1.5 inline-flex items-center gap-0.5"><MapPin className="h-3 w-3" />{next.location}</span>}
           </p>
         </div>
         <span className="text-xs text-muted-foreground tabular-nums px-2 py-0.5 rounded bg-muted/60 shrink-0">
-          {instances.length} buổi
+          {t("tasks.subjectSessions", { n: instances.length })}
         </span>
         <ChevronDown className={cn("h-4 w-4 text-muted-foreground transition-transform shrink-0", !expanded && "-rotate-90")} />
       </button>
       {expanded && (
         <div className="px-3 pb-3 pt-1 space-y-2 border-t bg-muted/10">
-          {instances.map((t) => (
+          {instances.map((inst) => (
             <TaskRow
-              key={t.id}
-              task={t}
-              parent={t.parentId ? taskById.get(t.parentId) : undefined}
+              key={inst.id}
+              task={inst}
+              parent={inst.parentId ? taskById.get(inst.parentId) : undefined}
               onTagClick={onTagClick}
             />
           ))}
@@ -1011,7 +985,8 @@ function OverdueAlert({
   onTagClick?: (tag: string) => void;
 }) {
   const [expanded, setExpanded] = useState(false);
-  const notDone = tasks.filter((t) => t.status !== "done").length;
+  const t = useT();
+  const notDone = tasks.filter((task) => task.status !== "done").length;
   const showCount = notDone || tasks.length;
   return (
     <div className="rounded-xl border border-destructive/40 bg-destructive/5">
@@ -1025,12 +1000,12 @@ function OverdueAlert({
         </div>
         <div className="flex-1 min-w-0">
           <p className="text-sm font-semibold text-destructive">
-            {showCount} task quá hạn
+            {t("tasks.overdueTitle", { n: showCount })}
           </p>
           <p className="text-xs text-muted-foreground">
             {recurringCount > 0
-              ? `${recurringCount} task lặp lại có thể tự đẩy lên buổi tiếp theo.`
-              : "Snooze hoặc xoá để dọn dẹp."}
+              ? t("tasks.overdueHintRecurring", { n: recurringCount })
+              : t("tasks.overdueHintGeneric")}
           </p>
         </div>
         {recurringCount > 0 && (
@@ -1044,7 +1019,7 @@ function OverdueAlert({
             className="h-8 gap-1.5 shrink-0 border-destructive/30 text-destructive hover:bg-destructive/10 hover:text-destructive"
           >
             <AlarmClock className="h-3.5 w-3.5" />
-            Đẩy → buổi tiếp
+            {t("tasks.rollForward")}
           </Button>
         )}
         <ChevronDown
@@ -1056,12 +1031,12 @@ function OverdueAlert({
       </button>
       {expanded && (
         <div className="px-3 pb-3 space-y-2 border-t border-destructive/20 pt-3">
-          {tasks.map((t) => (
+          {tasks.map((task) => (
             <TaskRow
-              key={t.id}
-              task={t}
-              parent={t.parentId ? taskById.get(t.parentId) : undefined}
-              onHomework={() => onHomework(t.id)}
+              key={task.id}
+              task={task}
+              parent={task.parentId ? taskById.get(task.parentId) : undefined}
+              onHomework={() => onHomework(task.id)}
               onTagClick={onTagClick}
             />
           ))}

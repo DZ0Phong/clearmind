@@ -34,6 +34,7 @@ import {
   type ReminderPref,
 } from "@/hooks/use-tasks";
 import { classifyTitle, parseNlDeadline, formatDeadline, cn } from "@/lib/utils";
+import { useT } from "@/lib/i18n";
 
 export interface CreatePrefill {
   deadline?: string; // local datetime "YYYY-MM-DDTHH:mm" or ISO
@@ -110,6 +111,7 @@ const PRIORITY_OPTIONS: Array<{
 
 export function TaskDialog(props: Mode) {
   const { addTask, updateTask } = useTasks();
+  const t = useT();
   const isEdit = props.kind === "edit";
   const existing = isEdit ? props.task : null;
 
@@ -263,12 +265,12 @@ export function TaskDialog(props: Mode) {
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Sparkles className="h-5 w-5 text-primary" />
-            {isEdit ? "Chỉnh sửa task" : "Tạo task mới"}
+            {isEdit ? t("dialog.editTitle") : t("dialog.createTitle")}
           </DialogTitle>
           <DialogDescription>
             {isEdit
-              ? "Cập nhật thông tin chi tiết của task."
-              : 'Gõ tự nhiên — Clearmind sẽ đoán loại + ưu tiên. Thử "thi Toán thứ 5 lúc 14h phòng A1.404".'}
+              ? (t("dialog.editTitle") + ".")
+              : (t("dialog.createTitle"))}
           </DialogDescription>
         </DialogHeader>
         <form onSubmit={handleSubmit}>
@@ -276,12 +278,12 @@ export function TaskDialog(props: Mode) {
             {/* Title + Voice */}
             <div>
               <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-                Tiêu đề
+                {t("dialog.label.title")}
               </label>
               <div className="flex items-start gap-2 mt-1.5">
                 <Input
                   autoFocus
-                  placeholder="VD: Ôn thi Giải tích 2 — chương 3"
+                  placeholder={t("dialog.placeholder.title")}
                   value={title}
                   onChange={(e) => setTitle(e.target.value)}
                   className="flex-1 h-10"
@@ -309,7 +311,7 @@ export function TaskDialog(props: Mode) {
                       className="inline-flex items-center gap-1 rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 px-2 py-0.5 text-xs font-medium hover:bg-emerald-500/20 transition-colors"
                     >
                       <CalendarIcon className="h-3 w-3" />
-                      Dùng "{formatDeadline(nlHint)}"
+                      {t("dialog.applyNl", { label: formatDeadline(nlHint) })}
                     </button>
                   )}
                 </div>
@@ -319,20 +321,19 @@ export function TaskDialog(props: Mode) {
             {/* Description */}
             <div>
               <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-                Mô tả
+                {t("dialog.label.description")}
               </label>
               <textarea
-                placeholder="Chi tiết, link tài liệu, lưu ý… (không bắt buộc)"
+                placeholder={t("dialog.placeholder.description")}
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
                 className="mt-1.5 min-h-[68px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-xs resize-y outline-none transition-[color,box-shadow] placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50"
               />
             </div>
 
-            {/* Type pills */}
             <div>
               <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-                Loại
+                {t("dialog.label.type")}
               </label>
               <div className="grid grid-cols-4 gap-1.5 mt-1.5">
                 {TYPE_OPTIONS.map((opt) => {
@@ -353,17 +354,16 @@ export function TaskDialog(props: Mode) {
                         className="h-2 w-2 rounded-full"
                         style={{ background: opt.color, opacity: active ? 1 : 0.6 }}
                       />
-                      {opt.label}
+                      {t(`type.${opt.value}`)}
                     </button>
                   );
                 })}
               </div>
             </div>
 
-            {/* Priority pills */}
             <div>
               <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-                Mức ưu tiên
+                {t("dialog.label.priority")}
               </label>
               <div className="grid grid-cols-3 gap-1.5 mt-1.5">
                 {PRIORITY_OPTIONS.map((opt) => {
@@ -383,18 +383,17 @@ export function TaskDialog(props: Mode) {
                       )}
                     >
                       <Icon className="h-3.5 w-3.5" />
-                      {opt.label}
+                      {t(`priority.${opt.value}`)}
                     </button>
                   );
                 })}
               </div>
             </div>
 
-            {/* Deadline (picker) + Location */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
                 <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider flex items-center gap-1">
-                  <CalendarIcon className="h-3 w-3" /> Deadline
+                  <CalendarIcon className="h-3 w-3" /> {t("dialog.label.deadline")}
                 </label>
                 <DateTimePicker
                   value={deadline}
@@ -404,22 +403,21 @@ export function TaskDialog(props: Mode) {
               </div>
               <div>
                 <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider flex items-center gap-1">
-                  <MapPin className="h-3 w-3" /> Vị trí / Phòng
+                  <MapPin className="h-3 w-3" /> {t("dialog.label.location")}
                 </label>
                 <Input
                   value={location}
                   onChange={(e) => setLocation(e.target.value)}
-                  placeholder="VD: A1.404, lab E3"
+                  placeholder={t("dialog.placeholder.location")}
                   className="mt-1.5 h-9"
                 />
               </div>
             </div>
 
-            {/* Recurrence + reminder */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
                 <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider flex items-center gap-1">
-                  <Repeat className="h-3 w-3" /> Lặp lại
+                  <Repeat className="h-3 w-3" /> {t("dialog.label.recurrence")}
                 </label>
                 <div className="relative mt-1.5">
                   <select
@@ -429,18 +427,18 @@ export function TaskDialog(props: Mode) {
                     }
                     className="w-full h-9 rounded-md border border-input bg-background pl-3 pr-8 text-sm shadow-xs appearance-none cursor-pointer outline-none transition-[color,box-shadow] hover:bg-accent/30 focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50"
                   >
-                    <option value="">Không lặp</option>
-                    <option value="daily">Hàng ngày</option>
-                    <option value="weekday">Ngày làm việc (T2–T6)</option>
-                    <option value="weekly">Hàng tuần</option>
-                    <option value="monthly">Hàng tháng</option>
+                    <option value="">{t("recurrence.none")}</option>
+                    <option value="daily">{t("recurrence.daily")}</option>
+                    <option value="weekday">{t("recurrence.weekday")}</option>
+                    <option value="weekly">{t("recurrence.weekly")}</option>
+                    <option value="monthly">{t("recurrence.monthly")}</option>
                   </select>
                   <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
                 </div>
               </div>
               <div>
                 <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider flex items-center gap-1">
-                  <Bell className="h-3 w-3" /> Nhắc trước
+                  <Bell className="h-3 w-3" /> {t("dialog.label.notify")}
                 </label>
                 <div className="relative mt-1.5">
                   <select
@@ -450,12 +448,12 @@ export function TaskDialog(props: Mode) {
                     }
                     className="w-full h-9 rounded-md border border-input bg-background pl-3 pr-8 text-sm shadow-xs appearance-none cursor-pointer outline-none transition-[color,box-shadow] hover:bg-accent/30 focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50"
                   >
-                    <option value="">Không nhắc</option>
-                    <option value="at-time">Đúng giờ</option>
-                    <option value="5m">5 phút trước</option>
-                    <option value="15m">15 phút trước</option>
-                    <option value="1h">1 giờ trước</option>
-                    <option value="1d">1 ngày trước</option>
+                    <option value="">{t("notify.none")}</option>
+                    <option value="at-time">{t("notify.atTime")}</option>
+                    <option value="5m">{t("notify.5m")}</option>
+                    <option value="15m">{t("notify.15m")}</option>
+                    <option value="1h">{t("notify.1h")}</option>
+                    <option value="1d">{t("notify.1d")}</option>
                   </select>
                   <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
                 </div>

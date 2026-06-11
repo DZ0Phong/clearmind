@@ -45,6 +45,7 @@ import {
   subjectColor,
   tagStats,
 } from "@/lib/utils";
+import { useT } from "@/lib/i18n";
 
 /* ───── Types & constants ───────────────────────────────────────── */
 
@@ -189,9 +190,9 @@ export function CalendarView({ initialDate }: CalendarViewProps = {}) {
     () =>
       filteredTasks.map((t) => {
         const color = eventColor(t);
-        // Chip tint nhẹ + viền trái màu chủ đề — kiểu Linear/Things 3.
-        // textColor = màu bão hòa để đọc rõ trên nền tint.
-        const bg = `color-mix(in srgb, ${color} 14%, transparent)`;
+        // Chip tint mạnh hơn (mix 24% với background) — không bị "chìm".
+        // textColor = màu chủ đề (đọc rõ trên tint cùng tông).
+        const bg = `color-mix(in srgb, ${color} 24%, var(--background))`;
         return {
           id: t.id,
           title: t.title,
@@ -815,6 +816,7 @@ function EventDetailDialog({
   onTagClick,
 }: EventDetailDialogProps) {
   const open = !!task;
+  const t = useT();
   return (
     <Dialog open={open} onOpenChange={(b) => !b && onClose()}>
       <DialogContent className="sm:max-w-[460px]">
@@ -827,22 +829,22 @@ function EventDetailDialog({
               <div className="flex flex-wrap gap-1.5 mt-2.5 items-center">
                 <span className="inline-flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
                   <span className="h-1.5 w-1.5 rounded-full" style={{ background: TYPE[task.type].color }} />
-                  {TYPE[task.type].label}
+                  {t(`type.${task.type}`)}
                 </span>
                 {task.priority === "high" && (
-                  <span className="text-xs font-medium text-destructive">· Ưu tiên cao</span>
+                  <span className="text-xs font-medium text-destructive">{t("calendar.urgentInline")}</span>
                 )}
                 {task.tags && task.tags.length > 0 && (
                   <span className="text-xs text-muted-foreground">·</span>
                 )}
-                {task.tags?.map((t) => (
+                {task.tags?.map((tag) => (
                   <button
-                    key={t}
-                    onClick={() => onTagClick(t)}
-                    title={`Xem mọi task có #${t}`}
+                    key={tag}
+                    onClick={() => onTagClick(tag)}
+                    title={t("calendar.viewAllTag", { tag })}
                     className="text-xs text-muted-foreground hover:text-primary font-medium transition-colors"
                   >
-                    #{t}
+                    #{tag}
                   </button>
                 ))}
               </div>
@@ -854,7 +856,7 @@ function EventDetailDialog({
                   <div className="flex items-center gap-2 text-sm">
                     <Clock className="h-4 w-4 text-muted-foreground shrink-0" />
                     <span className="font-medium tabular-nums">
-                      {extractTimeLabel(task.deadline) ?? "Cả ngày"} ·{" "}
+                      {extractTimeLabel(task.deadline) ?? t("common.allDay")} ·{" "}
                       {formatDeadline(task.deadline)}
                     </span>
                   </div>
@@ -880,7 +882,7 @@ function EventDetailDialog({
                 {task.status !== "done" && (
                   <div className="flex items-center gap-2 flex-wrap">
                     <Clock4 className="h-3.5 w-3.5 text-muted-foreground" />
-                    <span className="text-xs text-muted-foreground">Dời:</span>
+                    <span className="text-xs text-muted-foreground">{t("calendar.snooze")}:</span>
                     {SNOOZE_OPTS.map((opt) => (
                       <button
                         key={opt.label}
@@ -895,9 +897,9 @@ function EventDetailDialog({
 
                 <div className="flex items-center justify-between flex-wrap gap-2">
                   <span className="text-sm font-medium">
-                    Trạng thái:{" "}
+                    {t("calendar.statusLabel")}:{" "}
                     <span className="text-muted-foreground">
-                      {task.status === "todo" ? "Chưa làm" : task.status === "in-progress" ? "Đang làm" : "Đã xong"}
+                      {t(task.status === "todo" ? "status.todo" : task.status === "in-progress" ? "status.inProgress" : "status.done")}
                     </span>
                   </span>
                   <div className="flex gap-2 flex-wrap">
@@ -908,7 +910,7 @@ function EventDetailDialog({
                         className="gap-2"
                         onClick={onHomework}
                       >
-                        <BookOpen className="w-3.5 h-3.5" /> Bài tập
+                        <BookOpen className="w-3.5 h-3.5" /> {t("tasks.addHomework")}
                       </Button>
                     )}
                     <Button
@@ -917,7 +919,7 @@ function EventDetailDialog({
                       className="gap-2"
                       onClick={onEdit}
                     >
-                      <Pencil className="w-3.5 h-3.5" /> Sửa
+                      <Pencil className="w-3.5 h-3.5" /> {t("common.edit")}
                     </Button>
                     <Button
                       variant="destructive"
@@ -925,7 +927,7 @@ function EventDetailDialog({
                       className="gap-2"
                       onClick={onDelete}
                     >
-                      <Trash2 className="w-3.5 h-3.5" /> Xoá
+                      <Trash2 className="w-3.5 h-3.5" /> {t("common.delete")}
                     </Button>
                   </div>
                 </div>

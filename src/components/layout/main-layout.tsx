@@ -10,6 +10,8 @@ import { useTaskCommands } from "@/components/task-commands";
 import { isPast } from "@/lib/utils";
 import { useTickingNow } from "@/lib/use-ticking-now";
 import { useCliHealth } from "@/lib/use-cli-health";
+import { useI18n, useT } from "@/lib/i18n";
+import { LanguageToggle } from "@/components/language-toggle";
 
 export function MainLayout({ children }: { children: ReactNode }) {
   return (
@@ -31,6 +33,7 @@ function TopBar() {
   const { tasks } = useTasks();
   const { openCreate, openPalette } = useTaskCommands();
   const now = useTickingNow();
+  const t = useT();
 
   const overdueCount = useMemo(
     () =>
@@ -40,12 +43,14 @@ function TopBar() {
     [tasks, now]
   );
 
-  const dateLabel = now.toLocaleDateString("vi-VN", {
+  const { lang } = useI18n();
+  const localeTag = lang === "en" ? "en-US" : "vi-VN";
+  const dateLabel = now.toLocaleDateString(localeTag, {
     weekday: "long",
     day: "2-digit",
     month: "long",
   });
-  const timeLabel = now.toLocaleTimeString("vi-VN", {
+  const timeLabel = now.toLocaleTimeString(localeTag, {
     hour: "2-digit",
     minute: "2-digit",
   });
@@ -61,10 +66,9 @@ function TopBar() {
         <span className="font-semibold text-sm">Clearmind</span>
       </Link>
 
-      {/* Date + time pill — also acts as a Dashboard shortcut */}
       <Link
         to="/dashboard"
-        title="Về Dashboard"
+        title={t("topbar.dashboardTooltip")}
         className="hidden lg:flex items-center gap-2 text-sm shrink-0 hover:text-primary transition-colors"
       >
         <CalendarDays className="h-4 w-4 text-muted-foreground" />
@@ -72,49 +76,47 @@ function TopBar() {
         <span className="text-muted-foreground tabular-nums">· {timeLabel}</span>
       </Link>
 
-      {/* Search / command palette trigger */}
       <button
         onClick={openPalette}
         className="hidden sm:flex flex-1 lg:flex-initial lg:w-[380px] items-center gap-2 px-3 py-1.5 rounded-md border bg-muted/40 hover:bg-muted/60 hover:border-input text-sm text-muted-foreground transition-colors ml-auto lg:mx-auto"
       >
         <Search className="h-4 w-4 shrink-0" />
-        <span className="flex-1 text-left truncate">Tìm task, lệnh, điều hướng…</span>
+        <span className="flex-1 text-left truncate">{t("topbar.searchPlaceholder")}</span>
         <kbd className="text-[10px] border rounded px-1.5 py-0.5 font-mono bg-background shrink-0">
           ⌘K
         </kbd>
       </button>
 
-      {/* Mobile search icon */}
       <button
         onClick={openPalette}
         className="sm:hidden ml-auto p-2 rounded-md hover:bg-muted text-muted-foreground"
-        aria-label="Tìm kiếm"
+        aria-label={t("common.search")}
       >
         <Search className="h-5 w-5" />
       </button>
 
-      {/* Right cluster: cli-status → overdue → capture → theme */}
       <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
         <CliStatusBadge />
         {overdueCount > 0 && (
           <Link
             to="/tasks"
-            title="Xem danh sách task quá hạn"
+            title={t("topbar.overdue", { n: overdueCount })}
             className="hidden md:inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-destructive/10 text-destructive text-xs font-semibold hover:bg-destructive/15 transition-colors"
           >
             <AlertCircle className="h-3.5 w-3.5" />
-            {overdueCount} quá hạn
+            {t("topbar.overdue", { n: overdueCount })}
           </Link>
         )}
         <Button
           size="sm"
           onClick={() => openCreate()}
           className="gap-1.5"
-          title="Tạo task mới"
+          title={t("palette.action.new")}
         >
           <Plus className="h-4 w-4" />
-          <span className="hidden md:inline">Thêm</span>
+          <span className="hidden md:inline">{t("topbar.add")}</span>
         </Button>
+        <LanguageToggle />
         <ModeToggle />
       </div>
     </header>
@@ -130,25 +132,25 @@ function TopBar() {
  */
 function CliStatusBadge() {
   const { status, port } = useCliHealth(30_000);
+  const t = useT();
   if (status === "n/a") return null;
   if (status === "online") {
     return (
       <Link
         to="/settings"
-        title={`CLI live ở port ${port} — data đang ghi lên đĩa`}
+        title={t("cli.tooltipOnline", { port: port ?? "" })}
         className="hidden md:inline-flex items-center gap-1.5 px-2 py-1 rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 text-[11px] font-semibold hover:bg-emerald-500/15 transition-colors"
       >
         <Power className="h-3 w-3" />
-        CLI
+        {t("cli.online")}
       </Link>
     );
   }
-  // checking | offline
   const offline = status === "offline";
   return (
     <Link
       to="/settings"
-      title={offline ? "CLI mất kết nối — chỉnh sửa hiện không ghi được lên đĩa" : "Đang kiểm tra CLI…"}
+      title={offline ? t("cli.tooltipOffline") : t("common.loading")}
       className={
         offline
           ? "hidden md:inline-flex items-center gap-1.5 px-2 py-1 rounded-full bg-destructive/10 text-destructive text-[11px] font-semibold hover:bg-destructive/15 transition-colors animate-pulse"
@@ -156,7 +158,7 @@ function CliStatusBadge() {
       }
     >
       <PowerOff className="h-3 w-3" />
-      {offline ? "CLI offline" : "…"}
+      {offline ? t("cli.offline") : t("cli.checking")}
     </Link>
   );
 }

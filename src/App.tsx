@@ -1,6 +1,7 @@
 import { lazy, Suspense } from "react";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { ThemeProvider } from "@/components/theme-provider";
+import { I18nProvider } from "@/lib/i18n";
 import { TasksProvider } from "@/hooks/use-tasks";
 import { ToastProvider } from "@/components/toast";
 import { TaskCommandsProvider } from "@/components/task-commands";
@@ -33,6 +34,7 @@ function PageFallback() {
 function App() {
   return (
     <ThemeProvider defaultTheme="system" storageKey="clearmind-theme">
+      <I18nProvider>
       <ToastProvider>
         <TasksProvider>
           <BrowserRouter>
@@ -56,6 +58,7 @@ function App() {
           </BrowserRouter>
         </TasksProvider>
       </ToastProvider>
+      </I18nProvider>
     </ThemeProvider>
   );
 }

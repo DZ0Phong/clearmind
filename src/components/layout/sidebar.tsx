@@ -14,20 +14,22 @@ import { NavLink } from "react-router-dom";
 import { useTaskCommands } from "@/components/task-commands";
 import { useTasks } from "@/hooks/use-tasks";
 import { tagStats } from "@/lib/utils";
+import { useT } from "@/lib/i18n";
 import { Logo } from "@/components/logo";
 import { MiniCalendar } from "@/components/mini-calendar";
 
 const navItems = [
-  { to: "/dashboard", label: "Tổng quan", icon: LayoutDashboard },
-  { to: "/calendar", label: "Lịch", icon: Calendar },
-  { to: "/tasks", label: "Task", icon: CheckSquare },
-  { to: "/focus", label: "Tập trung", icon: Timer },
-  { to: "/review", label: "Tổng kết", icon: TrendingUp },
-];
+  { to: "/dashboard", key: "nav.dashboard", icon: LayoutDashboard },
+  { to: "/calendar", key: "nav.calendar", icon: Calendar },
+  { to: "/tasks", key: "nav.tasks", icon: CheckSquare },
+  { to: "/focus", key: "nav.focus", icon: Timer },
+  { to: "/review", key: "nav.review", icon: TrendingUp },
+] as const;
 
 export function Sidebar() {
   const { openCreate } = useTaskCommands();
   const { tasks } = useTasks();
+  const t = useT();
   const topTags = useMemo(
     () => tagStats(tasks).filter((s) => s.openCount > 0).slice(0, 6),
     [tasks]
@@ -53,7 +55,7 @@ export function Sidebar() {
       >
         <span className="flex items-center gap-2">
           <Command className="h-3.5 w-3.5" />
-          Quick capture
+          {t("nav.quickCapture")}
         </span>
         <kbd className="text-[10px] border rounded px-1 py-0.5 font-mono bg-muted group-hover:bg-background">
           ⌘K
@@ -62,7 +64,7 @@ export function Sidebar() {
 
       <div className="flex-1 overflow-y-auto">
         <nav className="px-4 space-y-1 mt-1">
-          {navItems.map(({ to, label, icon: Icon }) => (
+          {navItems.map(({ to, key, icon: Icon }) => (
             <NavLink
               key={to}
               to={to}
@@ -75,7 +77,7 @@ export function Sidebar() {
               }
             >
               <Icon className="h-4 w-4" />
-              <span>{label}</span>
+              <span>{t(key)}</span>
             </NavLink>
           ))}
         </nav>
@@ -86,7 +88,7 @@ export function Sidebar() {
         {topTags.length > 0 && (
           <div className="mt-2 mx-4 border-t pt-3 pb-2">
             <p className="text-[10px] uppercase tracking-[0.08em] text-muted-foreground/70 font-semibold mb-1.5 px-1">
-              Tags
+              {t("nav.tags")}
             </p>
             <div className="flex flex-wrap gap-1">
               {topTags.map((s) => (
@@ -119,7 +121,7 @@ export function Sidebar() {
           }
         >
           <CalendarPlus className="h-4 w-4" />
-          <span>Import lịch học</span>
+          <span>{t("nav.import")}</span>
         </NavLink>
         <NavLink
           to="/guide"
@@ -132,7 +134,7 @@ export function Sidebar() {
           }
         >
           <Sparkles className="h-4 w-4" />
-          <span>Hướng dẫn</span>
+          <span>{t("nav.guide")}</span>
         </NavLink>
         <NavLink
           to="/settings"
@@ -145,7 +147,7 @@ export function Sidebar() {
           }
         >
           <Settings className="h-4 w-4" />
-          <span>Cài đặt</span>
+          <span>{t("nav.settings")}</span>
         </NavLink>
       </div>
     </aside>

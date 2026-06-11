@@ -28,6 +28,22 @@ const PS_SCRIPT = path.join(__dirname, "toast.ps1");
 
 const timers = new Map(); // taskId → { handle, fireAt, title }
 
+// Read user language preference từ %APPDATA%\Clearmind\clearmind.lang
+// (SPA ghi qua PUT /api/locale). Default "vi" để khớp legacy behavior.
+let dataDirRef = null;
+function setDataDir(dir) { dataDirRef = dir; }
+function getLang() {
+  if (!dataDirRef) return "vi";
+  try {
+    const v = fs.readFileSync(path.join(dataDirRef, "clearmind.lang"), "utf8").trim();
+    return v === "en" ? "en" : "vi";
+  } catch (_) { return "vi"; }
+}
+const I18N = {
+  vi: { reminderDefault: "Tới giờ rồi.", testTitle: "Toast thử", testBody: "Tiếng Việt: ờ ầ ã ô ư ạ ặ đ → encoding OK." },
+  en: { reminderDefault: "Time's up.", testTitle: "Test toast", testBody: "If you see this clearly, the notification system is working." },
+};
+
 function offsetMs(pref) {
   switch (pref) {
     case "at-time": return 0;
@@ -103,8 +119,9 @@ function fireFallback({ title, message, icon }) {
 }
 
 function fire(task) {
-  const title = "Clearmind · " + (task.title || "Reminder");
-  const message = task.description || "Deadline đang tới.";
+  const lang = getLang();
+  const title = "Clearmind · " + (task.title || (lang === "en" ? "Reminder" : "Nhắc nhở"));
+  const message = task.description || I18N[lang].reminderDefault;
   if (process.platform === "win32") {
     fireWindowsToast({ title, message, icon: ICON_PATH });
   } else {
@@ -113,9 +130,10 @@ function fire(task) {
 }
 
 function fireTest() {
+  const lang = getLang();
   fire({
-    title: "Test toast — tiếng Việt thử",
-    description: "Nếu đọc được đầy đủ ờ ầ ã ô ư ạ ặ đ → encoding OK.",
+    title: I18N[lang].testTitle,
+    description: I18N[lang].testBody,
   });
 }
 
@@ -153,4 +171,4 @@ function scheduleAll(tasks) {
   console.log(`[clearmind] Scheduled ${scheduled} native notification(s) in next 25h.`);
 }
 
-module.exports = { scheduleAll, clearAll, fire, fireTest, scheduledList };
+module.exports = { scheduleAll, clearAll, fire, fireTest, scheduledList, setDataDir };

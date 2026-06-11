@@ -191,11 +191,10 @@
   cursor: pointer;
 }
 
-/* Events — chip tint nhẹ + viền trái màu chủ đề (Linear/Things 3 style).
- * Bỏ shadow loud + bỏ translateY phô trương; transition chỉ background. */
+/* Events — chip tint rõ + viền trái 4px màu chủ đề. textColor saturated. */
 .fc-event {
   border-radius: 6px;
-  border-width: 1px 1px 1px 3px !important;
+  border-width: 1px 1px 1px 4px !important;
   border-style: solid !important;
   padding: 0;
   font-size: 0.75rem;
@@ -203,12 +202,19 @@
   margin-top: 2px;
   box-shadow: none;
   cursor: pointer;
-  transition: filter 120ms ease;
+  transition: filter 120ms ease, background-color 120ms ease;
   overflow: hidden;
 }
 
 .fc-event:hover {
-  filter: brightness(0.97);
+  filter: brightness(0.95) saturate(1.1);
+}
+/* Dark mode: tăng độ đậm chip để không bị chìm vào bg tối */
+.dark .fc-event {
+  filter: brightness(1.1);
+}
+.dark .fc-event:hover {
+  filter: brightness(1.2) saturate(1.15);
 }
 
 /* Month event: pill thoáng, đọc rõ */

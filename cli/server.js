@@ -22,6 +22,24 @@ function getMtime(dataDir) {
   catch (_) { return 0; }
 }
 
+// Persist preferred UI language to clearmind.lang in dataDir. Notification
+// đọc file này để chọn message "Tới giờ" / "Time's up". SPA gọi PUT khi user
+// đổi ngôn ngữ qua toggle.
+function localeFile(dataDir) {
+  return path.join(dataDir, "clearmind.lang");
+}
+function readLocale(dataDir) {
+  try {
+    const v = fs.readFileSync(localeFile(dataDir), "utf8").trim();
+    return v === "en" ? "en" : "vi";
+  } catch (_) { return "vi"; }
+}
+function writeLocale(dataDir, lang) {
+  const safe = lang === "en" ? "en" : "vi";
+  try { fs.writeFileSync(localeFile(dataDir), safe, "utf8"); } catch (_) {}
+  return safe;
+}
+
 const MIME = {
   ".html": "text/html; charset=utf-8",
   ".js":   "application/javascript; charset=utf-8",
@@ -225,6 +243,18 @@ function makeHandler({ distDir, dataDir, port, version }) {
         openFolder(dataDir);
         return sendJson(res, 200, { ok: true });
       }
+      if (p === "/api/locale" && req.method === "GET") {
+        return sendJson(res, 200, { lang: readLocale(dataDir) });
+      }
+      if (p === "/api/locale" && req.method === "PUT") {
+        const body = await readBody(req);
+        let parsedBody;
+        try { parsedBody = JSON.parse(body); } catch (_) {
+          return sendJson(res, 400, { ok: false, error: "Invalid JSON" });
+        }
+        const lang = writeLocale(dataDir, parsedBody && parsedBody.lang);
+        return sendJson(res, 200, { ok: true, lang });
+      }
       if (p === "/api/quit" && req.method === "POST") {
         // Acknowledge first, then shut down a beat later so the client gets
         // a clean 200 instead of ECONNRESET. SIGTERM lets cli.js run its
@@ -285,6 +315,9 @@ function tryListen(port) {
 async function start({ distDir, dataDir, port, version, maxAttempts = 20 }) {
   const startPort = port;
   let lastErr = null;
+  // Đăng ký dataDir cho notifications module → biết đọc clearmind.lang
+  // ngay từ lần fire đầu tiên (kể cả khi SPA chưa kịp ghi locale).
+  if (notifications.setDataDir) notifications.setDataDir(dataDir);
   for (let i = 0; i < maxAttempts; i++) {
     const tryPort = startPort + i;
     try {
