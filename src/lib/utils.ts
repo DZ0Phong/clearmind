@@ -97,12 +97,18 @@ export function dayKey(d: Date): string {
   return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
 }
 
+/** Canonical FPT-style subject code regex. Single match, no g-flag — for
+ *  identification / dedup / display. Distinct from {@link SUBJECT_CODE_RE}
+ *  below which is broader + g-flag for tag harvesting. Exported so callers
+ *  doing `.replace(match[0], ...)` on the matched span can reuse the
+ *  pattern without redefining it. */
+export const SUBJECT_CODE_PATTERN = /\b([A-Z]{3,4}\d{3,4}[a-z]{0,3})\b/;
+
 /** Pull the FPT-style subject code (e.g. "PRU213", "EXE101g") from a free-form
  *  title. Returns null if not found. Used by the importer, the homework
  *  dialog, and dedup logic — keep this the single source of truth. */
-const SUBJECT_CODE_INLINE = /\b([A-Z]{3,4}\d{3,4}[a-z]{0,3})\b/;
 export function extractSubjectCode(title: string): string | null {
-  const m = title.match(SUBJECT_CODE_INLINE);
+  const m = title.match(SUBJECT_CODE_PATTERN);
   return m ? m[1] : null;
 }
 

@@ -21,7 +21,7 @@ import {
   Sparkles,
   CheckCircle2,
 } from "lucide-react";
-import { cn, formatDeadline } from "@/lib/utils";
+import { cn, formatDeadline, extractSubjectCode } from "@/lib/utils";
 
 interface Props {
   parentTask: Task;
@@ -42,12 +42,14 @@ function toLocalDateTime(d: Date): string {
 }
 
 /**
- * Extract the subject code prefix (e.g. "PRU213") from a task title.
- * Used to group sessions of the same course.
+ * Group key for sessions of the same course. Uses canonical
+ * {@link extractSubjectCode} when title carries a FPT-style code; otherwise
+ * falls back to the first whitespace/dash-separated word lowercased so
+ * non-course parents (one-off events) still group sanely.
  */
 function subjectKey(title: string): string {
-  const m = title.match(/^([A-Z]{2,4}\d{2,4})/);
-  if (m) return m[1];
+  const code = extractSubjectCode(title);
+  if (code) return code;
   return title.toLowerCase().split(/[\s—-]/)[0];
 }
 

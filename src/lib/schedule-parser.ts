@@ -3,6 +3,8 @@
    Tolerant heuristics; user previews + edits before import.
    ---------------------------------------------------------------- */
 
+import { SUBJECT_CODE_PATTERN as SUBJECT_CODE_RE } from "@/lib/utils";
+
 export interface ParsedClass {
   /** Stable id within an import batch, used for editing in preview. */
   id: string;
@@ -70,11 +72,9 @@ const ROOM_BARE_RE = /\b([A-Z]\d{3,4}[A-Za-z]?|P\d{2,4})\b/;
 // Captures the room descriptor that follows — used as a high-confidence
 // match when no separator-room pattern hits (space-separated room names).
 const ROOM_VN_RE = /\b(?:phòng|phong)\s+([A-Z][A-Za-z0-9]*(?:\s+\d{1,3})?)/i;
-// Subject code pattern — typical at universities like FPT: 3-4 uppercase
-// letters immediately followed by 3-4 digits, optionally a trailing
-// lowercase suffix for variant sections (EXE101g, EXE201aa). NO separator.
-// Examples: PRU213, PRN222, SWD392, EXE101, EXE101g, MAE101.
-const SUBJECT_CODE_RE = /\b([A-Z]{3,4}\d{3,4}[a-z]{0,3})\b/;
+// Subject code: see SUBJECT_CODE_PATTERN re-imported as SUBJECT_CODE_RE at
+// the top of the file — typical FPT codes (3-4 letters + 3-4 digits, optional
+// lowercase variant suffix). Examples: PRU213, PRN222, SWD392, EXE101g.
 // Date pattern — require slash or dash separator only (not period — too
 // noisy with room codes like A1.404), refuse matches preceded by a letter.
 const DATE_RE = /(?<![A-Za-z])\b(\d{1,2})[\/\-](\d{1,2})(?:[\/\-](\d{2,4}))?\b/;
