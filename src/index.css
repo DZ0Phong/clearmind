@@ -378,6 +378,130 @@
   background: transparent;
 }
 
+/* ─────────────────────────────────────────────────────────────
+   Motion tokens + keyframes — Linear/Things 3 vibe: tight,
+   ease-out, no overshoot. All gated by prefers-reduced-motion.
+   ───────────────────────────────────────────────────────────── */
+@theme {
+  --ease-out-quart: cubic-bezier(0.25, 1, 0.5, 1);
+  --ease-out-expo: cubic-bezier(0.19, 1, 0.22, 1);
+  --ease-soft: cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+@keyframes cm-page-enter {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@keyframes cm-list-enter {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@keyframes cm-check-pop {
+  0% { opacity: 0; transform: scale(0.4); }
+  60% { opacity: 1; transform: scale(1.08); }
+  100% { opacity: 1; transform: scale(1); }
+}
+@keyframes cm-late-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--destructive) 35%, transparent); }
+  50% { box-shadow: 0 0 0 4px color-mix(in srgb, var(--destructive) 0%, transparent); }
+}
+@keyframes cm-ring-pulse {
+  0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--primary) 45%, transparent); }
+  100% { box-shadow: 0 0 0 8px color-mix(in srgb, var(--primary) 0%, transparent); }
+}
+@keyframes cm-count-pop {
+  0% { transform: scale(1); }
+  50% { transform: scale(1.18); }
+  100% { transform: scale(1); }
+}
+
+/* Page route transition — wraps children of <Routes>. */
+.cm-page-enter {
+  animation: cm-page-enter 220ms var(--ease-out-expo) both;
+}
+
+/* List item entry — stagger via inline animation-delay. */
+.cm-list-enter {
+  animation: cm-list-enter 240ms var(--ease-out-quart) both;
+}
+
+/* Check mark pop on status → done. */
+.cm-check-pop {
+  animation: cm-check-pop 260ms var(--ease-out-quart) both;
+}
+
+/* Soft repeating glow on overdue chip — slow, easy to ignore. */
+.cm-late-pulse {
+  animation: cm-late-pulse 2400ms var(--ease-soft) infinite;
+}
+
+/* One-shot ring after StatusCycler transitions to done. */
+.cm-ring-pulse {
+  animation: cm-ring-pulse 600ms var(--ease-out-quart) 1;
+}
+
+.cm-count-pop {
+  animation: cm-count-pop 220ms var(--ease-out-quart) both;
+}
+
+/* Smooth height collapse via CSS grid trick — wrap content in
+   .cm-collapse > div, toggle .is-open. No JS measurement. */
+.cm-collapse {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows 220ms var(--ease-out-quart);
+}
+.cm-collapse > * {
+  overflow: hidden;
+  min-height: 0;
+}
+.cm-collapse.is-open {
+  grid-template-rows: 1fr;
+}
+
+/* Press feedback + hover brightness — used liberally on rows/buttons. */
+.cm-press {
+  transition: transform 140ms var(--ease-out-quart), filter 140ms var(--ease-soft), background-color 140ms var(--ease-soft);
+}
+.cm-press:active {
+  transform: scale(0.985);
+}
+
+/* Sidebar active rail — tiny vertical bar that fades+slides in. */
+.cm-nav-rail {
+  position: absolute;
+  left: -8px;
+  top: 50%;
+  width: 3px;
+  height: 0;
+  border-radius: 9999px;
+  background: var(--primary);
+  transform: translateY(-50%);
+  transition: height 200ms var(--ease-out-expo), opacity 200ms var(--ease-soft);
+  opacity: 0;
+}
+.cm-nav-active .cm-nav-rail {
+  height: 60%;
+  opacity: 1;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cm-page-enter,
+  .cm-list-enter,
+  .cm-check-pop,
+  .cm-late-pulse,
+  .cm-ring-pulse,
+  .cm-count-pop {
+    animation: none !important;
+  }
+  .cm-collapse {
+    transition: none !important;
+  }
+  .cm-press {
+    transition: none !important;
+  }
+}
+
 /* Hide native number-input spinners (used by stepper UI) */
 input[type="number"]::-webkit-outer-spin-button,
 input[type="number"]::-webkit-inner-spin-button {

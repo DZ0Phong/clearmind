@@ -32,20 +32,24 @@ export function ThemeProvider({
 
   useEffect(() => {
     const root = window.document.documentElement
-
-    root.classList.remove("light", "dark")
-
-    if (theme === "system") {
-      const systemTheme = window.matchMedia("(prefers-color-scheme: dark)")
-        .matches
-        ? "dark"
-        : "light"
-
-      root.classList.add(systemTheme)
-      return
+    const apply = () => {
+      root.classList.remove("light", "dark")
+      if (theme === "system") {
+        const sys = window.matchMedia("(prefers-color-scheme: dark)").matches
+          ? "dark"
+          : "light"
+        root.classList.add(sys)
+      } else {
+        root.classList.add(theme)
+      }
     }
-
-    root.classList.add(theme)
+    apply()
+    if (theme !== "system") return
+    // Live-track OS color scheme change while user sits on "system".
+    const mq = window.matchMedia("(prefers-color-scheme: dark)")
+    const listener = () => apply()
+    mq.addEventListener("change", listener)
+    return () => mq.removeEventListener("change", listener)
   }, [theme])
 
   const value = {

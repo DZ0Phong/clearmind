@@ -451,6 +451,40 @@ export function isPast(deadline?: string, now: Date = new Date()): boolean {
   return new Date(deadline) < now;
 }
 
+// Recurring academic class meeting — buổi lên lớp, không phải "việc cần làm".
+// Bài tập / bài thi có tag override vẫn ra ngoài để báo deadline bình thường.
+const RECURRING_CLASS_OVERRIDE_TAGS = new Set([
+  "bai-tap",
+  "bai_tap",
+  "thi",
+  "thi-fe",
+  "homework",
+  "exam",
+]);
+export function isRecurringClass(t: Task): boolean {
+  if (!t.recurrence || t.type !== "academic") return false;
+  const tags = (t.tags || []).map((x) => x.toLowerCase());
+  if (tags.some((tag) => RECURRING_CLASS_OVERRIDE_TAGS.has(tag))) return false;
+  return true;
+}
+
+/** "30p" / "5h" / "2d" — short relative-past suffix, null if not past. */
+export function formatTimeAgoShort(
+  deadline: string,
+  now: Date = new Date()
+): string | null {
+  const d = new Date(deadline);
+  if (Number.isNaN(d.getTime())) return null;
+  const diffMs = now.getTime() - d.getTime();
+  if (diffMs <= 0) return null;
+  const minutes = Math.floor(diffMs / 60_000);
+  if (minutes < 60) return `${Math.max(1, minutes)}p`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours}h`;
+  const days = Math.floor(hours / 24);
+  return `${days}d`;
+}
+
 /** Extract HH:mm from a deadline ISO string, or null if it's date-only. */
 export function extractTimeLabel(deadline?: string): string | null {
   if (!deadline || !deadline.includes("T")) return null;

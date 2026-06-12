@@ -10,6 +10,7 @@ import {
 } from "@/components/ui/card";
 import { useTasks, type Task } from "@/hooks/use-tasks";
 import { useTaskCommands } from "@/components/task-commands";
+import { useT, useI18n } from "@/lib/i18n";
 import { Button } from "@/components/ui/button";
 import {
   Clock,
@@ -30,6 +31,7 @@ import {
   formatDeadline,
   isToday,
   isPast,
+  isRecurringClass,
   extractTimeLabel,
   sortByTimeOfDay,
   subjectColor,
@@ -42,6 +44,8 @@ export function Dashboard() {
   const { openEdit, openCreate } = useTaskCommands();
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
+  const t = useT();
+  const { lang } = useI18n();
 
   // Deep-link: tray "Quick Capture" item opens /dashboard?capture=1
   // → auto-open the create dialog, then strip the query so reload doesn't re-trigger.
@@ -112,7 +116,7 @@ export function Dashboard() {
   const stats = useMemo(() => {
     const undone = tasks.filter((t) => t.status !== "done");
     const overdue = undone.filter(
-      (t) => t.deadline && isPast(t.deadline)
+      (t) => t.deadline && isPast(t.deadline) && !isRecurringClass(t)
     ).length;
     const inbox = undone.filter((t) => !t.deadline).length;
     const doneToday = tasks.filter(
@@ -167,46 +171,54 @@ export function Dashboard() {
       <div className="shrink-0 flex flex-col md:flex-row md:items-end md:justify-between gap-4">
         <div>
           <p className="text-xs uppercase tracking-wider text-muted-foreground font-semibold">
-            {new Date().toLocaleDateString("vi-VN", {
+            {new Date().toLocaleDateString(lang === "en" ? "en-US" : "vi-VN", {
               weekday: "long",
               day: "2-digit",
               month: "long",
             })}
           </p>
           <h1 className="text-3xl font-bold tracking-tight mt-0.5">
-            {greet()}
+            {greet(t)}
             {stats.overdue > 0 && (
               <span className="text-destructive">.</span>
             )}
           </h1>
           <p className="text-muted-foreground mt-1 text-sm">
-            {dashboardSubline(stats)}
+            {dashboardSubline(stats, t)}
           </p>
         </div>
+        {/* Only show stats that have something meaningful. New users see a
+            clean header without zero-value tiles cluttering the surface. */}
         <div className="flex flex-wrap gap-2">
-          <ProgressRing
-            value={stats.todayProgress}
-            label="Hôm nay"
-            sub={`${stats.doneToday}/${stats.totalToday}`}
-          />
-          <StatTile
-            icon={Flame}
-            value={stats.streak}
-            label="ngày streak"
-            tone="orange"
-          />
-          <StatTile
-            icon={Hourglass}
-            value={stats.focusToday}
-            label="phút focus"
-            tone="emerald"
-            suffix="m"
-          />
+          {stats.totalToday > 0 && (
+            <ProgressRing
+              value={stats.todayProgress}
+              label={t("dash.stat.today")}
+              sub={`${stats.doneToday}/${stats.totalToday}`}
+            />
+          )}
+          {stats.streak > 0 && (
+            <StatTile
+              icon={Flame}
+              value={stats.streak}
+              label={t("dash.stat.streak")}
+              tone="orange"
+            />
+          )}
+          {stats.focusToday > 0 && (
+            <StatTile
+              icon={Hourglass}
+              value={stats.focusToday}
+              label={t("dash.stat.focus")}
+              tone="emerald"
+              suffix="m"
+            />
+          )}
           {stats.overdue > 0 && (
             <StatTile
               icon={AlertCircle}
               value={stats.overdue}
-              label="quá hạn"
+              label={t("dash.stat.overdue")}
               tone="destructive"
               onClick={() => navigate("/tasks")}
             />
@@ -231,12 +243,12 @@ export function Dashboard() {
               <div>
                 <CardTitle className="flex items-center gap-2 text-lg">
                   <CalendarIcon className="h-5 w-5 text-primary" />
-                  Lịch hôm nay
+                  {t("dash.todayTitle")}
                 </CardTitle>
                 <CardDescription>
                   {todayList.length === 0
-                    ? "Trống. Kế hoạch hôm nay đang chờ bạn."
-                    : `${todayList.length} việc, sắp theo giờ. Kéo lên Calendar để dời.`}
+                    ? t("dash.todayEmpty")
+                    : t("dash.todayCount", { n: todayList.length })}
                 </CardDescription>
               </div>
               <Button
@@ -245,7 +257,7 @@ export function Dashboard() {
                 onClick={() => openCreate()}
                 className="gap-1.5"
               >
-                <Sparkles className="h-3.5 w-3.5" /> Thêm
+                <Sparkles className="h-3.5 w-3.5" /> {t("dash.add")}
               </Button>
             </CardHeader>
             <CardContent className="flex-1 overflow-y-auto space-y-2">
@@ -269,13 +281,13 @@ export function Dashboard() {
               <CardTitle className="text-sm font-semibold flex items-center justify-between">
                 <span className="inline-flex items-center gap-2">
                   <CalendarIcon className="h-4 w-4 text-muted-foreground" />
-                  Tuần này
+                  {t("dash.weekTitle")}
                 </span>
                 <Link
                   to="/calendar"
                   className="text-xs text-primary hover:underline inline-flex items-center"
                 >
-                  Lịch đầy đủ <ChevronRight className="h-3 w-3 ml-0.5" />
+                  {t("dash.weekFull")} <ChevronRight className="h-3 w-3 ml-0.5" />
                 </Link>
               </CardTitle>
             </CardHeader>
@@ -346,7 +358,7 @@ export function Dashboard() {
             <CardHeader className="pb-2">
               <CardTitle className="flex items-center gap-2 text-sm font-semibold">
                 <Zap className="h-4 w-4 text-primary" />
-                Focus
+                {t("dash.focusTitle")}
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-3">
@@ -355,7 +367,9 @@ export function Dashboard() {
                   {Math.floor(stats.focusWeek / 60)}
                 </span>
                 <span className="text-sm text-muted-foreground">
-                  giờ {stats.focusWeek % 60 > 0 && `${stats.focusWeek % 60}m`} tuần này
+                  {t("dash.focusWeek", {
+                    extra: stats.focusWeek % 60 > 0 ? `${stats.focusWeek % 60}m` : "",
+                  })}
                 </span>
               </div>
               <Button
@@ -364,7 +378,7 @@ export function Dashboard() {
                 size="sm"
               >
                 <Play className="h-3.5 w-3.5" />
-                Bắt đầu phiên focus
+                {t("dash.focusStart")}
               </Button>
             </CardContent>
           </Card>
@@ -378,10 +392,10 @@ export function Dashboard() {
                 </div>
                 <div className="flex-1">
                   <p className="text-sm font-semibold">
-                    {stats.inbox} task chưa có deadline
+                    {t("dash.inboxCount", { n: stats.inbox })}
                   </p>
                   <p className="text-xs text-muted-foreground">
-                    Vào Tasks để xếp lịch / phân loại.
+                    {t("dash.inboxHint")}
                   </p>
                 </div>
                 <ChevronRight className="h-4 w-4 text-muted-foreground" />
@@ -394,32 +408,32 @@ export function Dashboard() {
             <CardHeader className="pb-2">
               <CardTitle className="flex items-center gap-2 text-sm font-semibold">
                 <CheckCircle2 className="h-4 w-4 text-emerald-500" />
-                Đã xong gần đây
+                {t("dash.recentTitle")}
               </CardTitle>
             </CardHeader>
             <CardContent>
               {recentDone.length === 0 ? (
                 <p className="text-xs text-muted-foreground py-2 text-center">
-                  Chưa có hoạt động nào.
+                  {t("dash.recentEmpty")}
                 </p>
               ) : (
                 <div className="space-y-1.5">
-                  {recentDone.map((t) => (
+                  {recentDone.map((rt) => (
                     <div
-                      key={t.id}
+                      key={rt.id}
                       className="flex items-center gap-2 py-1 text-xs"
                     >
                       <span
                         className={cn(
                           "h-1.5 w-1.5 rounded-full shrink-0",
-                          subjectColor(t.title).dot
+                          subjectColor(rt.title).dot
                         )}
                       />
                       <span className="flex-1 truncate text-foreground/80 line-through opacity-70">
-                        {t.title}
+                        {rt.title}
                       </span>
                       <span className="text-[10px] text-muted-foreground tabular-nums shrink-0">
-                        {timeAgo(t.completedAt!)}
+                        {timeAgo(rt.completedAt!, t)}
                       </span>
                     </div>
                   ))}
@@ -434,7 +448,7 @@ export function Dashboard() {
               <CardContent className="pt-5 pb-5 flex items-start gap-3">
                 <TrendingUp className="h-4 w-4 text-primary mt-0.5 shrink-0" />
                 <div className="text-xs leading-relaxed">
-                  <p className="font-medium">{insight(stats, tasks)}</p>
+                  <p className="font-medium">{insight(stats, tasks, t)}</p>
                 </div>
               </CardContent>
             </Card>
@@ -456,6 +470,7 @@ function UpNextHero({
   onEdit: () => void;
   onFocus: () => void;
 }) {
+  const t = useT();
   const time = extractTimeLabel(task.deadline);
   const overdue = isPast(task.deadline);
   const color = subjectColor(task.title);
@@ -473,11 +488,11 @@ function UpNextHero({
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 mb-1">
             <p className="text-[10px] uppercase tracking-wider font-bold text-muted-foreground">
-              {overdue ? "Quá hạn" : "Up next"}
+              {overdue ? t("dash.upnextOverdue") : t("dash.upnext")}
             </p>
             {task.priority === "high" && (
               <span className="text-[10px] font-bold uppercase text-destructive inline-flex items-center gap-0.5">
-                <Flame className="h-2.5 w-2.5" /> Gấp
+                <Flame className="h-2.5 w-2.5" /> {t("priority.urgent")}
               </span>
             )}
           </div>
@@ -500,7 +515,7 @@ function UpNextHero({
               </span>
             )}
             <span className="text-xs px-2 py-0.5 rounded-full bg-muted">
-              {TYPE_LABEL[task.type]}
+              {t(`type.${task.type}`)}
             </span>
           </div>
         </div>
@@ -521,6 +536,7 @@ function UpNextHero({
 }
 
 function AgendaRow({ task, onClick }: { task: Task; onClick: () => void }) {
+  const t = useT();
   const time = extractTimeLabel(task.deadline);
   const overdue = isPast(task.deadline);
   const color = subjectColor(task.title);
@@ -541,7 +557,7 @@ function AgendaRow({ task, onClick }: { task: Task; onClick: () => void }) {
             </span>
             {overdue && (
               <span className="text-[9px] font-bold uppercase text-destructive mt-1">
-                Quá hạn
+                {t("dash.upnextOverdue")}
               </span>
             )}
           </>
@@ -749,63 +765,53 @@ function buildWeekStrip(tasks: Task[]): DayCell[] {
   return out;
 }
 
-function greet(): string {
+type T = (key: string, params?: Record<string, string | number>) => string;
+
+function greet(t: T): string {
   const h = new Date().getHours();
-  if (h < 11) return "Chào buổi sáng";
-  if (h < 14) return "Chào buổi trưa";
-  if (h < 18) return "Chào buổi chiều";
-  return "Chào buổi tối";
+  if (h < 11) return t("dash.greet.morning");
+  if (h < 14) return t("dash.greet.noon");
+  if (h < 18) return t("dash.greet.afternoon");
+  return t("dash.greet.evening");
 }
 
-function dashboardSubline(stats: {
-  totalToday: number;
-  doneToday: number;
-  overdue: number;
-}): string {
-  if (stats.overdue > 0) {
-    return `Có ${stats.overdue} việc quá hạn — xử lý sớm để dọn đầu.`;
-  }
-  if (stats.totalToday === 0) {
-    return "Không có deadline cứng hôm nay — tập trung vào sâu.";
-  }
-  if (stats.doneToday === stats.totalToday) {
-    return "Đã xong hết việc hôm nay. Thư giãn đi.";
-  }
-  return `Bạn đã làm ${stats.doneToday}/${stats.totalToday} việc hôm nay. Đẩy nốt nhé.`;
+function dashboardSubline(
+  stats: { totalToday: number; doneToday: number; overdue: number },
+  t: T
+): string {
+  if (stats.overdue > 0) return t("dash.subline.overdue", { n: stats.overdue });
+  if (stats.totalToday === 0) return t("dash.subline.noDeadline");
+  if (stats.doneToday === stats.totalToday) return t("dash.subline.allDone");
+  return `${stats.doneToday}/${stats.totalToday}`;
 }
 
-function timeAgo(iso: string): string {
+function timeAgo(iso: string, t: T): string {
   const ms = Date.now() - new Date(iso).getTime();
   const m = Math.round(ms / 60000);
-  if (m < 1) return "vừa xong";
-  if (m < 60) return `${m}p`;
+  if (m < 1) return t("dash.timeAgo.just");
+  if (m < 60) return t("dash.timeAgo.min", { n: m });
   const h = Math.round(m / 60);
-  if (h < 24) return `${h}h`;
+  if (h < 24) return t("dash.timeAgo.hour", { n: h });
   const d = Math.round(h / 24);
-  return `${d}d`;
+  return t("dash.timeAgo.day", { n: d });
 }
 
 function insight(
   stats: { focusWeek: number; streak: number },
-  tasks: Task[]
+  tasks: Task[],
+  t: T
 ): string {
-  // Find the subject with most focus this week
   const map = new Map<string, number>();
-  for (const t of tasks) {
-    if (!t.pomodoroMinutes) continue;
-    const key = t.title.split(/\s+/).slice(0, 2).join(" ");
-    map.set(key, (map.get(key) || 0) + t.pomodoroMinutes);
+  for (const task of tasks) {
+    if (!task.pomodoroMinutes) continue;
+    const key = task.title.split(/\s+/).slice(0, 2).join(" ");
+    map.set(key, (map.get(key) || 0) + task.pomodoroMinutes);
   }
   const top = [...map.entries()].sort((a, b) => b[1] - a[1])[0];
-  if (stats.streak >= 3) {
-    return `Streak ${stats.streak} ngày liên tiếp. Đừng để vỡ.`;
-  }
-  if (top && top[1] >= 30) {
-    return `Bạn đã focus ${top[1]}m vào "${top[0]}" — chủ đề nóng tuần này.`;
-  }
-  if (stats.focusWeek === 0) {
-    return "Chưa có phiên focus nào tuần này. Bắt đầu 1 phiên 25 phút thử xem.";
-  }
-  return `${stats.focusWeek}m focus tuần này. Mục tiêu tiếp theo: chạm 10 giờ.`;
+  if (stats.focusWeek === 0) return t("dash.insight.empty");
+  if (stats.streak >= 3)
+    return `Streak ${stats.streak} · ${t("dash.stat.streak")}`;
+  if (top && top[1] >= 30) return `${top[0]} — ${top[1]}m`;
+  return `${stats.focusWeek}m · ${t("dash.focusTitle")}`;
 }
 

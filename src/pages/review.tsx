@@ -14,7 +14,7 @@ import {
   TrendingUp,
   AlertCircle,
 } from "lucide-react";
-import { cn, formatDeadline, isPast } from "@/lib/utils";
+import { cn, formatDeadline, isPast, isRecurringClass } from "@/lib/utils";
 
 const TYPE_COLOR: Record<TaskType, string> = {
   academic: "bg-primary",
@@ -35,7 +35,11 @@ export function ReviewPage() {
       (t) => t.status === "done" && t.completedAt && new Date(t.completedAt) >= weekAgo
     );
     const overdue = tasks.filter(
-      (t) => t.status !== "done" && t.deadline && isPast(t.deadline, now)
+      (t) =>
+        t.status !== "done" &&
+        t.deadline &&
+        isPast(t.deadline, now) &&
+        !isRecurringClass(t)
     );
     const focusMin = tasks.reduce((sum, t) => sum + (t.pomodoroMinutes || 0), 0);
 

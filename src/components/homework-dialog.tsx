@@ -9,6 +9,7 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { AutoTextarea } from "@/components/ui/auto-textarea";
 import { DateTimePicker } from "@/components/date-time-picker";
 import { useTasks, type Task } from "@/hooks/use-tasks";
 import {
@@ -186,8 +187,8 @@ export function HomeworkDialog({ parentTask, open, onOpenChange }: Props) {
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[480px]">
-        <DialogHeader>
+      <DialogContent className="sm:max-w-[480px] max-h-[92vh] flex flex-col gap-0 p-0">
+        <DialogHeader className="px-6 pt-6 pb-3 shrink-0">
           <DialogTitle className="flex items-center gap-2">
             <BookOpen className="h-5 w-5 text-primary" />
             Thêm bài tập về nhà
@@ -197,8 +198,8 @@ export function HomeworkDialog({ parentTask, open, onOpenChange }: Props) {
             {parentTask.location && ` (${parentTask.location})`}
           </DialogDescription>
         </DialogHeader>
-        <form onSubmit={handleSubmit}>
-          <div className="grid gap-4 py-2">
+        <form onSubmit={handleSubmit} className="flex flex-col flex-1 min-h-0">
+          <div className="grid gap-4 px-6 py-2 overflow-y-auto flex-1 min-h-0">
             <div>
               <label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
                 Nội dung
@@ -216,11 +217,11 @@ export function HomeworkDialog({ parentTask, open, onOpenChange }: Props) {
               <label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
                 Ghi chú
               </label>
-              <textarea
+              <AutoTextarea
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
                 placeholder="Link, ghi chú thêm… (không bắt buộc)"
-                className="mt-1.5 min-h-[64px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-xs resize-y outline-none transition-[color,box-shadow] placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50"
+                className="mt-1.5 min-h-[64px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-xs outline-none transition-[color,box-shadow,height] placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50"
               />
             </div>
 
@@ -276,7 +277,7 @@ export function HomeworkDialog({ parentTask, open, onOpenChange }: Props) {
             </div>
           </div>
 
-          <DialogFooter className="gap-2 pt-2">
+          <DialogFooter className="gap-2 px-6 py-4 border-t bg-background shrink-0">
             <Button
               type="button"
               variant="outline"

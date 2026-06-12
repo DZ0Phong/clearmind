@@ -37,7 +37,11 @@ export function Sidebar() {
 
   return (
     <aside className="w-64 border-r bg-background/60 backdrop-blur-xl h-screen flex-col hidden md:flex z-10 sticky top-0 shrink-0">
-      <div className="p-5 pb-3">
+      <NavLink
+        to="/dashboard"
+        title={t("topbar.dashboardTooltip")}
+        className="cm-press p-5 pb-3 block hover:bg-accent/30 transition-colors"
+      >
         <div className="flex items-center gap-3">
           <Logo className="h-9 w-9 drop-shadow-md shrink-0" />
           <div className="flex flex-col leading-tight">
@@ -47,7 +51,7 @@ export function Sidebar() {
             </span>
           </div>
         </div>
-      </div>
+      </NavLink>
 
       <button
         onClick={() => openCreate()}
@@ -69,14 +73,15 @@ export function Sidebar() {
               key={to}
               to={to}
               className={({ isActive }) =>
-                `flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+                `relative flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-all duration-200 cm-press ${
                   isActive
-                    ? "bg-primary/10 text-primary"
+                    ? "bg-primary/10 text-primary cm-nav-active"
                     : "text-muted-foreground hover:bg-muted/50 hover:text-foreground"
                 }`
               }
             >
-              <Icon className="h-4 w-4" />
+              <span className="cm-nav-rail" aria-hidden />
+              <Icon className="h-4 w-4 transition-transform duration-200" />
               <span>{t(key)}</span>
             </NavLink>
           ))}
@@ -113,39 +118,42 @@ export function Sidebar() {
         <NavLink
           to="/import"
           className={({ isActive }) =>
-            `flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+            `relative flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-all duration-200 cm-press ${
               isActive
-                ? "bg-primary/10 text-primary"
+                ? "bg-primary/10 text-primary cm-nav-active"
                 : "text-muted-foreground hover:bg-muted/50 hover:text-foreground"
             }`
           }
         >
+          <span className="cm-nav-rail" aria-hidden />
           <CalendarPlus className="h-4 w-4" />
           <span>{t("nav.import")}</span>
         </NavLink>
         <NavLink
           to="/guide"
           className={({ isActive }) =>
-            `flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+            `relative flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-all duration-200 cm-press ${
               isActive
-                ? "bg-primary/10 text-primary"
+                ? "bg-primary/10 text-primary cm-nav-active"
                 : "text-muted-foreground hover:bg-muted/50 hover:text-foreground"
             }`
           }
         >
+          <span className="cm-nav-rail" aria-hidden />
           <Sparkles className="h-4 w-4" />
           <span>{t("nav.guide")}</span>
         </NavLink>
         <NavLink
           to="/settings"
           className={({ isActive }) =>
-            `flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+            `relative flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-all duration-200 cm-press ${
               isActive
-                ? "bg-primary/10 text-primary"
+                ? "bg-primary/10 text-primary cm-nav-active"
                 : "text-muted-foreground hover:bg-muted/50 hover:text-foreground"
             }`
           }
         >
+          <span className="cm-nav-rail" aria-hidden />
           <Settings className="h-4 w-4" />
           <span>{t("nav.settings")}</span>
         </NavLink>

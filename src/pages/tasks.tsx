@@ -38,11 +38,13 @@ import { useT } from "@/lib/i18n";
 import { HomeworkDialog } from "@/components/homework-dialog";
 import {
   formatDeadline,
+  formatTimeAgoShort,
   groupByBucket,
   BUCKET_ORDER,
   bucketByDate,
   subjectColor,
   tagStats,
+  isRecurringClass,
   type DateBucket,
 } from "@/lib/utils";
 import { cn } from "@/lib/utils";
@@ -55,16 +57,8 @@ const SORT_STORAGE_KEY = "clearmind_tasks_sort";
 const COLLAPSED_STORAGE_KEY = "clearmind_tasks_collapsed";
 const VIEW_STORAGE_KEY = "clearmind_tasks_view";
 
-// Một buổi học recurring (= buổi lên lớp) → vào tab "Lịch học". Bài tập
-// & bài thi dù gán type academic + recurrence vẫn là việc PHẢI LÀM, không
-// phải buổi học → kiểm tra tag override để route đúng tab.
-const HOMEWORK_TAGS = new Set(["bai-tap", "bai_tap", "thi", "thi-fe", "homework", "exam"]);
-const isRecurringClass = (t: Task) => {
-  if (!t.recurrence || t.type !== "academic") return false;
-  const tags = (t.tags || []).map((x) => x.toLowerCase());
-  if (tags.some((tag) => HOMEWORK_TAGS.has(tag))) return false;
-  return true;
-};
+// `isRecurringClass` lives in @/lib/utils so topbar/dashboard/review share
+// the same smart filter — buổi học không phải "việc cần làm quá hạn".
 
 const PRIORITY_RANK: Record<string, number> = { high: 0, medium: 1, low: 2 };
 
@@ -96,7 +90,7 @@ function StatusCycler({
       title={t("tooltip.toggleStatus", { label })}
       aria-label={t("tooltip.toggleStatus", { label })}
       className={cn(
-        "h-5 w-5 rounded-full border-2 mt-0.5 shrink-0 transition-all relative",
+        "h-5 w-5 rounded-full border-2 mt-0.5 shrink-0 relative transition-all duration-200 cm-press hover:scale-110",
         status === "todo" && "border-primary/50 hover:border-primary",
         status === "in-progress" &&
           "border-orange-500 bg-gradient-to-r from-orange-500 to-orange-500/0 from-50% to-50%",
@@ -104,7 +98,7 @@ function StatusCycler({
       )}
     >
       {status === "done" && (
-        <CheckCircle2 className="absolute inset-0 m-auto h-3 w-3 text-primary-foreground" />
+        <CheckCircle2 className="absolute inset-0 m-auto h-3 w-3 text-primary-foreground cm-check-pop" />
       )}
     </button>
   );
@@ -117,11 +111,13 @@ function TaskRow({
   parent,
   onHomework,
   onTagClick,
+  index = 0,
 }: {
   task: Task;
   parent?: Task;
   onHomework?: () => void;
   onTagClick?: (tag: string) => void;
+  index?: number;
 }) {
   const { cycleStatus, removeTask, snoozeTask } = useTasks();
   const { openEdit } = useTaskCommands();
@@ -150,15 +146,28 @@ function TaskRow({
 
   const isAcademic = task.type === "academic";
   const accent = isAcademic ? subjectColor(task.title) : null;
+  // Time-of-day overdue: deadline có giờ + đã qua giờ + chưa done. Date-only
+  // (vd "2026-06-12") không tính — không có giờ cụ thể để "trễ".
+  const hasTime = !!task.deadline && task.deadline.includes("T");
+  const lateBy =
+    hasTime && task.status !== "done"
+      ? formatTimeAgoShort(task.deadline!)
+      : null;
+  const isLate = !!lateBy;
 
+  // Stagger row entry — cap delay at 240ms so very long lists don't crawl.
+  const enterDelay = `${Math.min(index, 12) * 20}ms`;
   return (
     <div
       onClick={() => openEdit(task.id)}
+      style={{ animationDelay: enterDelay }}
       className={cn(
-        "group relative flex items-center justify-between gap-3 px-3.5 py-2.5 pl-4 rounded-lg border bg-background/50 hover:bg-accent/60 cursor-pointer transition-all duration-200 overflow-hidden",
+        "cm-list-enter cm-press group relative flex items-center justify-between gap-3 px-3.5 py-2.5 pl-4 rounded-lg border bg-background/50 hover:bg-accent/60 hover:brightness-[1.02] cursor-pointer overflow-hidden",
         task.priority === "high" &&
           task.status !== "done" &&
-          "border-destructive/30 bg-destructive/5 hover:bg-destructive/10"
+          "border-destructive/30 bg-destructive/5 hover:bg-destructive/10",
+        isLate &&
+          "ring-1 ring-destructive/40 border-destructive/40 bg-destructive/[0.06] hover:bg-destructive/[0.1]"
       )}
     >
       {accent && (
@@ -189,13 +198,24 @@ function TaskRow({
             {task.title}
           </p>
           <div className="flex items-center gap-1.5 mt-1 flex-wrap text-xs">
+            {isLate && (
+              <span className="cm-late-pulse font-bold px-1.5 py-0.5 rounded-md bg-destructive text-destructive-foreground inline-flex items-center gap-1 uppercase text-[10px] tracking-wide">
+                <AlertCircle className="h-3 w-3" />
+                {t("tasks.lateBy", { time: lateBy! })}
+              </span>
+            )}
             {task.priority === "high" && task.status !== "done" && (
               <span className="font-semibold px-1.5 py-0.5 rounded-md bg-destructive/15 text-destructive inline-flex items-center gap-1">
                 <Flame className="h-3 w-3" /> Gấp
               </span>
             )}
             {task.deadline && (
-              <span className="font-medium text-primary tabular-nums">
+              <span
+                className={cn(
+                  "font-medium tabular-nums",
+                  isLate ? "text-destructive font-semibold" : "text-primary"
+                )}
+              >
                 {formatDeadline(task.deadline)}
               </span>
             )}
@@ -816,19 +836,27 @@ export function TasksPage() {
                       </span>
                       <div className="flex-1 h-px bg-border ml-2" />
                     </button>
-                    {!isCollapsed && (
-                      <div className="space-y-2">
-                        {xs.map((task) => (
-                          <TaskRow
-                            key={task.id}
-                            task={task}
-                            parent={task.parentId ? taskById.get(task.parentId) : undefined}
-                            onHomework={() => setHomeworkParentId(task.id)}
-                            onTagClick={setActiveTag}
-                          />
-                        ))}
+                    <div
+                      className={cn(
+                        "cm-collapse",
+                        !isCollapsed && "is-open"
+                      )}
+                    >
+                      <div>
+                        <div className="space-y-2">
+                          {xs.map((task, i) => (
+                            <TaskRow
+                              key={task.id}
+                              task={task}
+                              index={i}
+                              parent={task.parentId ? taskById.get(task.parentId) : undefined}
+                              onHomework={() => setHomeworkParentId(task.id)}
+                              onTagClick={setActiveTag}
+                            />
+                          ))}
+                        </div>
                       </div>
-                    )}
+                    </div>
                   </div>
                 );
               })
@@ -859,15 +887,21 @@ function ViewTab({
       type="button"
       onClick={onClick}
       className={cn(
-        "inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors",
+        "cm-press inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium transition-all duration-200",
         active
           ? "bg-background shadow-sm text-foreground"
           : "text-muted-foreground hover:text-foreground hover:bg-background/50"
       )}
     >
-      <Icon className="h-4 w-4" />
+      <Icon className={cn("h-4 w-4 transition-transform duration-200", active && "scale-110")} />
       {label}
-      <span className={cn("text-[10px] tabular-nums px-1.5 rounded-full", active ? "bg-primary/15 text-primary" : "opacity-60")}>
+      <span
+        key={count}
+        className={cn(
+          "cm-count-pop text-[10px] tabular-nums px-1.5 rounded-full transition-colors",
+          active ? "bg-primary/15 text-primary" : "opacity-60"
+        )}
+      >
         {count}
       </span>
     </button>

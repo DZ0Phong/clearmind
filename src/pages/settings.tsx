@@ -6,7 +6,10 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { ModeToggle } from "@/components/mode-toggle";
+import { ThemePicker } from "@/components/theme-picker";
+import { LanguagePicker } from "@/components/language-picker";
+import { AccentPicker } from "@/components/accent-picker";
+import { useT } from "@/lib/i18n";
 import { Button } from "@/components/ui/button";
 import {
   Settings,
@@ -22,8 +25,14 @@ import {
   Power,
   Save,
   RotateCcw,
+  Bug,
+  Copy,
 } from "lucide-react";
+import { readErrorLog, clearErrorLog, type ErrorEntry } from "@/lib/error-log";
 import { useTasks } from "@/hooks/use-tasks";
+import { tagStats } from "@/lib/utils";
+import { Hash } from "lucide-react";
+import { useMemo } from "react";
 import { useToast } from "@/components/toast";
 import { downloadICS } from "@/lib/ics";
 import {
@@ -51,6 +60,7 @@ export function SettingsPage() {
     requestNotifications,
   } = useTasks();
   const { toast } = useToast();
+  const t = useT();
   const fileRef = useRef<HTMLInputElement>(null);
 
   const handleExport = () => {
@@ -122,10 +132,8 @@ export function SettingsPage() {
   return (
     <div className="h-full flex flex-col gap-6">
       <div className="shrink-0">
-        <h2 className="text-3xl font-bold tracking-tight">Settings</h2>
-        <p className="text-muted-foreground mt-1">
-          Manage your app preferences and configurations.
-        </p>
+        <h2 className="text-3xl font-bold tracking-tight">{t("settings.title")}</h2>
+        <p className="text-muted-foreground mt-1">{t("settings.subtitle")}</p>
       </div>
 
       <div className="flex-1 overflow-y-auto max-w-3xl">
@@ -136,19 +144,37 @@ export function SettingsPage() {
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <Settings className="h-5 w-5 text-primary" />
-                Appearance
+                {t("settings.appearance")}
               </CardTitle>
-              <CardDescription>Customize how Clearmind looks on your device.</CardDescription>
+              <CardDescription>{t("settings.appearance.desc")}</CardDescription>
             </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="flex items-center justify-between p-4 rounded-xl border bg-background/50">
-                <div>
-                  <h3 className="font-medium">Theme Preference</h3>
+            <CardContent className="space-y-3">
+              <div className="flex items-center justify-between gap-4 flex-wrap p-4 rounded-xl border bg-background/50">
+                <div className="min-w-0">
+                  <h3 className="font-medium">{t("settings.theme.label")}</h3>
                   <p className="text-sm text-muted-foreground">
-                    Light, dark, or follow system.
+                    {t("settings.theme.hint")}
                   </p>
                 </div>
-                <ModeToggle />
+                <ThemePicker />
+              </div>
+              <div className="flex items-center justify-between gap-4 flex-wrap p-4 rounded-xl border bg-background/50">
+                <div className="min-w-0">
+                  <h3 className="font-medium">{t("settings.accent.label")}</h3>
+                  <p className="text-sm text-muted-foreground">
+                    {t("settings.accent.hint")}
+                  </p>
+                </div>
+                <AccentPicker />
+              </div>
+              <div className="flex items-center justify-between gap-4 flex-wrap p-4 rounded-xl border bg-background/50">
+                <div className="min-w-0">
+                  <h3 className="font-medium">{t("settings.language.label")}</h3>
+                  <p className="text-sm text-muted-foreground">
+                    {t("settings.language.hint")}
+                  </p>
+                </div>
+                <LanguagePicker />
               </div>
             </CardContent>
           </Card>
@@ -161,12 +187,10 @@ export function SettingsPage() {
                 ) : (
                   <BellOff className="h-5 w-5 text-muted-foreground" />
                 )}
-                Notifications
+                {t("settings.notifTitle")}
               </CardTitle>
               <CardDescription>
-                {isCliMode()
-                  ? "CLI mode đang chạy → toast OS gốc bay lên cả khi browser đóng. Không cần bật browser notification nữa."
-                  : "Nhắc bạn trước deadline. Chỉ hoạt động khi trình duyệt mở."}
+                {isCliMode() ? t("settings.notifDescCli") : t("settings.notifDescWeb")}
               </CardDescription>
             </CardHeader>
             {!isCliMode() && (
@@ -174,17 +198,21 @@ export function SettingsPage() {
                 <div className="flex items-center justify-between p-4 rounded-xl border bg-background/50">
                   <div>
                     <h3 className="font-medium">
-                      {notificationsEnabled ? "Đang bật" : "Đang tắt"}
+                      {notificationsEnabled
+                        ? t("settings.notifOn")
+                        : t("settings.notifOff")}
                     </h3>
                     <p className="text-sm text-muted-foreground">
-                      Đặt mức nhắc cho từng task khi tạo / sửa.
+                      {t("settings.notifHint")}
                     </p>
                   </div>
                   <Button
                     variant={notificationsEnabled ? "outline" : "default"}
                     onClick={handleNotify}
                   >
-                    {notificationsEnabled ? "OK" : "Bật notifications"}
+                    {notificationsEnabled
+                      ? t("settings.notifBtnOk")
+                      : t("settings.notifBtnEnable")}
                   </Button>
                 </div>
               </CardContent>
@@ -194,9 +222,10 @@ export function SettingsPage() {
           <Card className="border-primary/10 shadow-sm bg-card">
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
-                <Keyboard className="h-5 w-5 text-primary" /> Phím tắt
+                <Keyboard className="h-5 w-5 text-primary" />{" "}
+                {t("settings.shortcutsTitle")}
               </CardTitle>
-              <CardDescription>Mở Command Palette từ bất kỳ đâu.</CardDescription>
+              <CardDescription>{t("settings.shortcutsDesc")}</CardDescription>
             </CardHeader>
             <CardContent>
               <div className="grid sm:grid-cols-2 gap-3">
@@ -300,9 +329,222 @@ export function SettingsPage() {
               </div>
             </CardContent>
           </Card>
+
+          <TagsCard />
+          <ErrorLogCard />
         </div>
       </div>
     </div>
+  );
+}
+
+function TagsCard() {
+  const { tasks, updateTask } = useTasks();
+  const { toast } = useToast();
+  const t = useT();
+  const stats = useMemo(() => tagStats(tasks), [tasks]);
+
+  const renameTag = (oldName: string) => {
+    const raw = prompt(t("settings.tagRenamePrompt", { old: oldName }), oldName);
+    const next = raw?.trim().toLowerCase();
+    if (!next || next === oldName) return;
+    for (const task of tasks) {
+      if (!task.tags?.includes(oldName)) continue;
+      const merged = Array.from(
+        new Set(task.tags.map((x) => (x === oldName ? next : x)))
+      );
+      updateTask(task.id, { tags: merged });
+    }
+    toast({ title: t("settings.tagRenamedToast", { old: oldName, new: next }) });
+  };
+
+  const mergeTag = (oldName: string) => {
+    const raw = prompt(t("settings.tagMergePrompt", { old: oldName }));
+    const target = raw?.trim().toLowerCase();
+    if (!target || target === oldName) return;
+    for (const task of tasks) {
+      if (!task.tags?.includes(oldName)) continue;
+      const merged = Array.from(
+        new Set(task.tags.map((x) => (x === oldName ? target : x)))
+      );
+      updateTask(task.id, { tags: merged });
+    }
+    toast({ title: t("settings.tagMergedToast", { old: oldName, new: target }) });
+  };
+
+  const deleteTag = (name: string) => {
+    const count = stats.find((s) => s.name === name)?.count ?? 0;
+    if (!confirm(t("settings.tagDeleteConfirm", { name, n: count }))) return;
+    for (const task of tasks) {
+      if (!task.tags?.includes(name)) continue;
+      const remain = task.tags.filter((x) => x !== name);
+      updateTask(task.id, { tags: remain.length ? remain : undefined });
+    }
+    toast({ title: t("settings.tagDeletedToast", { name }) });
+  };
+
+  return (
+    <Card className="border-primary/10 shadow-sm bg-card">
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2">
+          <Hash className="h-5 w-5 text-primary" />
+          {t("settings.tagsTitle")}
+        </CardTitle>
+        <CardDescription>{t("settings.tagsDesc")}</CardDescription>
+      </CardHeader>
+      <CardContent>
+        {stats.length === 0 ? (
+          <p className="text-sm text-muted-foreground text-center py-4">
+            {t("settings.tagsEmpty")}
+          </p>
+        ) : (
+          <div className="space-y-1.5 max-h-[360px] overflow-y-auto pr-1">
+            {stats.map((s) => (
+              <div
+                key={s.name}
+                className="flex items-center gap-2 p-2.5 rounded-lg border bg-background/50 hover:bg-accent/30 transition-colors group"
+              >
+                <span className="text-sm font-semibold tabular-nums text-muted-foreground w-10 text-right">
+                  {s.count}
+                </span>
+                <span className="font-medium flex-1 truncate text-sm">
+                  #{s.name}
+                </span>
+                <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => renameTag(s.name)}
+                    className="h-7 text-xs"
+                  >
+                    {t("settings.tagRename")}
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => mergeTag(s.name)}
+                    className="h-7 text-xs"
+                  >
+                    {t("settings.tagMerge")}
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => deleteTag(s.name)}
+                    className="h-7 text-xs text-destructive hover:text-destructive"
+                  >
+                    {t("settings.tagDelete")}
+                  </Button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+function ErrorLogCard() {
+  const { toast } = useToast();
+  const t = useT();
+  const [entries, setEntries] = useState<ErrorEntry[]>(() => readErrorLog());
+
+  const refresh = () => setEntries(readErrorLog());
+  const clear = () => {
+    clearErrorLog();
+    setEntries([]);
+    toast({ title: t("settings.errLogCleared") });
+  };
+  const copyAll = async () => {
+    try {
+      await navigator.clipboard.writeText(JSON.stringify(entries, null, 2));
+      toast({ title: t("settings.copySuccess") });
+    } catch {
+      toast({ title: t("settings.copyFail"), variant: "destructive" });
+    }
+  };
+
+  return (
+    <Card className="border-primary/10 shadow-sm bg-card">
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2">
+          <Bug className="h-5 w-5 text-primary" />
+          {t("settings.errLogTitle")}
+        </CardTitle>
+        <CardDescription>
+          {entries.length === 0
+            ? t("settings.errLogEmpty")
+            : t("settings.errLogCount", { n: entries.length })}
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        <div className="flex items-center gap-2">
+          <Button variant="outline" size="sm" onClick={refresh} className="gap-2">
+            <RotateCcw className="h-3.5 w-3.5" /> {t("settings.refresh")}
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={copyAll}
+            disabled={entries.length === 0}
+            className="gap-2"
+          >
+            <Copy className="h-3.5 w-3.5" /> {t("settings.copyJson")}
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={clear}
+            disabled={entries.length === 0}
+            className="gap-2 text-destructive hover:text-destructive ml-auto"
+          >
+            <Trash2 className="h-3.5 w-3.5" /> {t("settings.clear")}
+          </Button>
+        </div>
+        {entries.length === 0 ? (
+          <p className="text-sm text-muted-foreground text-center py-4">
+            {t("settings.errLogClean")}
+          </p>
+        ) : (
+          <div className="space-y-2 max-h-[420px] overflow-y-auto">
+            {entries.map((e, i) => (
+              <details
+                key={i}
+                className="rounded-lg border bg-background/50 p-3 group"
+              >
+                <summary className="cursor-pointer list-none flex items-start justify-between gap-3">
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-2 text-[10px] uppercase tracking-wider font-semibold">
+                      <span className="px-1.5 py-0.5 rounded bg-destructive/15 text-destructive">
+                        {e.source}
+                      </span>
+                      <span className="text-muted-foreground tabular-nums">
+                        {new Date(e.at).toLocaleString("vi-VN")}
+                      </span>
+                      <span className="text-muted-foreground truncate">
+                        · {e.url}
+                      </span>
+                    </div>
+                    <p className="text-sm font-medium mt-1 break-words [overflow-wrap:anywhere]">
+                      {e.message}
+                    </p>
+                  </div>
+                </summary>
+                {(e.stack || e.componentStack) && (
+                  <pre className="mt-2 p-2 rounded bg-muted text-[10px] leading-relaxed overflow-auto max-h-60 whitespace-pre-wrap">
+                    {e.stack}
+                    {e.componentStack
+                      ? "\n\nComponent stack:" + e.componentStack
+                      : ""}
+                  </pre>
+                )}
+              </details>
+            ))}
+          </div>
+        )}
+      </CardContent>
+    </Card>
   );
 }
 

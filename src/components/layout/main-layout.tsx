@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { ModeToggle } from "@/components/mode-toggle";
 import { useTasks } from "@/hooks/use-tasks";
 import { useTaskCommands } from "@/components/task-commands";
-import { isPast } from "@/lib/utils";
+import { isPast, isRecurringClass } from "@/lib/utils";
 import { useTickingNow } from "@/lib/use-ticking-now";
 import { useCliHealth } from "@/lib/use-cli-health";
 import { useI18n, useT } from "@/lib/i18n";
@@ -38,7 +38,11 @@ function TopBar() {
   const overdueCount = useMemo(
     () =>
       tasks.filter(
-        (t) => t.status !== "done" && t.deadline && isPast(t.deadline, now)
+        (t) =>
+          t.status !== "done" &&
+          t.deadline &&
+          isPast(t.deadline, now) &&
+          !isRecurringClass(t)
       ).length,
     [tasks, now]
   );
@@ -101,7 +105,7 @@ function TopBar() {
           <Link
             to="/tasks"
             title={t("topbar.overdue", { n: overdueCount })}
-            className="hidden md:inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-destructive/10 text-destructive text-xs font-semibold hover:bg-destructive/15 transition-colors"
+            className="cm-press cm-late-pulse hidden md:inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-destructive/10 text-destructive text-xs font-semibold hover:bg-destructive/15 transition-colors"
           >
             <AlertCircle className="h-3.5 w-3.5" />
             {t("topbar.overdue", { n: overdueCount })}

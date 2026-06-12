@@ -6,6 +6,7 @@ import dayGridPlugin from "@fullcalendar/daygrid";
 import timeGridPlugin from "@fullcalendar/timegrid";
 import interactionPlugin from "@fullcalendar/interaction";
 import {
+  AlertCircle,
   AlignLeft,
   BookOpen,
   Calendar,
@@ -819,10 +820,10 @@ function EventDetailDialog({
   const t = useT();
   return (
     <Dialog open={open} onOpenChange={(b) => !b && onClose()}>
-      <DialogContent className="sm:max-w-[460px]">
+      <DialogContent className="sm:max-w-[460px] max-h-[92vh] flex flex-col gap-0 p-0">
         {task && (
           <>
-            <DialogHeader>
+            <DialogHeader className="px-6 pt-6 pb-3 shrink-0">
               <DialogTitle className="text-xl pr-8 leading-snug">
                 <span className="min-w-0 break-words">{task.title}</span>
               </DialogTitle>
@@ -850,7 +851,7 @@ function EventDetailDialog({
               </div>
             </DialogHeader>
 
-            <div className="py-2 space-y-3">
+            <div className="px-6 py-2 space-y-3 flex-1 min-h-0 overflow-y-auto">
               <div className="grid gap-2">
                 {task.deadline && (
                   <div className="flex items-center gap-2 text-sm">
@@ -877,59 +878,59 @@ function EventDetailDialog({
                   </p>
                 </div>
               )}
+            </div>
 
-              <div className="pt-3 border-t border-border/50 space-y-3">
-                {task.status !== "done" && (
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <Clock4 className="h-3.5 w-3.5 text-muted-foreground" />
-                    <span className="text-xs text-muted-foreground">{t("calendar.snooze")}:</span>
-                    {SNOOZE_OPTS.map((opt) => (
-                      <button
-                        key={opt.label}
-                        onClick={() => onSnooze(opt.ms)}
-                        className="text-xs px-2 py-0.5 rounded-full bg-secondary hover:bg-primary/15 hover:text-primary transition-colors font-medium"
-                      >
-                        +{opt.label}
-                      </button>
-                    ))}
-                  </div>
-                )}
+            <div className="px-6 py-4 border-t bg-background shrink-0 space-y-3">
+              {task.status !== "done" && (
+                <div className="flex items-center gap-2 flex-wrap">
+                  <Clock4 className="h-3.5 w-3.5 text-muted-foreground" />
+                  <span className="text-xs text-muted-foreground">{t("calendar.snooze")}:</span>
+                  {SNOOZE_OPTS.map((opt) => (
+                    <button
+                      key={opt.label}
+                      onClick={() => onSnooze(opt.ms)}
+                      className="text-xs px-2 py-0.5 rounded-full bg-secondary hover:bg-primary/15 hover:text-primary transition-colors font-medium"
+                    >
+                      +{opt.label}
+                    </button>
+                  ))}
+                </div>
+              )}
 
-                <div className="flex items-center justify-between flex-wrap gap-2">
-                  <span className="text-sm font-medium">
-                    {t("calendar.statusLabel")}:{" "}
-                    <span className="text-muted-foreground">
-                      {t(task.status === "todo" ? "status.todo" : task.status === "in-progress" ? "status.inProgress" : "status.done")}
-                    </span>
+              <div className="flex items-center justify-between flex-wrap gap-2">
+                <span className="text-sm font-medium">
+                  {t("calendar.statusLabel")}:{" "}
+                  <span className="text-muted-foreground">
+                    {t(task.status === "todo" ? "status.todo" : task.status === "in-progress" ? "status.inProgress" : "status.done")}
                   </span>
-                  <div className="flex gap-2 flex-wrap">
-                    {task.type === "academic" && (
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        className="gap-2"
-                        onClick={onHomework}
-                      >
-                        <BookOpen className="w-3.5 h-3.5" /> {t("tasks.addHomework")}
-                      </Button>
-                    )}
+                </span>
+                <div className="flex gap-2 flex-wrap">
+                  {task.type === "academic" && (
                     <Button
                       size="sm"
                       variant="outline"
                       className="gap-2"
-                      onClick={onEdit}
+                      onClick={onHomework}
                     >
-                      <Pencil className="w-3.5 h-3.5" /> {t("common.edit")}
+                      <BookOpen className="w-3.5 h-3.5" /> {t("tasks.addHomework")}
                     </Button>
-                    <Button
-                      variant="destructive"
-                      size="sm"
-                      className="gap-2"
-                      onClick={onDelete}
-                    >
-                      <Trash2 className="w-3.5 h-3.5" /> {t("common.delete")}
-                    </Button>
-                  </div>
+                  )}
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="gap-2"
+                    onClick={onEdit}
+                  >
+                    <Pencil className="w-3.5 h-3.5" /> {t("common.edit")}
+                  </Button>
+                  <Button
+                    variant="destructive"
+                    size="sm"
+                    className="gap-2"
+                    onClick={onDelete}
+                  >
+                    <Trash2 className="w-3.5 h-3.5" /> {t("common.delete")}
+                  </Button>
                 </div>
               </div>
             </div>
@@ -969,8 +970,8 @@ function DayOverviewDialog({
 
   return (
     <Dialog open={!!date} onOpenChange={(b) => !b && onClose()}>
-      <DialogContent className="sm:max-w-[460px]">
-        <DialogHeader>
+      <DialogContent className="sm:max-w-[460px] max-h-[92vh] flex flex-col gap-0 p-0">
+        <DialogHeader className="px-6 pt-6 pb-3 shrink-0">
           <DialogTitle className="capitalize">
             {date &&
               new Date(date).toLocaleDateString("vi-VN", {
@@ -987,7 +988,7 @@ function DayOverviewDialog({
           </DialogDescription>
         </DialogHeader>
 
-        <div className="py-1 space-y-3">
+        <div className="px-6 py-1 flex-1 min-h-0 overflow-y-auto">
           {sorted.length > 0 ? (
             <div className="space-y-2">
               {sorted.map((task) => (
@@ -1008,6 +1009,9 @@ function DayOverviewDialog({
               </p>
             </div>
           )}
+        </div>
+
+        <div className="px-6 py-4 border-t bg-background shrink-0">
           <Button
             onClick={onCreate}
             className="w-full gap-2"
@@ -1430,6 +1434,22 @@ function DaySidePanel({
       )[0] ?? null;
   }, [timed, isToday, now]);
 
+  // Past-time tasks today that user hasn't done. Hidden from "Next up" since
+  // they're behind clock, but easy to miss on the timeline — surface them.
+  const overdueToday = useMemo(() => {
+    if (!isToday) return [];
+    const tNow = now.getTime();
+    return timed
+      .filter(
+        (t) =>
+          t.status !== "done" && new Date(t.deadline!).getTime() < tNow
+      )
+      .sort(
+        (a, b) =>
+          new Date(b.deadline!).getTime() - new Date(a.deadline!).getTime()
+      );
+  }, [timed, isToday, now]);
+
   const freeSlots = useMemo(
     () => computeFreeSlots(timed, date, isToday, now).slice(0, 4),
     [timed, date, isToday, now]
@@ -1442,6 +1462,45 @@ function DaySidePanel({
         isToday={isToday}
         stats={stats}
       />
+
+      {overdueToday.length > 0 && (
+        <SidePanelCard
+          icon={AlertCircle}
+          title="Đã quá giờ"
+          count={overdueToday.length}
+          variant="destructive"
+          hint="Snooze hoặc tick xong để dọn timeline."
+        >
+          <div className="space-y-1">
+            {overdueToday.map((t) => {
+              const tMs = new Date(t.deadline!).getTime();
+              const diffMin = Math.max(1, Math.floor((now.getTime() - tMs) / 60_000));
+              const ago =
+                diffMin < 60
+                  ? `${diffMin}p`
+                  : `${Math.floor(diffMin / 60)}h${diffMin % 60 ? ` ${diffMin % 60}p` : ""}`;
+              return (
+                <button
+                  key={t.id}
+                  onClick={() => onPickEvent(t.id)}
+                  className="w-full text-left px-2.5 py-1.5 rounded-md text-sm hover:bg-destructive/10 transition-colors flex items-center gap-2"
+                >
+                  <span
+                    className={cn(
+                      "h-1.5 w-1.5 rounded-full shrink-0",
+                      subjectColor(t.title).dot
+                    )}
+                  />
+                  <span className="truncate flex-1">{t.title}</span>
+                  <span className="text-[10px] font-semibold text-destructive tabular-nums shrink-0">
+                    trễ {ago}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        </SidePanelCard>
+      )}
 
       {nextUp && <NextUpCard task={nextUp} onPick={() => onPickEvent(nextUp.id)} />}
 
@@ -1599,6 +1658,7 @@ interface SidePanelCardProps {
   title: string;
   count?: number;
   hint?: string;
+  variant?: "default" | "destructive";
   children: React.ReactNode;
 }
 
@@ -1607,16 +1667,38 @@ function SidePanelCard({
   title,
   count,
   hint,
+  variant = "default",
   children,
 }: SidePanelCardProps) {
+  const destructive = variant === "destructive";
   return (
-    <div className="rounded-xl border bg-card p-3">
+    <div
+      className={cn(
+        "rounded-xl border bg-card p-3",
+        destructive && "border-destructive/40 bg-destructive/5 ring-1 ring-destructive/20"
+      )}
+    >
       <div className="flex items-center justify-between mb-2">
-        <p className="text-xs font-semibold inline-flex items-center gap-1.5">
-          <Icon className="h-3.5 w-3.5 text-muted-foreground" />
+        <p
+          className={cn(
+            "text-xs font-semibold inline-flex items-center gap-1.5",
+            destructive && "text-destructive"
+          )}
+        >
+          <Icon
+            className={cn(
+              "h-3.5 w-3.5",
+              destructive ? "text-destructive" : "text-muted-foreground"
+            )}
+          />
           {title}
           {typeof count === "number" && (
-            <span className="text-[10px] text-muted-foreground tabular-nums">
+            <span
+              className={cn(
+                "text-[10px] tabular-nums",
+                destructive ? "text-destructive font-bold" : "text-muted-foreground"
+              )}
+            >
               ({count})
             </span>
           )}

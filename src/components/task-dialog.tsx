@@ -22,6 +22,7 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import { AutoTextarea } from "@/components/ui/auto-textarea";
 import { TagInput } from "@/components/tag-input";
 import { VoiceMic } from "@/components/voice-mic";
 import { DateTimePicker } from "@/components/date-time-picker";
@@ -147,6 +148,9 @@ export function TaskDialog(props: Mode) {
   );
   const [notify, setNotify] = useState<ReminderPref | "">(existing?.notify ?? "");
   const [autoApplied, setAutoApplied] = useState(false);
+  // User clicked type/priority manually → never auto-override their choice.
+  const [userPickedType, setUserPickedType] = useState(false);
+  const [userPickedPriority, setUserPickedPriority] = useState(false);
   // Track whether we already auto-defaulted notify when a deadline appeared,
   // so we don't override a user who explicitly cleared it to "Không nhắc".
   const [notifyAutoApplied, setNotifyAutoApplied] = useState(false);
@@ -167,6 +171,8 @@ export function TaskDialog(props: Mode) {
       setRecurrenceEndAt("");
       setNotify("");
       setAutoApplied(false);
+      setUserPickedType(false);
+      setUserPickedPriority(false);
       setNotifyAutoApplied(false);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -175,8 +181,9 @@ export function TaskDialog(props: Mode) {
   const classification = useMemo(() => classifyTitle(title), [title]);
   useEffect(() => {
     if (!isEdit && !autoApplied && title.length > 6) {
-      setType(classification.type);
-      setPriority(classification.priority);
+      // Only push the classifier into fields the user hasn't manually set.
+      if (!userPickedType) setType(classification.type);
+      if (!userPickedPriority) setPriority(classification.priority);
       // Auto-suggest tag từ title + description: mã môn (PRN222 → prn222),
       // "bài tập" → bai-tap, "thi" → thi. Merge với tag user đã gõ, không
       // bao giờ xoá tag đã có.
@@ -184,7 +191,7 @@ export function TaskDialog(props: Mode) {
       if (suggested.length > tags.length) setTags(suggested);
       setAutoApplied(true);
     }
-  }, [title, description, classification, isEdit, autoApplied, tags]);
+  }, [title, description, classification, isEdit, autoApplied, tags, userPickedType, userPickedPriority]);
 
   // NL deadline guess
   useEffect(() => {
@@ -266,8 +273,8 @@ export function TaskDialog(props: Mode) {
           )}
         </DialogTrigger>
       )}
-      <DialogContent className="sm:max-w-[520px] max-h-[92vh] overflow-y-auto">
-        <DialogHeader>
+      <DialogContent className="sm:max-w-[520px] max-h-[92vh] flex flex-col gap-0 p-0">
+        <DialogHeader className="px-6 pt-6 pb-3 shrink-0">
           <DialogTitle className="flex items-center gap-2">
             <Sparkles className="h-5 w-5 text-primary" />
             {isEdit ? t("dialog.editTitle") : t("dialog.createTitle")}
@@ -278,8 +285,8 @@ export function TaskDialog(props: Mode) {
               : (t("dialog.createTitle"))}
           </DialogDescription>
         </DialogHeader>
-        <form onSubmit={handleSubmit}>
-          <div className="grid gap-4 py-2">
+        <form onSubmit={handleSubmit} className="flex flex-col flex-1 min-h-0">
+          <div className="grid gap-4 px-6 py-2 overflow-y-auto flex-1 min-h-0">
             {/* Title + Voice */}
             <div>
               <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
@@ -294,19 +301,25 @@ export function TaskDialog(props: Mode) {
                   className="flex-1 h-10"
                 />
                 <VoiceMic
-                  onText={(t) =>
-                    setTitle((prev) => (prev ? prev + " " + t : t))
-                  }
+                  onText={(text, isFinal) => {
+                    // Interim chunks repeat as user speaks — only commit on
+                    // final to avoid stacking partial transcripts.
+                    if (!isFinal) return;
+                    const clean = text.trim();
+                    if (!clean) return;
+                    setTitle((prev) => (prev ? prev + " " + clean : clean));
+                  }}
                   className="h-10 w-10"
                 />
               </div>
-              {/* Classifier + NL parse preview */}
+              {/* Classifier + NL parse preview — pill reflects ACTUAL state
+                  (auto-applied or manually picked), not raw classifier guess. */}
               {(title.length > 3 || nlHint) && (
                 <div className="flex flex-wrap gap-1.5 mt-2">
                   {title.length > 3 && (
                     <span className="inline-flex items-center gap-1 rounded-full bg-primary/10 text-primary px-2 py-0.5 text-xs font-medium">
                       <Sparkles className="h-3 w-3" />
-                      {classification.type} · {classification.priority}
+                      {t(`type.${type}`)} · {t(`priority.${priority}`)}
                     </span>
                   )}
                   {nlHint && (
@@ -328,11 +341,11 @@ export function TaskDialog(props: Mode) {
               <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
                 {t("dialog.label.description")}
               </label>
-              <textarea
+              <AutoTextarea
                 placeholder={t("dialog.placeholder.description")}
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
-                className="mt-1.5 min-h-[68px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-xs resize-y outline-none transition-[color,box-shadow] placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50"
+                className="mt-1.5 min-h-[68px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-xs outline-none transition-[color,box-shadow,height] placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50"
               />
             </div>
 
@@ -347,7 +360,10 @@ export function TaskDialog(props: Mode) {
                     <button
                       key={opt.value}
                       type="button"
-                      onClick={() => setType(opt.value)}
+                      onClick={() => {
+                        setType(opt.value);
+                        setUserPickedType(true);
+                      }}
                       className={cn(
                         "inline-flex items-center justify-center gap-1.5 py-2 rounded-lg border text-xs font-medium transition-colors",
                         active
@@ -379,7 +395,10 @@ export function TaskDialog(props: Mode) {
                       key={opt.value}
                       type="button"
                       data-active={active}
-                      onClick={() => setPriority(opt.value)}
+                      onClick={() => {
+                        setPriority(opt.value);
+                        setUserPickedPriority(true);
+                      }}
                       className={cn(
                         "flex items-center justify-center gap-1.5 py-2 rounded-lg border text-sm font-medium transition-all",
                         opt.accent,
@@ -494,7 +513,7 @@ export function TaskDialog(props: Mode) {
               <TagInput value={tags} onChange={setTags} className="mt-1.5" />
             </div>
           </div>
-          <DialogFooter className="gap-2 pt-2">
+          <DialogFooter className="gap-2 px-6 py-4 border-t bg-background shrink-0">
             <Button
               type="button"
               variant="outline"
