@@ -49,8 +49,22 @@ function getLang() {
   } catch (_) { return "vi"; }
 }
 const I18N = {
-  vi: { reminderDefault: "Tới giờ rồi.", testTitle: "Toast thử", testBody: "Tiếng Việt: ờ ầ ã ô ư ạ ặ đ → encoding OK." },
-  en: { reminderDefault: "Time's up.", testTitle: "Test toast", testBody: "If you see this clearly, the notification system is working." },
+  vi: {
+    reminderDefault: "Tới giờ rồi.",
+    testTitle: "Toast thử",
+    testBody: "Tiếng Việt: ờ ầ ã ô ư ạ ặ đ → encoding OK.",
+    btnSnooze10: "Hoãn 10p",
+    btnSnooze60: "Hoãn 1h",
+    btnDone: "Xong",
+  },
+  en: {
+    reminderDefault: "Time's up.",
+    testTitle: "Test toast",
+    testBody: "If you see this clearly, the notification system is working.",
+    btnSnooze10: "Snooze 10m",
+    btnSnooze60: "Snooze 1h",
+    btnDone: "Done",
+  },
 };
 
 function offsetMs(pref) {
@@ -75,6 +89,8 @@ function fireWindowsToast({ title, message, icon, taskId }) {
     fireFallback({ title, message, icon });
     return;
   }
+  const lang = getLang();
+  const i = I18N[lang];
   const proc = spawn(
     "powershell.exe",
     [
@@ -91,6 +107,9 @@ function fireWindowsToast({ title, message, icon, taskId }) {
         CM_ICON: icon ? String(icon) : "",
         CM_TASK_ID: taskId ? String(taskId) : "",
         CM_PORT: portRef ? String(portRef) : "",
+        CM_BTN_SNOOZE10: i.btnSnooze10,
+        CM_BTN_SNOOZE60: i.btnSnooze60,
+        CM_BTN_DONE: i.btnDone,
       },
       windowsHide: true,
       stdio: ["ignore", "ignore", "pipe"],
@@ -147,7 +166,11 @@ function fire(task) {
 
 function fireTest() {
   const lang = getLang();
+  // Use sentinel id so /api/notification-action recognizes the test toast
+  // and no-ops its action buttons. Without an id, toast.ps1 skips the
+  // <actions> block entirely — user wouldn't see the new 3-button UI.
   fire({
+    id: "__clearmind_test__",
     title: I18N[lang].testTitle,
     description: I18N[lang].testBody,
   });

@@ -56,29 +56,27 @@ interface CalendarViewProps {
 
 type ViewMode = "month" | "week" | "day" | "agenda";
 
-interface TypeMeta {
-  label: string;
-  /** Fixed color for non-academic types. Academic uses subjectColor() so
-   *  different subjects (Toán/Lý/...) stand out from each other. */
-  color: string;
-}
-
-const TYPE: Record<TaskType, TypeMeta> = {
-  academic: { label: "Học tập", color: "#6366f1" },
-  work: { label: "Công việc", color: "#f97316" },
-  personal: { label: "Cá nhân", color: "#10b981" },
-  other: { label: "Khác", color: "#64748b" },
+// Type-to-color map only. Labels resolve through i18n at render time
+// (t("type.academic") etc.) so language toggle propagates everywhere.
+// Academic uses subjectColor() so different subjects (Math/Physics/...)
+// stand out from each other; other types use the fixed colors below.
+const TYPE_COLOR: Record<TaskType, string> = {
+  academic: "#6366f1",
+  work: "#f97316",
+  personal: "#10b981",
+  other: "#64748b",
 };
 
 const VIEWS: ReadonlyArray<{
   key: ViewMode;
-  label: string;
+  /** i18n key — resolved with t() at render time. */
+  labelKey: string;
   icon: typeof Calendar;
 }> = [
-  { key: "month", label: "Tháng", icon: Calendar },
-  { key: "week", label: "Tuần", icon: CalendarRange },
-  { key: "day", label: "Ngày", icon: CalendarDays },
-  { key: "agenda", label: "Agenda", icon: List },
+  { key: "month", labelKey: "calendar.view.month", icon: Calendar },
+  { key: "week", labelKey: "calendar.view.week", icon: CalendarRange },
+  { key: "day", labelKey: "calendar.view.day", icon: CalendarDays },
+  { key: "agenda", labelKey: "calendar.view.agenda", icon: List },
 ];
 
 const FC_VIEW: Record<Exclude<ViewMode, "agenda">, string> = {
@@ -99,7 +97,7 @@ const dayKey = (d: Date) =>
 function eventColor(task: Task): string {
   if (task.status === "done") return "var(--muted)";
   if (task.type === "academic") return subjectColor(task.title).raw;
-  return TYPE[task.type].color;
+  return TYPE_COLOR[task.type];
 }
 
 function loadStoredView(): ViewMode {
@@ -144,6 +142,7 @@ export function CalendarView({ initialDate }: CalendarViewProps = {}) {
   const { tasks, updateTask, removeTask, snoozeTask } = useTasks();
   const { openEdit, openCreate } = useTaskCommands();
   const navigate = useNavigate();
+  const t = useT();
 
   const [view, setView] = useState<ViewMode>(loadStoredView);
   const [hiddenTypes, setHiddenTypes] = useState<Set<TaskType>>(new Set());
@@ -311,7 +310,7 @@ export function CalendarView({ initialDate }: CalendarViewProps = {}) {
                 initialDate={initialDate}
                 locale="vi"
                 firstDay={1}
-                buttonText={{ today: "Hôm nay" }}
+                buttonText={{ today: t("calendar.today") }}
                 headerToolbar={{ left: "prev,next today", center: "title", right: "" }}
                 events={fcEvents}
                 height="100%"
@@ -353,8 +352,8 @@ export function CalendarView({ initialDate }: CalendarViewProps = {}) {
             initialDate={initialDate}
             locale="vi"
             firstDay={1}
-            buttonText={{ today: "Hôm nay" }}
-            allDayText="Cả ngày"
+            buttonText={{ today: t("calendar.today") }}
+            allDayText={t("common.allDay")}
             headerToolbar={{ left: "prev,next today", center: "title", right: "" }}
             events={fcEvents}
             height="100%"
@@ -376,7 +375,7 @@ export function CalendarView({ initialDate }: CalendarViewProps = {}) {
             selectable
             select={handleSelect}
             dayMaxEvents={view === "month" ? 3 : false}
-            moreLinkText={(n) => `+${n} nữa`}
+            moreLinkText={(n) => t("calendar.moreLinkText", { n })}
             eventContent={renderFcEvent}
           />
         )}
@@ -456,10 +455,11 @@ function CalendarToolbar({
   hideDone,
   onToggleDone,
 }: CalendarToolbarProps) {
+  const t = useT();
   return (
     <div className="flex flex-wrap items-center gap-2 shrink-0">
       <div className="inline-flex rounded-lg border bg-muted/40 p-0.5">
-        {VIEWS.map(({ key, label, icon: Icon }) => (
+        {VIEWS.map(({ key, labelKey, icon: Icon }) => (
           <button
             key={key}
             onClick={() => onViewChange(key)}
@@ -471,7 +471,7 @@ function CalendarToolbar({
             )}
           >
             <Icon className="h-3.5 w-3.5" />
-            {label}
+            {t(labelKey)}
           </button>
         ))}
       </div>
@@ -479,13 +479,18 @@ function CalendarToolbar({
       <div className="h-6 w-px bg-border" />
 
       <div className="flex items-center gap-1 flex-wrap">
-        {(Object.keys(TYPE) as TaskType[]).map((t) => {
-          const hidden = hiddenTypes.has(t);
+        {(Object.keys(TYPE_COLOR) as TaskType[]).map((typeKey) => {
+          const hidden = hiddenTypes.has(typeKey);
+          const label = t(`type.${typeKey}`);
           return (
             <button
-              key={t}
-              onClick={() => onToggleType(t)}
-              title={hidden ? `Hiện ${TYPE[t].label}` : `Ẩn ${TYPE[t].label}`}
+              key={typeKey}
+              onClick={() => onToggleType(typeKey)}
+              title={
+                hidden
+                  ? t("calendar.showType", { label })
+                  : t("calendar.hideType", { label })
+              }
               className={cn(
                 "inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium border transition-colors",
                 hidden
@@ -493,14 +498,20 @@ function CalendarToolbar({
                   : "border-input bg-background hover:bg-accent text-foreground"
               )}
             >
-              <span className="h-1.5 w-1.5 rounded-full" style={{ background: TYPE[t].color, opacity: hidden ? 0.35 : 1 }} />
-              {TYPE[t].label}
+              <span
+                className="h-1.5 w-1.5 rounded-full"
+                style={{
+                  background: TYPE_COLOR[typeKey],
+                  opacity: hidden ? 0.35 : 1,
+                }}
+              />
+              {label}
             </button>
           );
         })}
         <button
           onClick={onToggleDone}
-          title="Ẩn task đã hoàn thành"
+          title={t("calendar.hideDoneTitle")}
           className={cn(
             "inline-flex items-center rounded-full px-2.5 py-1 text-xs font-medium border transition-colors ml-1",
             hideDone
@@ -508,7 +519,7 @@ function CalendarToolbar({
               : "border-input text-muted-foreground/70 bg-background hover:bg-accent"
           )}
         >
-          Ẩn done
+          {t("calendar.hideDone")}
         </button>
       </div>
     </div>
@@ -674,12 +685,14 @@ function WeekEvent({ event }: { event: RenderArg["event"] }) {
  *   long  | ≥ 76m   | ≥120px| + description
  */
 function DayEvent({ event }: { event: RenderArg["event"] }) {
+  const t = useT();
   const p = event.extendedProps;
   const isDone = p.status === "done";
   const startStr = event.start ? fmtHm(event.start) : "";
   const endStr = event.end ? fmtHm(event.end) : "";
+  const allDayLabel = t("common.allDay");
   const timeRange = event.allDay
-    ? "Cả ngày"
+    ? allDayLabel
     : endStr
     ? `${startStr} – ${endStr}`
     : startStr;
@@ -692,7 +705,7 @@ function DayEvent({ event }: { event: RenderArg["event"] }) {
           isDone && "line-through opacity-50"
         )}
       >
-        <span className="font-semibold tabular-nums shrink-0 opacity-70 text-[11px]">Cả ngày</span>
+        <span className="font-semibold tabular-nums shrink-0 opacity-70 text-[11px]">{allDayLabel}</span>
         <span className="font-medium truncate flex-1 tracking-tight">{event.title}</span>
       </div>
     );
@@ -775,10 +788,12 @@ interface EventDetailDialogProps {
   onTagClick: (tag: string) => void;
 }
 
-const SNOOZE_OPTS = [
+// Labels resolved with t() at render time; the "1w" entry uses a localized
+// key because EN reads "1w" awkwardly compared to "1 week".
+const SNOOZE_OPTS: ReadonlyArray<{ label?: string; labelKey?: string; ms: number }> = [
   { label: "1h", ms: 60 * 60_000 },
   { label: "1d", ms: 24 * 60 * 60_000 },
-  { label: "1 tuần", ms: 7 * 24 * 60 * 60_000 },
+  { labelKey: "calendar.snoozeWeek", ms: 7 * 24 * 60 * 60_000 },
 ];
 
 // Auto-link URL trong text — task description hay có link Drive/Google Doc.
@@ -829,7 +844,7 @@ function EventDetailDialog({
               </DialogTitle>
               <div className="flex flex-wrap gap-1.5 mt-2.5 items-center">
                 <span className="inline-flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
-                  <span className="h-1.5 w-1.5 rounded-full" style={{ background: TYPE[task.type].color }} />
+                  <span className="h-1.5 w-1.5 rounded-full" style={{ background: TYPE_COLOR[task.type] }} />
                   {t(`type.${task.type}`)}
                 </span>
                 {task.priority === "high" && (
@@ -885,15 +900,18 @@ function EventDetailDialog({
                 <div className="flex items-center gap-2 flex-wrap">
                   <Clock4 className="h-3.5 w-3.5 text-muted-foreground" />
                   <span className="text-xs text-muted-foreground">{t("calendar.snooze")}:</span>
-                  {SNOOZE_OPTS.map((opt) => (
-                    <button
-                      key={opt.label}
-                      onClick={() => onSnooze(opt.ms)}
-                      className="text-xs px-2 py-0.5 rounded-full bg-secondary hover:bg-primary/15 hover:text-primary transition-colors font-medium"
-                    >
-                      +{opt.label}
-                    </button>
-                  ))}
+                  {SNOOZE_OPTS.map((opt, i) => {
+                    const label = opt.labelKey ? t(opt.labelKey) : opt.label!;
+                    return (
+                      <button
+                        key={i}
+                        onClick={() => onSnooze(opt.ms)}
+                        className="text-xs px-2 py-0.5 rounded-full bg-secondary hover:bg-primary/15 hover:text-primary transition-colors font-medium"
+                      >
+                        +{label}
+                      </button>
+                    );
+                  })}
                 </div>
               )}
 
@@ -958,6 +976,7 @@ function DayOverviewDialog({
   onPick,
   onCreate,
 }: DayOverviewDialogProps) {
+  const t = useT();
   const sorted = useMemo(
     () =>
       [...tasks].sort((a, b) => {
@@ -974,7 +993,7 @@ function DayOverviewDialog({
         <DialogHeader className="px-6 pt-6 pb-3 shrink-0">
           <DialogTitle className="capitalize">
             {date &&
-              new Date(date).toLocaleDateString("vi-VN", {
+              new Date(date).toLocaleDateString(undefined, {
                 weekday: "long",
                 day: "2-digit",
                 month: "long",
@@ -983,8 +1002,8 @@ function DayOverviewDialog({
           </DialogTitle>
           <DialogDescription>
             {sorted.length === 0
-              ? "Trống trải. Một ngày yên bình."
-              : `${sorted.length} task trong ngày này.`}
+              ? t("calendar.emptyDayDescription")
+              : t("calendar.tasksInDayDescription", { n: sorted.length })}
           </DialogDescription>
         </DialogHeader>
 
@@ -1005,7 +1024,7 @@ function DayOverviewDialog({
                 <Plus className="h-5 w-5 text-muted-foreground" />
               </div>
               <p className="text-sm text-muted-foreground">
-                Chưa có task nào. Thêm việc cho ngày này nhé.
+                {t("calendar.noTasksInDay")}
               </p>
             </div>
           )}
@@ -1018,7 +1037,7 @@ function DayOverviewDialog({
             variant={sorted.length === 0 ? "default" : "outline"}
           >
             <Plus className="h-4 w-4" />
-            Tạo task mới cho ngày này
+            {t("calendar.createTaskForDay")}
           </Button>
         </div>
       </DialogContent>
@@ -1027,6 +1046,7 @@ function DayOverviewDialog({
 }
 
 function DayTaskRow({ task, onClick }: { task: Task; onClick: () => void }) {
+  const t = useT();
   const time = extractTimeLabel(task.deadline);
   const col = subjectColor(task.title);
   return (
@@ -1046,7 +1066,7 @@ function DayTaskRow({ task, onClick }: { task: Task; onClick: () => void }) {
           <p className="text-sm font-bold tabular-nums">{time}</p>
         ) : (
           <p className="text-[10px] text-muted-foreground uppercase">
-            Cả ngày
+            {t("common.allDay")}
           </p>
         )}
       </div>
@@ -1061,8 +1081,8 @@ function DayTaskRow({ task, onClick }: { task: Task; onClick: () => void }) {
         </p>
         <div className="flex items-center gap-2 mt-1 flex-wrap text-xs text-muted-foreground">
           <span className="inline-flex items-center gap-1.5">
-            <span className="h-1.5 w-1.5 rounded-full" style={{ background: TYPE[task.type].color }} />
-            {TYPE[task.type].label}
+            <span className="h-1.5 w-1.5 rounded-full" style={{ background: TYPE_COLOR[task.type] }} />
+            {t(`type.${task.type}`)}
           </span>
           {task.location && (
             <span className="inline-flex items-center gap-1">
@@ -1072,7 +1092,7 @@ function DayTaskRow({ task, onClick }: { task: Task; onClick: () => void }) {
           )}
           {task.priority === "high" && (
             <span className="text-destructive font-semibold inline-flex items-center gap-0.5">
-              <Flame className="h-3 w-3" /> Gấp
+              <Flame className="h-3 w-3" /> {t("priority.urgent")}
             </span>
           )}
         </div>
@@ -1096,6 +1116,7 @@ function AgendaView({
   onPickEvent,
   onCreate,
 }: AgendaViewProps) {
+  const t = useT();
   // Window of 14 days, paged by ±14 from the anchor week's Monday.
   const [offset, setOffset] = useState(0);
 
@@ -1139,7 +1160,7 @@ function AgendaView({
             variant="outline"
             size="icon-sm"
             onClick={() => setOffset((o) => o - 1)}
-            title="14 ngày trước"
+            title={t("calendar.prev14days")}
           >
             <ChevronLeft className="h-4 w-4" />
           </Button>
@@ -1149,27 +1170,27 @@ function AgendaView({
             onClick={() => setOffset(0)}
             className="h-8"
           >
-            Hôm nay
+            {t("calendar.today")}
           </Button>
           <Button
             variant="outline"
             size="icon-sm"
             onClick={() => setOffset((o) => o + 1)}
-            title="14 ngày sau"
+            title={t("calendar.next14days")}
           >
             <ChevronRight className="h-4 w-4" />
           </Button>
         </div>
         <p className="text-sm font-semibold text-foreground/80">
-          {start.toLocaleDateString("vi-VN", { day: "2-digit", month: "short" })}{" "}
+          {start.toLocaleDateString(undefined, { day: "2-digit", month: "short" })}{" "}
           —{" "}
-          {days[13]?.date.toLocaleDateString("vi-VN", {
+          {days[13]?.date.toLocaleDateString(undefined, {
             day: "2-digit",
             month: "short",
             year: "numeric",
           })}
           <span className="ml-2 text-xs text-muted-foreground font-normal">
-            · {total} sự kiện
+            {t("calendar.eventCount", { n: total })}
           </span>
         </p>
       </div>
@@ -1210,6 +1231,7 @@ function AgendaDayGroup({
   onCreate,
   onPickEvent,
 }: AgendaDayGroupProps) {
+  const t = useT();
   const isWeekend = date.getDay() === 0 || date.getDay() === 6;
   return (
     <div
@@ -1242,11 +1264,11 @@ function AgendaDayGroup({
                 isToday ? "text-primary" : "text-muted-foreground"
               )}
             >
-              {date.toLocaleDateString("vi-VN", { weekday: "long" })}
-              {isToday && " · Hôm nay"}
+              {date.toLocaleDateString(undefined, { weekday: "long" })}
+              {isToday && t("calendar.todayBadge")}
             </p>
             <p className="text-[11px] text-muted-foreground">
-              {date.toLocaleDateString("vi-VN", {
+              {date.toLocaleDateString(undefined, {
                 day: "2-digit",
                 month: "long",
               })}
@@ -1256,14 +1278,14 @@ function AgendaDayGroup({
         <div className="flex items-center gap-2">
           {items.length > 0 && (
             <span className="text-[11px] text-muted-foreground tabular-nums">
-              {items.length} việc
+              {t("calendar.taskCountBadge", { n: items.length })}
             </span>
           )}
           <Button
             variant="ghost"
             size="icon-xs"
             onClick={onCreate}
-            title="Thêm task ngày này"
+            title={t("calendar.addTaskToday")}
           >
             <Plus className="h-3.5 w-3.5" />
           </Button>
@@ -1276,15 +1298,15 @@ function AgendaDayGroup({
           className="w-full text-left px-4 py-3 text-xs text-muted-foreground hover:bg-accent/40 transition-colors flex items-center gap-2 group"
         >
           <Sparkles className="h-3 w-3 opacity-50 group-hover:opacity-100" />
-          Trống — bấm để thêm việc
+          {t("calendar.emptySlot")}
         </button>
       ) : (
         <div className="divide-y">
-          {items.map((t) => (
+          {items.map((task) => (
             <AgendaItem
-              key={t.id}
-              task={t}
-              onPick={() => onPickEvent(t.id)}
+              key={task.id}
+              task={task}
+              onPick={() => onPickEvent(task.id)}
             />
           ))}
         </div>
@@ -1294,6 +1316,7 @@ function AgendaDayGroup({
 }
 
 function AgendaItem({ task, onPick }: { task: Task; onPick: () => void }) {
+  const t = useT();
   const time = extractTimeLabel(task.deadline);
   const col = subjectColor(task.title);
   const isDone = task.status === "done";
@@ -1320,7 +1343,7 @@ function AgendaItem({ task, onPick }: { task: Task; onPick: () => void }) {
           </span>
         ) : (
           <span className="text-[10px] text-muted-foreground uppercase tracking-wider">
-            Cả ngày
+            {t("common.allDay")}
           </span>
         )}
       </div>
@@ -1350,9 +1373,9 @@ function AgendaItem({ task, onPick }: { task: Task; onPick: () => void }) {
               {task.location}
             </span>
           )}
-          {task.tags?.slice(0, 3).map((t) => (
-            <span key={t} className="text-primary/80 font-medium">
-              #{t}
+          {task.tags?.slice(0, 3).map((tag) => (
+            <span key={tag} className="text-primary/80 font-medium">
+              #{tag}
             </span>
           ))}
           {(task.tags?.length || 0) > 3 && (
@@ -1379,6 +1402,7 @@ function DaySidePanel({
   onPickEvent,
   onCreate,
 }: DaySidePanelProps) {
+  const t = useT();
   const now = useTickingNow();
 
   const date = useMemo(() => {
@@ -1466,14 +1490,14 @@ function DaySidePanel({
       {overdueToday.length > 0 && (
         <SidePanelCard
           icon={AlertCircle}
-          title="Đã quá giờ"
+          title={t("calendar.overdueTitle")}
           count={overdueToday.length}
           variant="destructive"
-          hint="Snooze hoặc tick xong để dọn timeline."
+          hint={t("calendar.overdueHint")}
         >
           <div className="space-y-1">
-            {overdueToday.map((t) => {
-              const tMs = new Date(t.deadline!).getTime();
+            {overdueToday.map((task) => {
+              const tMs = new Date(task.deadline!).getTime();
               const diffMin = Math.max(1, Math.floor((now.getTime() - tMs) / 60_000));
               const ago =
                 diffMin < 60
@@ -1481,19 +1505,19 @@ function DaySidePanel({
                   : `${Math.floor(diffMin / 60)}h${diffMin % 60 ? ` ${diffMin % 60}p` : ""}`;
               return (
                 <button
-                  key={t.id}
-                  onClick={() => onPickEvent(t.id)}
+                  key={task.id}
+                  onClick={() => onPickEvent(task.id)}
                   className="w-full text-left px-2.5 py-1.5 rounded-md text-sm hover:bg-destructive/10 transition-colors flex items-center gap-2"
                 >
                   <span
                     className={cn(
                       "h-1.5 w-1.5 rounded-full shrink-0",
-                      subjectColor(t.title).dot
+                      subjectColor(task.title).dot
                     )}
                   />
-                  <span className="truncate flex-1">{t.title}</span>
+                  <span className="truncate flex-1">{task.title}</span>
                   <span className="text-[10px] font-semibold text-destructive tabular-nums shrink-0">
-                    trễ {ago}
+                    {t("tasks.lateBy", { time: ago })}
                   </span>
                 </button>
               );
@@ -1507,22 +1531,22 @@ function DaySidePanel({
       {untimed.length > 0 && (
         <SidePanelCard
           icon={Clock4}
-          title="Chưa định giờ"
+          title={t("calendar.untimed")}
           count={untimed.length}
-          hint="Click để gán giờ trong ngày."
+          hint={t("calendar.untimedHint")}
         >
           <div className="space-y-1">
-            {untimed.map((t) => (
+            {untimed.map((task) => (
               <button
-                key={t.id}
-                onClick={() => onPickEvent(t.id)}
+                key={task.id}
+                onClick={() => onPickEvent(task.id)}
                 className="w-full text-left px-2.5 py-1.5 rounded-md text-sm hover:bg-accent transition-colors flex items-center gap-2"
               >
                 <span
-                  className={cn("h-1.5 w-1.5 rounded-full shrink-0", subjectColor(t.title).dot)}
+                  className={cn("h-1.5 w-1.5 rounded-full shrink-0", subjectColor(task.title).dot)}
                 />
-                <span className="truncate flex-1">{t.title}</span>
-                {t.priority === "high" && (
+                <span className="truncate flex-1">{task.title}</span>
+                {task.priority === "high" && (
                   <Flame className="h-3 w-3 text-destructive shrink-0" />
                 )}
               </button>
@@ -1534,8 +1558,8 @@ function DaySidePanel({
       {!isPastDate && stats.total > 0 && freeSlots.length > 0 && (
         <SidePanelCard
           icon={Coffee}
-          title="Khung giờ rảnh"
-          hint={isToday ? "Lấp đầy bằng việc bạn đang trì hoãn." : undefined}
+          title={t("calendar.freeSlots")}
+          hint={isToday ? t("calendar.freeSlotsHint") : undefined}
         >
           <div className="space-y-1">
             {freeSlots.map((slot, i) => (
@@ -1553,7 +1577,7 @@ function DaySidePanel({
 
       {stats.total === 0 && (
         <div className="rounded-xl border border-dashed bg-muted/20 p-4 text-center text-sm text-muted-foreground">
-          Ngày này chưa có việc gì. Click ô trống trên timeline để thêm.
+          {t("calendar.dayEmptyTimeline")}
         </div>
       )}
     </aside>
@@ -1569,8 +1593,9 @@ interface DayHeroCardProps {
 }
 
 function DayHeroCard({ date, isToday, stats }: DayHeroCardProps) {
-  const weekday = date.toLocaleDateString("vi-VN", { weekday: "long" });
-  const main = date.toLocaleDateString("vi-VN", {
+  const t = useT();
+  const weekday = date.toLocaleDateString(undefined, { weekday: "long" });
+  const main = date.toLocaleDateString(undefined, {
     day: "numeric",
     month: "long",
   });
@@ -1588,7 +1613,7 @@ function DayHeroCard({ date, isToday, stats }: DayHeroCardProps) {
         )}
       >
         {weekday}
-        {isToday && " · Hôm nay"}
+        {isToday && t("calendar.todayBadge")}
       </p>
       <h3 className="text-xl font-bold tracking-tight mt-0.5">{main}</h3>
 
@@ -1596,10 +1621,10 @@ function DayHeroCard({ date, isToday, stats }: DayHeroCardProps) {
         <>
           <div className="flex items-center justify-between text-xs mt-3">
             <span className="text-muted-foreground">
-              {stats.done}/{stats.total} xong
+              {t("calendar.tasksComplete", { n: `${stats.done}/${stats.total}` })}
               {stats.urgent > 0 && (
                 <span className="ml-1.5 text-destructive font-semibold">
-                  · {stats.urgent} gấp
+                  {t("calendar.urgentCount", { n: stats.urgent })}
                 </span>
               )}
             </span>
@@ -1616,7 +1641,7 @@ function DayHeroCard({ date, isToday, stats }: DayHeroCardProps) {
         </>
       ) : (
         <p className="text-xs text-muted-foreground mt-2">
-          Trống — một ngày yên bình.
+          {t("calendar.dayEmpty")}
         </p>
       )}
     </div>
@@ -1624,6 +1649,7 @@ function DayHeroCard({ date, isToday, stats }: DayHeroCardProps) {
 }
 
 function NextUpCard({ task, onPick }: { task: Task; onPick: () => void }) {
+  const t = useT();
   const now = useTickingNow();
   const start = new Date(task.deadline!);
   const time = extractTimeLabel(task.deadline);
@@ -1633,13 +1659,13 @@ function NextUpCard({ task, onPick }: { task: Task; onPick: () => void }) {
       className="w-full text-left rounded-xl border bg-card p-3.5 hover:bg-accent/40 hover:border-primary/30 transition-all group"
     >
       <p className="text-[10px] uppercase tracking-wider font-semibold text-primary inline-flex items-center gap-1">
-        <Zap className="h-3 w-3" /> Sắp tới
+        <Zap className="h-3 w-3" /> {t("calendar.nextUp")}
       </p>
       <p className="font-semibold mt-1 leading-snug">{task.title}</p>
       <div className="flex items-center gap-2 mt-1.5 text-xs text-muted-foreground">
         <span className="font-medium tabular-nums">{time}</span>
         <span>·</span>
-        <span className="text-primary font-medium">{countdown(start, now)}</span>
+        <span className="text-primary font-medium">{countdown(start, now, t)}</span>
         {task.location && (
           <>
             <span>·</span>
@@ -1794,15 +1820,19 @@ function computeFreeSlots(
   return slots;
 }
 
-function countdown(target: Date, now: Date = new Date()): string {
+function countdown(
+  target: Date,
+  now: Date,
+  t: ReturnType<typeof useT>
+): string {
   const ms = target.getTime() - now.getTime();
-  if (ms <= 0) return "đang diễn ra";
+  if (ms <= 0) return t("calendar.happening");
   const mins = Math.round(ms / 60_000);
-  if (mins < 60) return `còn ${mins} phút`;
+  if (mins < 60) return t("calendar.countdownMin", { n: mins });
   const h = Math.floor(mins / 60);
   const m = mins % 60;
-  if (h < 24) return `còn ${h}h${m ? ` ${m}p` : ""}`;
-  return `còn ${Math.round(h / 24)} ngày`;
+  if (h < 24) return t("calendar.countdownHourMin", { h, m });
+  return t("calendar.countdownDays", { n: Math.round(h / 24) });
 }
 
 function toLocalIso(d: Date): string {

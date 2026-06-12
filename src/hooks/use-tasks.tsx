@@ -357,8 +357,17 @@ export function TasksProvider({ children }: { children: React.ReactNode }) {
       if (delay > 0 && delay < 24 * 60 * 60_000) {
         const handle = window.setTimeout(() => {
           try {
+            // Resolve lang at fire time — user may have flipped EN/VI
+            // between scheduling and firing.
+            const lang =
+              typeof localStorage !== "undefined" &&
+              localStorage.getItem("clearmind_lang") === "en"
+                ? "en"
+                : "vi";
+            const fallbackBody =
+              lang === "en" ? "Deadline approaching." : "Deadline đang tới.";
             new Notification("Clearmind · " + t.title, {
-              body: t.description || "Deadline đang tới.",
+              body: t.description || fallbackBody,
               tag: "clearmind-" + t.id,
             });
           } catch (e) {

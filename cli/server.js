@@ -266,10 +266,32 @@ function makeHandler({ distDir, dataDir, port, version }) {
         if (!id || !action) {
           return sendJson(res, 400, { ok: false, error: "Missing action/id" });
         }
+        // Test-toast actions are no-ops — the toast itself was triggered
+        // by the Settings "Test" button so action clicks shouldn't mutate
+        // any real task. We still respond 200 so the auto-close HTML
+        // renders if user opened the URL in a browser.
+        if (id === "__clearmind_test__") {
+          if (req.method === "GET") {
+            const lang = readLocale(dataDir);
+            const msg = lang === "en"
+              ? "Test action received (no-op)."
+              : "Test action đã nhận (không thay đổi gì).";
+            return send(
+              res,
+              200,
+              `<!doctype html><meta charset="utf-8"><title>Clearmind</title>` +
+                `<style>body{font:14px system-ui;color:#666;padding:1.5em;text-align:center}</style>` +
+                `<script>setTimeout(()=>window.close(),300)</script>` +
+                `<body>${msg}</body>`,
+              { "Content-Type": "text/html; charset=utf-8" }
+            );
+          }
+          return sendJson(res, 200, { ok: true, applied: "test-noop" });
+        }
         const tasks = storage.readTasks(dataDir);
         const target = tasks.find((t) => t.id === id);
         if (!target) {
-          return sendJson(res, 404, { ok: false, error: "Task không tìm thấy" });
+          return sendJson(res, 404, { ok: false, error: "Task not found" });
         }
         let applied = "";
         if ((action === "snooze-10" || action === "snooze-60") && target.deadline) {
@@ -294,13 +316,17 @@ function makeHandler({ distDir, dataDir, port, version }) {
         // (vd scheme chưa register, Windows fallback). Khi gọi từ
         // url-handler.js qua POST, response body bị bỏ qua.
         if (req.method === "GET") {
+          const lang = readLocale(dataDir);
+          const closeHint = lang === "en"
+            ? "You can close this tab."
+            : "Bạn có thể đóng tab này.";
           return send(
             res,
             200,
             `<!doctype html><meta charset="utf-8"><title>Clearmind</title>` +
               `<style>body{font:14px system-ui;color:#666;padding:1.5em;text-align:center}</style>` +
               `<script>setTimeout(()=>window.close(),300)</script>` +
-              `<body>✓ ${applied}. Bạn có thể đóng tab này.</body>`,
+              `<body>✓ ${applied}. ${closeHint}</body>`,
             { "Content-Type": "text/html; charset=utf-8" }
           );
         }

@@ -186,7 +186,7 @@ function TaskRow({
           {parent && (
             <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold inline-flex items-center gap-1 mb-0.5">
               <BookOpen className="h-2.5 w-2.5" />
-              Bài tập · {parent.title}
+              {t("tasks.row.homeworkPrefix", { subject: parent.title })}
             </p>
           )}
           <p
@@ -206,7 +206,7 @@ function TaskRow({
             )}
             {task.priority === "high" && task.status !== "done" && (
               <span className="font-semibold px-1.5 py-0.5 rounded-md bg-destructive/15 text-destructive inline-flex items-center gap-1">
-                <Flame className="h-3 w-3" /> Gấp
+                <Flame className="h-3 w-3" /> {t("priority.urgent")}
               </span>
             )}
             {task.deadline && (
@@ -227,7 +227,14 @@ function TaskRow({
             {task.recurrence && (
               <span
                 className="text-muted-foreground inline-flex items-center"
-                title={`Lặp ${task.recurrence}${task.notify ? ` · nhắc ${task.notify}` : ""}`}
+                title={
+                  task.notify
+                    ? t("tasks.row.recurrenceWithNotify", {
+                        rule: task.recurrence,
+                        pref: task.notify,
+                      })
+                    : t("tasks.row.recurrenceTooltip", { rule: task.recurrence })
+                }
               >
                 <Repeat className="h-3 w-3" />
               </span>
@@ -235,7 +242,7 @@ function TaskRow({
             {task.notify && !task.recurrence && (
               <span
                 className="text-muted-foreground inline-flex items-center"
-                title={`Nhắc trước: ${task.notify}`}
+                title={t("tasks.row.notifyTooltip", { pref: task.notify })}
               >
                 <Bell className="h-3 w-3" />
               </span>
@@ -245,18 +252,18 @@ function TaskRow({
                 <Hourglass className="h-3 w-3" /> {task.pomodoroMinutes}m
               </span>
             )}
-            {task.tags?.slice(0, 2).map((t) => (
+            {task.tags?.slice(0, 2).map((tag) => (
               <button
-                key={t}
+                key={tag}
                 type="button"
                 onClick={(e) => {
                   e.stopPropagation();
-                  onTagClick?.(t);
+                  onTagClick?.(tag);
                 }}
                 className="font-medium px-1.5 py-0 rounded text-primary/80 hover:bg-primary/10 hover:text-primary transition-colors cursor-pointer"
-                title={`Lọc theo #${t}`}
+                title={t("tasks.row.filterByTag", { tag })}
               >
-                #{t}
+                #{tag}
               </button>
             ))}
             {(task.tags?.length || 0) > 2 && (
@@ -267,7 +274,7 @@ function TaskRow({
                   onTagClick?.(task.tags![2]);
                 }}
                 className="text-muted-foreground hover:text-foreground"
-                title={task.tags!.slice(2).map((t) => `#${t}`).join(" ")}
+                title={task.tags!.slice(2).map((tag) => `#${tag}`).join(" ")}
               >
                 +{task.tags!.length - 2}
               </button>
@@ -281,20 +288,20 @@ function TaskRow({
             <Button
               variant="ghost"
               size="icon"
-              onClick={handleSnooze(DAY_MS, "+1 ngày")}
+              onClick={handleSnooze(DAY_MS, t("tasks.snoozeDayLabel"))}
               className="text-muted-foreground hover:text-primary opacity-0 group-hover:opacity-100 transition-opacity"
-              title="Đẩy lùi 1 ngày"
-              aria-label="Đẩy lùi 1 ngày"
+              title={t("tasks.snoozeDay")}
+              aria-label={t("tasks.snoozeDay")}
             >
               <Clock4 className="h-4 w-4" />
             </Button>
             <Button
               variant="ghost"
               size="icon"
-              onClick={handleSnooze(7 * DAY_MS, "+1 tuần")}
+              onClick={handleSnooze(7 * DAY_MS, t("tasks.snoozeWeekLabel"))}
               className="text-muted-foreground hover:text-primary opacity-0 group-hover:opacity-100 transition-opacity"
-              title="Đẩy lùi 1 tuần"
-              aria-label="Đẩy lùi 1 tuần"
+              title={t("tasks.snoozeWeek")}
+              aria-label={t("tasks.snoozeWeek")}
             >
               <CalendarClock className="h-4 w-4" />
             </Button>
@@ -309,8 +316,8 @@ function TaskRow({
               onHomework();
             }}
             className="text-muted-foreground hover:text-primary opacity-0 group-hover:opacity-100 transition-opacity"
-            title="Thêm bài tập"
-            aria-label="Thêm bài tập cho môn này"
+            title={t("tasks.addHomework")}
+            aria-label={t("tasks.row.addHomeworkAria")}
           >
             <BookOpen className="h-4 w-4" />
           </Button>
@@ -320,8 +327,8 @@ function TaskRow({
           size="icon"
           onClick={handleDelete}
           className="text-muted-foreground hover:text-destructive"
-          title="Xoá"
-          aria-label={`Xoá task: ${task.title}`}
+          title={t("tasks.row.deleteTooltip")}
+          aria-label={t("tasks.row.deleteAria", { title: task.title })}
         >
           <Trash2 className="h-4 w-4" />
         </Button>
@@ -713,14 +720,15 @@ export function TasksPage() {
           <Card className="border-primary/10 shadow-sm bg-card min-h-[400px]">
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
-                <GraduationCap className="h-5 w-5 text-primary" /> Gộp theo môn
+                <GraduationCap className="h-5 w-5 text-primary" />
+                {t("tasks.bySubject")}
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-3">
               {bySubject.length === 0 ? (
                 <div className="text-center py-12 text-muted-foreground">
-                  <p className="font-medium">Chưa có buổi học lặp lại nào.</p>
-                  <p className="text-xs mt-1">Import lịch học từ trang trường để tự tạo.</p>
+                  <p className="font-medium">{t("tasks.noScheduleEmpty")}</p>
+                  <p className="text-xs mt-1">{t("tasks.noScheduleHint")}</p>
                 </div>
               ) : (
                 bySubject.map((s) => (
@@ -740,7 +748,7 @@ export function TasksPage() {
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <CheckSquare className="h-5 w-5 text-primary" />
-              Danh sách
+              {t("tasks.list")}
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-6">

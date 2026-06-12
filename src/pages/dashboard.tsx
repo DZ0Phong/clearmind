@@ -36,7 +36,6 @@ import {
   sortByTimeOfDay,
   subjectColor,
   cn,
-  TYPE_LABEL,
 } from "@/lib/utils";
 
 export function Dashboard() {
@@ -584,10 +583,10 @@ function AgendaRow({ task, onClick }: { task: Task; onClick: () => void }) {
           )}
           {task.priority === "high" && (
             <span className="font-bold uppercase text-destructive inline-flex items-center gap-0.5">
-              <Flame className="h-2.5 w-2.5" /> Gấp
+              <Flame className="h-2.5 w-2.5" /> {t("priority.urgent")}
             </span>
           )}
-          <span className="text-muted-foreground">{TYPE_LABEL[task.type]}</span>
+          <span className="text-muted-foreground">{t(`type.${task.type}`)}</span>
         </div>
       </div>
     </div>
@@ -595,20 +594,20 @@ function AgendaRow({ task, onClick }: { task: Task; onClick: () => void }) {
 }
 
 function EmptyAgenda({ onCreate }: { onCreate: () => void }) {
+  const t = useT();
   return (
     <div className="h-full flex-1 flex flex-col items-center justify-center text-center gap-3 py-10">
       <div className="h-14 w-14 rounded-2xl bg-primary/10 flex items-center justify-center">
         <Sparkles className="h-7 w-7 text-primary" />
       </div>
       <div className="max-w-sm">
-        <p className="font-semibold">Một ngày trống lý tưởng</p>
+        <p className="font-semibold">{t("dashboard.emptyAgendaTitle")}</p>
         <p className="text-sm text-muted-foreground mt-1 leading-relaxed">
-          Không có việc dí — đúng lúc thêm những thứ đáng làm. Bấm ⌘K hoặc nút
-          dưới.
+          {t("dashboard.emptyAgendaHint")}
         </p>
       </div>
       <Button onClick={onCreate} className="gap-1.5" size="sm">
-        <Sparkles className="h-3.5 w-3.5" /> Thêm task đầu tiên
+        <Sparkles className="h-3.5 w-3.5" /> {t("dashboard.emptyAgendaButton")}
       </Button>
     </div>
   );

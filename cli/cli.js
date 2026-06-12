@@ -121,17 +121,24 @@ async function runForeground(opts, dataDir) {
     return;
   }
 
-  // Register the `clearmind://` URL scheme so toast notification action
-  // buttons can call our local handler silently (no browser flash). Self-
-  // heals on every start in case Node or CLI install path changed.
+  // Register Windows bits:
+  //   1) `clearmind://` URL scheme — so toast action buttons can invoke our
+  //      local handler silently (no browser flash).
+  //   2) AppUserModelID `Clearmind` — without this, ToastGeneric template
+  //      logo + actions don't render (Windows can't resolve the notifier).
+  // Both are HKCU writes, idempotent, self-heal on path changes.
   try {
-    const { registerUrlScheme } = require("./url-scheme");
-    const r = registerUrlScheme();
-    if (!r.ok && r.reason !== "non-win32") {
-      console.warn("[clearmind] URL scheme register skipped:", r.reason);
+    const { registerUrlScheme, registerAumId } = require("./url-scheme");
+    const r1 = registerUrlScheme();
+    if (!r1.ok && r1.reason !== "non-win32") {
+      console.warn("[clearmind] URL scheme register skipped:", r1.reason);
+    }
+    const r2 = registerAumId();
+    if (!r2.ok && r2.reason !== "non-win32") {
+      console.warn("[clearmind] AUM ID register skipped:", r2.reason);
     }
   } catch (e) {
-    console.warn("[clearmind] URL scheme register failed:", e && e.message);
+    console.warn("[clearmind] Windows registry setup failed:", e && e.message);
   }
 
   let { server: httpServer, port: actualPort } = await server.start({

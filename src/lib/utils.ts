@@ -370,23 +370,10 @@ export interface Classification {
   priority: TaskPriority;
 }
 
-// Label tiếng Việt cho enum task — dùng chung cho dashboard, palette, dialog.
-export const TYPE_LABEL: Record<TaskType, string> = {
-  academic: "Học tập",
-  personal: "Cá nhân",
-  work: "Công việc",
-  other: "Khác",
-};
-export const PRIORITY_LABEL: Record<TaskPriority, string> = {
-  high: "Cao",
-  medium: "Vừa",
-  low: "Thấp",
-};
-export const STATUS_LABEL: Record<"todo" | "in-progress" | "done", string> = {
-  todo: "Chưa làm",
-  "in-progress": "Đang làm",
-  done: "Đã xong",
-};
+// Enum labels live in src/lib/i18n.tsx now — consume via t(`type.${task.type}`),
+// t(`priority.${priority}`), t(`status.${status}`). The static maps that used
+// to live here were a sync bug: they shipped Vietnamese strings regardless of
+// the user's selected language.
 
 /**
  * Auto-suggest tags từ title + description khi user tạo task mới.

@@ -35,18 +35,32 @@ if ($icon -and (Test-Path $icon)) {
 # scheme so a tiny node handler runs silently (no browser flash). If the
 # scheme isn't registered yet, Windows falls back to "no app to open
 # this link" which is a soft failure: visual toast still shows.
+#
+# Button labels come in through env vars so notifications.js can localize
+# them to match the user's current language (clearmind.lang file). Falls
+# back to Vietnamese defaults if env not set (so older callers don't crash).
+$btnSnooze10 = $env:CM_BTN_SNOOZE10
+$btnSnooze60 = $env:CM_BTN_SNOOZE60
+$btnDone     = $env:CM_BTN_DONE
+if (-not $btnSnooze10) { $btnSnooze10 = 'Hoãn 10p' }
+if (-not $btnSnooze60) { $btnSnooze60 = 'Hoãn 1h' }
+if (-not $btnDone)     { $btnDone     = 'Xong' }
+
 $actionsNode = ''
 if ($taskId) {
   $idX = XmlEscape $taskId
   $portX = XmlEscape $port
+  $s10X = XmlEscape $btnSnooze10
+  $s60X = XmlEscape $btnSnooze60
+  $doneX = XmlEscape $btnDone
   $a1 = "clearmind://snooze-10?id=$idX&amp;port=$portX"
   $a2 = "clearmind://snooze-60?id=$idX&amp;port=$portX"
   $a3 = "clearmind://done?id=$idX&amp;port=$portX"
   $actionsNode = @"
   <actions>
-    <action content='Hoãn 10p' arguments='$a1' activationType='protocol' />
-    <action content='Hoãn 1h'  arguments='$a2' activationType='protocol' />
-    <action content='Xong'     arguments='$a3' activationType='protocol' />
+    <action content='$s10X' arguments='$a1' activationType='protocol' />
+    <action content='$s60X' arguments='$a2' activationType='protocol' />
+    <action content='$doneX' arguments='$a3' activationType='protocol' />
   </actions>
 "@
 }
