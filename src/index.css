@@ -137,12 +137,58 @@
   border-width: 1px !important;
 }
 
-/* Today highlight — bold in Month grid, very subtle in time-grid views */
+/* Today highlight — subtle bg in cả month + time-grid, day-number nổi bật riêng. */
 .fc .fc-day-today {
-  background: var(--muted) !important;
+  background: color-mix(in srgb, var(--primary) 6%, transparent) !important;
 }
 .fc-timegrid .fc-day-today {
   background: color-mix(in srgb, var(--primary) 5%, transparent) !important;
+}
+
+/* Month grid: day-number nổi bật trong cell ngày. */
+.fc-daygrid-day-frame {
+  padding: 4px 2px;
+}
+.fc .fc-daygrid-day-top {
+  flex-direction: row;
+  justify-content: flex-end;
+  padding-right: 4px;
+}
+.fc .fc-daygrid-day-number {
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--foreground);
+  padding: 2px 4px;
+}
+/* Today = circle pill primary, dễ thấy ngay */
+.fc-day-today .fc-daygrid-day-number {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.6rem;
+  height: 1.6rem;
+  background: var(--primary);
+  color: var(--primary-foreground);
+  border-radius: 9999px;
+  font-weight: 700;
+  margin: 2px;
+  padding: 0;
+}
+/* Weekend dim nhẹ, ngày tháng khác mờ hẳn */
+.fc-day-sat .fc-daygrid-day-number,
+.fc-day-sun .fc-daygrid-day-number {
+  color: var(--muted-foreground);
+}
+.fc-day-other .fc-daygrid-day-number {
+  opacity: 0.35;
+}
+/* Hover cell mượt cho rõ ngày click được */
+.fc-daygrid-day {
+  transition: background 140ms ease;
+}
+.fc-daygrid-day:hover {
+  background: color-mix(in srgb, var(--accent) 50%, transparent);
+  cursor: pointer;
 }
 
 /* Events */
@@ -158,6 +204,17 @@
   cursor: pointer;
   transition: transform 120ms ease, box-shadow 120ms ease;
   overflow: hidden;
+}
+
+/* Month event: pill rộng hơn, thoáng hơn list-list cũ. */
+.fc-daygrid-event {
+  margin: 2px 4px !important;
+  border-radius: 5px !important;
+  font-size: 0.78rem !important;
+  font-weight: 500;
+}
+.fc-daygrid-event-harness {
+  margin-bottom: 1px;
 }
 
 .fc-event:hover {

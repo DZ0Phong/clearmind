@@ -57,17 +57,16 @@ type ViewMode = "month" | "week" | "day" | "agenda";
 
 interface TypeMeta {
   label: string;
-  emoji: string;
   /** Fixed color for non-academic types. Academic uses subjectColor() so
    *  different subjects (Toán/Lý/...) stand out from each other. */
   color: string;
 }
 
 const TYPE: Record<TaskType, TypeMeta> = {
-  academic: { label: "Học", emoji: "🎓", color: "#6366f1" },
-  work: { label: "Việc", emoji: "💼", color: "#f97316" },
-  personal: { label: "Cá nhân", emoji: "✨", color: "#10b981" },
-  other: { label: "Khác", emoji: "📌", color: "#64748b" },
+  academic: { label: "Học tập", color: "#6366f1" },
+  work: { label: "Công việc", color: "#f97316" },
+  personal: { label: "Cá nhân", color: "#10b981" },
+  other: { label: "Khác", color: "#64748b" },
 };
 
 const VIEWS: ReadonlyArray<{
@@ -207,6 +206,7 @@ export function CalendarView({ initialDate }: CalendarViewProps = {}) {
             location: t.location,
             description: t.description,
             tags: t.tags,
+            recurrence: t.recurrence ?? null,
           },
         };
       }),
@@ -561,6 +561,7 @@ interface FcEventProps {
   location?: string;
   description?: string;
   tags?: string[];
+  recurrence?: string | null;
 }
 
 interface RenderArg {
@@ -585,40 +586,35 @@ function renderFcEvent(arg: RenderArg) {
   return <WeekEvent event={event} />;
 }
 
-/* Month: single compact pill — emoji + title, time on the right. */
+/* Layout chuẩn cho mọi event: time LEFT (tabular-nums, mảnh), title bên cạnh,
+ * không emoji không icon. Trạng thái done strikethrough + mờ. High priority
+ * đã ăn vào borderColor (destructive) ngoài CSS — không cần icon thêm. */
 function MonthEvent({ event }: { event: RenderArg["event"] }) {
   const p = event.extendedProps;
-  const isUrgent = p.priority === "high";
   const isDone = p.status === "done";
   const time = !event.allDay && event.start ? fmtHm(event.start) : "";
   return (
     <div
       className={cn(
-        "flex items-center gap-1 px-1.5 py-0.5 w-full overflow-hidden text-[11px] leading-tight",
-        isDone && "line-through opacity-60"
+        "flex items-baseline gap-1.5 px-2 py-0.5 w-full overflow-hidden text-[12px] leading-snug",
+        isDone && "line-through opacity-50"
       )}
     >
-      <span className="text-[10px] shrink-0">{TYPE[p.type].emoji}</span>
-      {isUrgent && (
-        <Flame className="h-2.5 w-2.5 shrink-0 text-white drop-shadow-sm" />
-      )}
-      <span className="font-semibold truncate flex-1">{event.title}</span>
       {time && (
-        <span className="font-medium tabular-nums shrink-0 opacity-90">
+        <span className="font-semibold tabular-nums shrink-0 opacity-70 text-[11px]">
           {time}
         </span>
       )}
+      <span className="font-medium truncate flex-1 tracking-tight">{event.title}</span>
     </div>
   );
 }
 
-/* Week: adaptive — short events get a 1-liner so they don't squish. */
+/* Week: 1 layout duy nhất. Short → no description; long → multi-line title. */
 function WeekEvent({ event }: { event: RenderArg["event"] }) {
   const p = event.extendedProps;
-  const isUrgent = p.priority === "high";
   const isDone = p.status === "done";
   const time = !event.allDay && event.start ? fmtHm(event.start) : "";
-  const emoji = TYPE[p.type].emoji;
   const durMin =
     event.end && event.start
       ? (event.end.getTime() - event.start.getTime()) / 60_000
@@ -630,18 +626,14 @@ function WeekEvent({ event }: { event: RenderArg["event"] }) {
     return (
       <div
         className={cn(
-          "flex items-center gap-1 px-1.5 h-full w-full overflow-hidden text-[11px] leading-tight",
-          isDone && "line-through opacity-60"
+          "flex items-baseline gap-1.5 px-1.5 h-full w-full overflow-hidden text-[11px] leading-tight",
+          isDone && "line-through opacity-50"
         )}
       >
-        {isUrgent && (
-          <Flame className="h-2.5 w-2.5 shrink-0 text-white drop-shadow-sm" />
-        )}
         {time && (
-          <span className="font-bold tabular-nums shrink-0">{time}</span>
+          <span className="font-semibold tabular-nums shrink-0 opacity-80">{time}</span>
         )}
-        <span className="text-[11px] shrink-0">{emoji}</span>
-        <span className="font-semibold truncate flex-1">{event.title}</span>
+        <span className="font-medium truncate flex-1 tracking-tight">{event.title}</span>
       </div>
     );
   }
@@ -649,25 +641,20 @@ function WeekEvent({ event }: { event: RenderArg["event"] }) {
   return (
     <div
       className={cn(
-        "flex flex-col h-full w-full px-1.5 py-1 overflow-hidden text-[11px] leading-tight gap-0.5",
-        isDone && "line-through opacity-60"
+        "flex flex-col h-full w-full px-1.5 py-1 overflow-hidden leading-tight gap-0.5",
+        isDone && "line-through opacity-50"
       )}
     >
-      <div className="flex items-center gap-1">
-        {isUrgent && (
-          <Flame className="h-3 w-3 shrink-0 text-white drop-shadow-sm" />
-        )}
-        {time && (
-          <span className="font-bold tabular-nums shrink-0">{time}</span>
-        )}
-        <span className="ml-auto text-[12px]">{emoji}</span>
-      </div>
-      <p className="font-semibold leading-snug text-[12px] line-clamp-2">
+      {time && (
+        <span className="font-semibold tabular-nums shrink-0 text-[11px] opacity-80">
+          {time}
+        </span>
+      )}
+      <p className="font-semibold leading-snug text-[12.5px] line-clamp-2 tracking-tight">
         {event.title}
       </p>
       {showLocation && (
-        <p className="flex items-center gap-0.5 opacity-95 text-[10px] truncate mt-auto">
-          <MapPin className="h-2.5 w-2.5 shrink-0" />
+        <p className="text-[10.5px] opacity-75 truncate mt-auto">
           {p.location}
         </p>
       )}
