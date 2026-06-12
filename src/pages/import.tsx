@@ -390,6 +390,15 @@ export function ImportPage() {
   // the school timetable as the single source of truth.
   const [wipeMode, setWipeMode] = useState(false);
 
+  // Delete-displaced: when true, commitImport removes the recurring tasks
+  // in displacedExisting (subject in import, but at a different dow/time
+  // slot than the school now lists). DEFAULT OFF — silently deleting these
+  // used to nuke ALL future occurrences for a slot that the parser merely
+  // missed or that the user pasted only partially. With this off, displaced
+  // old tasks are left untouched (user may end up with duplicate slots,
+  // which they can clean up by hand or by toggling this on next time).
+  const [deleteDisplaced, setDeleteDisplaced] = useState(false);
+
   // Per-row decision for "changed" rows. true = skip update; default = update.
   const [skipChangedIds, setSkipChangedIds] = useState<Set<string>>(new Set());
   const toggleSkipChanged = (id: string) =>
@@ -431,9 +440,16 @@ export function ImportPage() {
 
     // Phase 1: delete recurring tasks the import is going to supersede.
     // - Wipe mode: every weekly task whose subject is in the import (clean slate).
-    // - Normal mode: only those whose slot was moved (subject in import,
-    //   exact dow/time signature not).
-    const toDelete = wipeMode ? affectedExisting : displacedExisting;
+    // - Normal mode + deleteDisplaced opt-in: only those whose slot was moved
+    //   (subject in import, exact dow/time signature not).
+    // - Normal mode + opt-OUT (default): leave displaced alone. Recurring
+    //   tasks spawn future occurrences forever; deleting one silently used
+    //   to wipe out an entire weekly slot the user might still want.
+    const toDelete = wipeMode
+      ? affectedExisting
+      : deleteDisplaced
+        ? displacedExisting
+        : [];
     for (const task of toDelete) {
       removeTask(task.id);
       displaced++;
@@ -532,6 +548,7 @@ export function ImportPage() {
     setParsed([]);
     setSkipChangedIds(new Set());
     setWipeMode(false);
+    setDeleteDisplaced(false);
     setTab("paste");
 
     if (earliest) {
@@ -900,7 +917,7 @@ export function ImportPage() {
                     ? affectedExisting.length + parsed.filter((c) => !c.attended).length
                     : previewSummary.news +
                       (previewSummary.changed - skipChangedIds.size) +
-                      displacedExisting.length;
+                      (deleteDisplaced ? displacedExisting.length : 0);
                   return (
                     <Button
                       onClick={commitImport}
@@ -980,6 +997,80 @@ export function ImportPage() {
                           {t("import.preview.status.attended", { n: skippedAttended })}
                         </span>
                       )}
+                    </div>
+                  )}
+
+                  {/* Displaced-slot toggle — only relevant when SOME old
+                      weekly task has subject in import but a different
+                      dow/time. Default OFF so silent data loss can't
+                      happen: leaving it off keeps every old recurring
+                      task alive (possibly duplicating slots until the
+                      user manually cleans up). Toggling on deletes the
+                      old recurring rows so the new slot wins clean.
+                      Hidden when wipeMode is active (wipe supersedes). */}
+                  {!wipeMode && displacedExisting.length > 0 && (
+                    <div
+                      className={cn(
+                        "rounded-lg border p-3 space-y-2 transition-colors",
+                        deleteDisplaced
+                          ? "border-rose-500/40 bg-rose-500/5"
+                          : "border-amber-500/40 bg-amber-500/5"
+                      )}
+                      data-testid="displaced-section"
+                    >
+                      <label className="flex items-start gap-2.5 cursor-pointer select-none">
+                        <input
+                          type="checkbox"
+                          checked={deleteDisplaced}
+                          onChange={(e) => setDeleteDisplaced(e.target.checked)}
+                          className="mt-0.5 h-4 w-4 rounded border-input accent-rose-500 cursor-pointer"
+                          data-testid="displaced-checkbox"
+                        />
+                        <div className="flex-1 min-w-0">
+                          <p className="text-xs font-semibold">
+                            {t("import.displaced.title", { n: displacedExisting.length })}
+                          </p>
+                          <p className="text-[11px] text-muted-foreground mt-0.5 leading-relaxed">
+                            {t("import.displaced.desc")}
+                          </p>
+                          {deleteDisplaced && (
+                            <p className="text-[11px] text-rose-600 dark:text-rose-400 mt-1 leading-relaxed font-medium">
+                              {t("import.displaced.warning")}
+                            </p>
+                          )}
+                        </div>
+                      </label>
+                      <details className="text-[11px]" open>
+                        <summary className="cursor-pointer text-muted-foreground hover:text-foreground transition-colors inline-flex items-center gap-1">
+                          <Info className="h-3 w-3" />
+                          {t("import.displaced.viewList", { n: displacedExisting.length })}
+                        </summary>
+                        <ul className="mt-2 space-y-1 max-h-40 overflow-y-auto pr-1">
+                          {displacedExisting.map((task) => {
+                            const d = task.deadline ? new Date(task.deadline) : null;
+                            const dow = d ? dowLabel(d.getDay()) : "";
+                            const hh = d ? d.getHours().toString().padStart(2, "0") : "—";
+                            const mm = d ? d.getMinutes().toString().padStart(2, "0") : "—";
+                            return (
+                              <li
+                                key={task.id}
+                                className="flex items-center gap-2 tabular-nums text-muted-foreground"
+                              >
+                                <span className="font-medium text-foreground truncate flex-1">
+                                  {task.title}
+                                </span>
+                                <span>{dow}</span>
+                                <span>{hh}:{mm}</span>
+                                {task.location && (
+                                  <span className="text-[10px] opacity-70 truncate max-w-[80px]">
+                                    {task.location}
+                                  </span>
+                                )}
+                              </li>
+                            );
+                          })}
+                        </ul>
+                      </details>
                     </div>
                   )}
 
