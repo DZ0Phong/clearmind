@@ -184,6 +184,16 @@ const VI: Dict = {
   "errBoundary.unknown": "Lỗi không xác định",
   "errBoundary.savedHint": "Đã lưu vào log nội bộ — vào Settings → \"Nhật ký lỗi\" để xem.",
 
+  // Voice mic
+  "voice.variant.viVN": "Tiếng Việt",
+  "voice.variant.enUS": "English (US)",
+  "voice.variant.enGB": "English (UK)",
+  "voice.variant.enAU": "English (AU)",
+  "voice.variant.enIN": "English (IN)",
+  "voice.variantPicker.tooltip": "Chọn ngôn ngữ + giọng nhận diện",
+  "voice.variantPicker.header": "Giọng nhận diện",
+  "voice.variantPicker.hint": "Pick gần giọng bạn nhất để mic nghe chuẩn hơn.",
+
   // Bucket labels
   "bucket.overdue": "Quá hạn",
   "bucket.today": "Hôm nay",
@@ -981,6 +991,16 @@ const EN: Dict = {
   "errBoundary.title": "Error rendering this page",
   "errBoundary.unknown": "Unknown error",
   "errBoundary.savedHint": "Saved to internal log — open Settings → \"Error log\" to view.",
+
+  // Voice mic
+  "voice.variant.viVN": "Vietnamese",
+  "voice.variant.enUS": "English (US)",
+  "voice.variant.enGB": "English (UK)",
+  "voice.variant.enAU": "English (AU)",
+  "voice.variant.enIN": "English (IN)",
+  "voice.variantPicker.tooltip": "Pick recognition language + accent",
+  "voice.variantPicker.header": "Recognition accent",
+  "voice.variantPicker.hint": "Pick the closest to your accent for sharper recognition.",
 
   // Bucket labels
   "bucket.overdue": "Overdue",
