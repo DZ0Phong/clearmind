@@ -23,6 +23,9 @@ import {
   Minus,
 } from "lucide-react";
 import { cn, formatDeadline, isPast, isRecurringClass } from "@/lib/utils";
+import { useT } from "@/lib/i18n";
+
+type T = ReturnType<typeof useT>;
 
 const TYPE_COLOR: Record<TaskType, string> = {
   academic: "bg-primary",
@@ -107,92 +110,98 @@ function computeAchievements(
   streak: number,
   doneThisWeek: number,
   focusHoursThisWeek: number,
-  now: Date
+  now: Date,
+  t: T
 ): Achievement[] {
   const out: Achievement[] = [];
   const today0 = new Date(now);
   today0.setHours(0, 0, 0, 0);
   const doneToday = tasks.filter(
-    (t) =>
-      t.status === "done" &&
-      t.completedAt &&
-      new Date(t.completedAt) >= today0
+    (x) =>
+      x.status === "done" &&
+      x.completedAt &&
+      new Date(x.completedAt) >= today0
   ).length;
 
-  // Subject-finished detection: an academic task with `recurrenceEndAt` in
-  // the past AND status=done OR a non-recurring task that has 5+ sibling
-  // tasks (children) all done. Simple heuristic — surface if any subject
-  // shows ≥5 done tasks sharing the same first word.
+  // Subject-finished detection: heuristic — if any subject prefix shows
+  // ≥5 done tasks, surface the badge. Catches both "PRU213 lab 1..5" and
+  // "Toán bài 1..7" patterns without needing structured subject metadata.
   const academicDone = tasks.filter(
-    (t) => t.status === "done" && t.type === "academic"
+    (x) => x.status === "done" && x.type === "academic"
   );
   const subjectCounts = new Map<string, number>();
-  for (const t of academicDone) {
-    const subject = (t.title.split(/\s+/)[0] || "").toLowerCase();
+  for (const x of academicDone) {
+    const subject = (x.title.split(/\s+/)[0] || "").toLowerCase();
     if (subject.length < 3) continue;
     subjectCounts.set(subject, (subjectCounts.get(subject) ?? 0) + 1);
   }
   const finishedSubject = [...subjectCounts.entries()].find(([, n]) => n >= 5);
 
+  const orangeTint =
+    "bg-orange-500/10 text-orange-600 dark:text-orange-400 border-orange-500/30";
+  const emeraldTint =
+    "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/30";
+  const primaryTint = "bg-primary/10 text-primary border-primary/30";
+
   if (streak >= 10) {
     out.push({
       key: "streak-10",
-      label: "Streak 10+ ngày",
-      sublabel: `${streak} ngày liên tiếp`,
+      label: t("review.ach.streak10"),
+      sublabel: t("review.achSub.daysInRow", { n: streak }),
       icon: Trophy,
       tint: "bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/30",
     });
   } else if (streak >= 7) {
     out.push({
       key: "streak-7",
-      label: "Streak 7 ngày",
-      sublabel: `${streak} ngày liên tiếp`,
+      label: t("review.ach.streak7"),
+      sublabel: t("review.achSub.daysInRow", { n: streak }),
       icon: Flame,
-      tint: "bg-orange-500/10 text-orange-600 dark:text-orange-400 border-orange-500/30",
+      tint: orangeTint,
     });
   } else if (streak >= 3) {
     out.push({
       key: "streak-3",
-      label: "3 ngày liên tiếp",
-      sublabel: "Đà tốt — giữ nhịp",
+      label: t("review.ach.streak3"),
+      sublabel: t("review.achSub.momentum"),
       icon: Flame,
-      tint: "bg-orange-500/10 text-orange-600 dark:text-orange-400 border-orange-500/30",
+      tint: orangeTint,
     });
   }
 
   if (focusHoursThisWeek >= 10) {
     out.push({
       key: "focus-10h",
-      label: "10h focus tuần",
-      sublabel: `${focusHoursThisWeek.toFixed(1)}h tổng`,
+      label: t("review.ach.focus10h"),
+      sublabel: t("review.achSub.totalHours", { n: focusHoursThisWeek.toFixed(1) }),
       icon: Hourglass,
-      tint: "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/30",
+      tint: emeraldTint,
     });
   } else if (focusHoursThisWeek >= 5) {
     out.push({
       key: "focus-5h",
-      label: "5h focus tuần",
-      sublabel: `${focusHoursThisWeek.toFixed(1)}h tổng`,
+      label: t("review.ach.focus5h"),
+      sublabel: t("review.achSub.totalHours", { n: focusHoursThisWeek.toFixed(1) }),
       icon: Hourglass,
-      tint: "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/30",
+      tint: emeraldTint,
     });
   }
 
   if (doneThisWeek >= 20) {
     out.push({
       key: "done-20",
-      label: "20+ task tuần này",
-      sublabel: "Productivity beast",
+      label: t("review.ach.done20"),
+      sublabel: t("review.achSub.beast"),
       icon: Sparkles,
-      tint: "bg-primary/10 text-primary border-primary/30",
+      tint: primaryTint,
     });
   } else if (doneThisWeek >= 10) {
     out.push({
       key: "done-10",
-      label: "10+ task tuần này",
-      sublabel: "Nhịp đều",
+      label: t("review.ach.done10"),
+      sublabel: t("review.achSub.steady"),
       icon: Target,
-      tint: "bg-primary/10 text-primary border-primary/30",
+      tint: primaryTint,
     });
   }
 
@@ -200,20 +209,18 @@ function computeAchievements(
     const [name, n] = finishedSubject;
     out.push({
       key: `subject-${name}`,
-      label: `${name.toUpperCase()} done`,
-      sublabel: `${n} task đã xong`,
+      label: t("review.ach.subjectDone", { subject: name.toUpperCase() }),
+      sublabel: t("review.achSub.subjectTaskCount", { n }),
       icon: BookOpen,
       tint: "bg-violet-500/10 text-violet-600 dark:text-violet-400 border-violet-500/30",
     });
   }
 
   if (doneToday >= 1 && out.length === 0) {
-    // Entry-level — only show if no heavier badges already exist (avoid
-    // crowding the row with a "first done today" when streak is 10+).
     out.push({
       key: "first-today",
-      label: "Đã start hôm nay",
-      sublabel: `${doneToday} task xong`,
+      label: t("review.ach.startedToday"),
+      sublabel: t("review.achSub.tasksDone", { n: doneToday }),
       icon: Star,
       tint: "bg-sky-500/10 text-sky-600 dark:text-sky-400 border-sky-500/30",
     });
@@ -229,27 +236,28 @@ function computeAchievements(
 function encouragement(
   doneThisWeek: number,
   delta: number,
-  streak: number
+  streak: number,
+  t: T
 ): { mood: "great" | "good" | "ok" | "low"; message: string } {
   if (doneThisWeek >= 10 && delta > 0) {
-    return { mood: "great", message: "Tuần ấn tượng — vượt cả tuần trước. Cứ giữ đà." };
+    return { mood: "great", message: t("review.hero.greatBeat") };
   }
   if (doneThisWeek >= 10) {
-    return { mood: "great", message: "Tuần đậm task — bạn đang ở phong độ cao." };
+    return { mood: "great", message: t("review.hero.great") };
   }
   if (doneThisWeek >= 5 && delta > 0) {
-    return { mood: "good", message: "Đang đi lên — nhịp này gọn gàng." };
+    return { mood: "good", message: t("review.hero.goodUp") };
   }
   if (doneThisWeek >= 5) {
-    return { mood: "good", message: "Vẫn duy trì — không có gì phải gấp." };
+    return { mood: "good", message: t("review.hero.good") };
   }
   if (streak >= 3) {
-    return { mood: "ok", message: `Streak ${streak} ngày — số task nhỏ nhưng đều.` };
+    return { mood: "ok", message: t("review.hero.okStreak", { n: streak }) };
   }
   if (doneThisWeek > 0) {
-    return { mood: "ok", message: "Tuần nhẹ — vài task nhỏ cũng đáng kể." };
+    return { mood: "ok", message: t("review.hero.okLight") };
   }
-  return { mood: "low", message: "Tuần chậm — không sao, thêm 1 task nhỏ là khởi đầu." };
+  return { mood: "low", message: t("review.hero.low") };
 }
 
 const MOOD_BG: Record<"great" | "good" | "ok" | "low", string> = {
@@ -269,11 +277,12 @@ const MOOD_TEXT: Record<"great" | "good" | "ok" | "low", string> = {
 };
 
 function DeltaChip({ value, suffix }: { value: number; suffix?: string }) {
+  const t = useT();
   if (value === 0) {
     return (
       <span className="inline-flex items-center gap-0.5 text-[10px] text-muted-foreground tabular-nums">
         <Minus className="h-3 w-3" />
-        bằng
+        {t("review.delta.equal")}
       </span>
     );
   }
@@ -299,10 +308,18 @@ function DeltaChip({ value, suffix }: { value: number; suffix?: string }) {
   );
 }
 
-const DOW_LABELS = ["T2", "T3", "T4", "T5", "T6", "T7", "CN"];
-
 export function ReviewPage() {
   const { tasks } = useTasks();
+  const t = useT();
+  const DOW_LABELS = [
+    t("review.dow.mon"),
+    t("review.dow.tue"),
+    t("review.dow.wed"),
+    t("review.dow.thu"),
+    t("review.dow.fri"),
+    t("review.dow.sat"),
+    t("review.dow.sun"),
+  ];
 
   const stats = useMemo(() => {
     const now = new Date();
@@ -376,11 +393,12 @@ export function ReviewPage() {
       streak,
       doneThisWeek.length,
       focusHoursThisWeek,
-      now
+      now,
+      t
     );
 
     const delta = doneThisWeek.length - doneLastWeek.length;
-    const mood = encouragement(doneThisWeek.length, delta, streak);
+    const mood = encouragement(doneThisWeek.length, delta, streak, t);
 
     return {
       doneThisWeek,
@@ -396,17 +414,15 @@ export function ReviewPage() {
       delta,
       mood,
     };
-  }, [tasks]);
+  }, [tasks, t]);
 
   const maxType = Math.max(1, ...Object.values(stats.byType));
 
   return (
     <div className="h-full flex flex-col gap-6">
       <div className="shrink-0">
-        <h2 className="text-3xl font-bold tracking-tight">Tổng kết</h2>
-        <p className="text-muted-foreground mt-1">
-          Bạn đã làm gì 7 ngày qua, đâu là việc bị bỏ — và những gì đáng ghi nhận.
-        </p>
+        <h2 className="text-3xl font-bold tracking-tight">{t("review.title")}</h2>
+        <p className="text-muted-foreground mt-1">{t("review.subtitle")}</p>
       </div>
 
       <div className="flex-1 overflow-y-auto space-y-6 pr-2">
@@ -416,7 +432,7 @@ export function ReviewPage() {
             <div className="flex items-start gap-5 flex-wrap">
               <div className="flex-1 min-w-[200px]">
                 <p className="text-xs uppercase tracking-wider text-muted-foreground font-semibold">
-                  Tuần này
+                  {t("review.heroHeading")}
                 </p>
                 <div className="flex items-baseline gap-3 mt-1 flex-wrap">
                   <p
@@ -428,9 +444,9 @@ export function ReviewPage() {
                     {stats.doneThisWeek.length}
                   </p>
                   <p className="text-sm text-muted-foreground">
-                    task hoàn thành
+                    {t("review.tasksCompleted")}
                   </p>
-                  <DeltaChip value={stats.delta} suffix=" vs tuần trước" />
+                  <DeltaChip value={stats.delta} suffix={" " + t("review.vsLastWeek")} />
                 </div>
                 <p className={cn("text-sm mt-3 leading-relaxed", MOOD_TEXT[stats.mood.mood])}>
                   {stats.mood.message}
@@ -451,7 +467,7 @@ export function ReviewPage() {
                     {stats.streak}
                   </p>
                   <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">
-                    ngày streak
+                    {t("review.daysStreak")}
                   </p>
                 </div>
               )}
@@ -464,7 +480,7 @@ export function ReviewPage() {
           <div>
             <p className="text-xs uppercase tracking-wider text-muted-foreground font-semibold mb-2 inline-flex items-center gap-1.5">
               <Trophy className="h-3 w-3" />
-              Đáng ghi nhận
+              {t("review.achievements")}
             </p>
             <div className="flex items-center gap-2 flex-wrap">
               {stats.achievements.map((a) => {
@@ -498,11 +514,9 @@ export function ReviewPage() {
           <CardHeader>
             <CardTitle className="flex items-center gap-2 text-base">
               <TrendingUp className="h-4 w-4 text-primary" />
-              Hoạt động 12 tuần
+              {t("review.heatmapTitle")}
             </CardTitle>
-            <CardDescription>
-              Mỗi ô = một ngày. Đậm hơn = nhiều task done hơn.
-            </CardDescription>
+            <CardDescription>{t("review.heatmapDesc")}</CardDescription>
           </CardHeader>
           <CardContent>
             <div className="flex items-start gap-2 overflow-x-auto">
@@ -529,7 +543,7 @@ export function ReviewPage() {
                           "h-3 w-3 rounded-[2px] transition-colors",
                           intensityClass(cell.count, stats.heatmapMax)
                         )}
-                        title={`${cell.date.toLocaleDateString("vi-VN")} · ${cell.count} task`}
+                        title={`${cell.date.toLocaleDateString()} · ${cell.count}`}
                       />
                     ))}
                   </div>
@@ -537,7 +551,7 @@ export function ReviewPage() {
               </div>
             </div>
             <div className="flex items-center gap-1.5 mt-3 text-[10px] text-muted-foreground">
-              <span>Ít</span>
+              <span>{t("review.heatmap.less")}</span>
               {[0, 0.2, 0.4, 0.6, 0.9].map((r) => (
                 <span
                   key={r}
@@ -547,7 +561,7 @@ export function ReviewPage() {
                   )}
                 />
               ))}
-              <span>Nhiều</span>
+              <span>{t("review.heatmap.more")}</span>
             </div>
           </CardContent>
         </Card>
@@ -555,27 +569,27 @@ export function ReviewPage() {
         {/* Stat cards with Δ chips */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
           <StatCard
-            label="Done tuần này"
+            label={t("review.statDoneThisWeek")}
             value={stats.doneThisWeek.length}
             delta={stats.delta}
             icon={CheckCircle2}
             iconClass="text-primary"
           />
           <StatCard
-            label="Done tuần trước"
+            label={t("review.statDoneLastWeek")}
             value={stats.doneLastWeek.length}
             icon={ArrowRight}
             iconClass="text-muted-foreground"
           />
           <StatCard
-            label="Focus tuần này"
+            label={t("review.statFocusThisWeek")}
             value={Math.round(stats.focusMinThisWeek / 60)}
             unit="h"
             icon={Hourglass}
             iconClass="text-emerald-500"
           />
           <StatCard
-            label="Overdue"
+            label={t("review.statOverdue")}
             value={stats.overdue.length}
             icon={AlertCircle}
             iconClass={
@@ -595,14 +609,14 @@ export function ReviewPage() {
             <CardHeader>
               <CardTitle className="flex items-center gap-2 text-base">
                 <TrendingUp className="h-4 w-4 text-primary" />
-                Phân bố theo loại
+                {t("review.distributionTitle")}
               </CardTitle>
-              <CardDescription>Tỷ lệ task done tuần này.</CardDescription>
+              <CardDescription>{t("review.distributionDesc")}</CardDescription>
             </CardHeader>
             <CardContent>
               {stats.doneThisWeek.length === 0 ? (
                 <p className="text-sm text-muted-foreground text-center py-8">
-                  Tuần này chưa có task done.
+                  {t("review.noDoneThisWeek")}
                 </p>
               ) : (
                 <div className="space-y-3">
@@ -610,7 +624,7 @@ export function ReviewPage() {
                     ([type, n]) => (
                       <div key={type}>
                         <div className="flex items-center justify-between text-sm mb-1.5">
-                          <span className="capitalize">{type}</span>
+                          <span>{t(`type.${type}`)}</span>
                           <span className="text-muted-foreground tabular-nums">
                             {n}
                           </span>
@@ -636,27 +650,25 @@ export function ReviewPage() {
             <CardHeader>
               <CardTitle className="flex items-center gap-2 text-base text-destructive">
                 <AlertCircle className="h-4 w-4" />
-                Đang quá hạn
+                {t("review.overdueTitle")}
               </CardTitle>
-              <CardDescription>
-                Cân nhắc hoãn lại hoặc bỏ đi, đừng để treo.
-              </CardDescription>
+              <CardDescription>{t("review.overdueDesc")}</CardDescription>
             </CardHeader>
             <CardContent>
               {stats.overdue.length === 0 ? (
                 <p className="text-sm text-muted-foreground text-center py-8">
-                  Sạch — không có task overdue.
+                  {t("review.overdueClean")}
                 </p>
               ) : (
                 <div className="space-y-2 max-h-[280px] overflow-y-auto">
-                  {stats.overdue.map((t) => (
+                  {stats.overdue.map((task) => (
                     <div
-                      key={t.id}
+                      key={task.id}
                       className="flex items-center justify-between gap-2 p-3 rounded-lg border bg-background/50"
                     >
-                      <p className="text-sm font-medium truncate">{t.title}</p>
+                      <p className="text-sm font-medium truncate">{task.title}</p>
                       <span className="text-xs font-medium px-2 py-0.5 rounded-md bg-destructive/10 text-destructive shrink-0">
-                        {formatDeadline(t.deadline)}
+                        {formatDeadline(task.deadline)}
                       </span>
                     </div>
                   ))}
@@ -668,13 +680,13 @@ export function ReviewPage() {
 
         <Card className="bg-card border shadow-sm">
           <CardHeader>
-            <CardTitle className="text-base">Hoàn thành gần đây</CardTitle>
-            <CardDescription>10 task done mới nhất.</CardDescription>
+            <CardTitle className="text-base">{t("review.recentTitle")}</CardTitle>
+            <CardDescription>{t("review.recentDesc")}</CardDescription>
           </CardHeader>
           <CardContent>
             {stats.doneThisWeek.length === 0 ? (
               <p className="text-sm text-muted-foreground text-center py-8">
-                Chưa có task done.
+                {t("review.recentEmpty")}
               </p>
             ) : (
               <div className="space-y-2">
@@ -685,17 +697,17 @@ export function ReviewPage() {
                       new Date(a.completedAt!).getTime()
                   )
                   .slice(0, 10)
-                  .map((t) => (
+                  .map((task) => (
                     <div
-                      key={t.id}
+                      key={task.id}
                       className="flex items-center justify-between gap-2 p-3 rounded-lg border bg-background/50"
                     >
                       <div className="flex items-center gap-2 min-w-0">
                         <CheckCircle2 className="h-4 w-4 text-primary shrink-0" />
-                        <p className="text-sm truncate">{t.title}</p>
+                        <p className="text-sm truncate">{task.title}</p>
                       </div>
                       <span className="text-xs text-muted-foreground shrink-0 tabular-nums">
-                        {new Date(t.completedAt!).toLocaleString("vi-VN", {
+                        {new Date(task.completedAt!).toLocaleString(undefined, {
                           day: "2-digit",
                           month: "2-digit",
                           hour: "2-digit",
