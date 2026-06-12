@@ -9,6 +9,20 @@
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-title" content="Clearmind" />
     <meta name="description" content="Your external brain — tasks, calendar, focus, weekly review." />
+    <!-- Hydrate <html lang> from saved preference BEFORE React renders so
+         the first paint matches what i18n will eventually settle on.
+         Otherwise browser spellcheck + screen readers see VI for a few ms
+         before the React effect fires. -->
+    <script>
+      (function () {
+        try {
+          var saved = localStorage.getItem("clearmind_lang");
+          if (saved === "en" || saved === "vi") {
+            document.documentElement.setAttribute("lang", saved);
+          }
+        } catch (_) {}
+      })();
+    </script>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">

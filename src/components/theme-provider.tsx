@@ -52,6 +52,22 @@ export function ThemeProvider({
     return () => mq.removeEventListener("change", listener)
   }, [theme])
 
+  // Cross-tab sync: when another browser tab flips the theme, mirror it
+  // here. `storage` event fires on every other tab when localStorage is
+  // written, so this gives near-instant propagation without needing a
+  // separate channel.
+  useEffect(() => {
+    const onStorage = (e: StorageEvent) => {
+      if (e.key !== storageKey) return
+      const next = e.newValue as Theme | null
+      if (next === "light" || next === "dark" || next === "system") {
+        setTheme(next)
+      }
+    }
+    window.addEventListener("storage", onStorage)
+    return () => window.removeEventListener("storage", onStorage)
+  }, [storageKey])
+
   const value = {
     theme,
     setTheme: (theme: Theme) => {

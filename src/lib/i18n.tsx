@@ -631,6 +631,64 @@ const VI: Dict = {
   "review.achSub.steady": "Nhịp đều",
   "review.achSub.subjectTaskCount": "{n} task đã xong",
   "review.achSub.tasksDone": "{n} task xong",
+
+  // Guide page
+  "guide.hero.badge": "Hướng dẫn nhanh",
+  "guide.hero.welcomePrefix": "Chào mừng đến với",
+  "guide.hero.intro": "Bộ não phụ của bạn — gom task, deadline, lịch học, lịch thi, focus session và review tuần vào một nơi. Ghé trang này bất cứ lúc nào nếu quên cái gì.",
+  "guide.hero.createFirst": "Tạo task đầu tiên",
+  "guide.hero.openDashboard": "Mở Dashboard",
+  "guide.features.title": "Các trang chính",
+  "guide.features.subtitle": "6 khu vực — bấm vào card để mở thẳng.",
+  "guide.features.openLink": "Mở",
+  "guide.feature.dashboard.title": "Dashboard",
+  "guide.feature.dashboard.desc": "Trang chính — gom Today's Focus, Due Soon, lịch tuần và Quick Capture vào một chỗ.",
+  "guide.feature.calendar.title": "Calendar",
+  "guide.feature.calendar.desc": "Xem deadline theo tuần / tháng. Kéo task từ Dashboard thả vào calendar để xếp lịch.",
+  "guide.feature.tasks.title": "Tasks",
+  "guide.feature.tasks.desc": "Toàn bộ task, gom nhóm theo Overdue / Today / This week / Later. Tìm theo title, tag, mô tả.",
+  "guide.feature.focus.title": "Focus (Pomodoro)",
+  "guide.feature.focus.desc": "Chọn 1 task, chạy 25 phút focus + 5 phút nghỉ. Mỗi phiên cộng phút vào task.",
+  "guide.feature.review.title": "Weekly Review",
+  "guide.feature.review.desc": "Bạn đã done bao nhiêu task tuần này, streak mấy ngày, focus mấy giờ, còn bao nhiêu việc quá hạn.",
+  "guide.feature.import.title": "Import lịch học",
+  "guide.feature.import.desc": "Paste timetable từ web trường, dùng bookmarklet 1-click, hoặc upload file .ics. Tự thành lớp lặp tuần.",
+  "guide.feature.settings.title": "Settings",
+  "guide.feature.settings.desc": "Theme, notifications, phím tắt, export sang Google Calendar (.ics), backup JSON.",
+  "guide.steps.title": "Bắt đầu trong 5 bước",
+  "guide.steps.subtitle": "Đi từ task đầu tiên đến review tuần — tổng ~30 giây.",
+  "guide.step.capture.title": "Mở Quick Capture",
+  "guide.step.capture.desc": "Bấm ⌘K (hoặc Ctrl+K) ở bất kỳ trang nào để bật form tạo task nhanh.",
+  "guide.step.autoParse.title": "Điền title — phần còn lại tự đoán",
+  "guide.step.autoParse.desc": "Gõ \"Thi Toán cuối kỳ thứ 5 lúc 14h\" → Clearmind tự nhận loại \"academic\", priority \"high\", và đoán deadline.",
+  "guide.step.location.title": "Thêm vị trí / phòng",
+  "guide.step.location.desc": "Nhập phòng học, phòng thi (VD: A1.404, lab E3). Sẽ hiển thị ở Dashboard và Calendar.",
+  "guide.step.drag.title": "Kéo task lên Calendar",
+  "guide.step.drag.desc": "Ở Dashboard, kéo task từ panel phải thả vào lịch để đặt giờ. Kéo trong lịch để dời.",
+  "guide.step.focus.title": "Chạy phiên Focus",
+  "guide.step.focus.desc": "Vào /focus, chọn task, bấm Bắt đầu. Mỗi 25 phút sẽ được cộng vào tổng focus của task.",
+  "guide.step.review.title": "Cuối tuần ghé Review",
+  "guide.step.review.desc": "Xem mình done bao nhiêu, streak mấy ngày, còn việc nào quá hạn để dọn.",
+  "guide.tips.title": "Mẹo nâng cao",
+  "guide.tip.weeklySchedule.title": "Lịch học hàng tuần",
+  "guide.tip.weeklySchedule.desc": "Tạo task \"Học Giải tích 2\", chọn Lặp lại = \"Hàng tuần\" + giờ + phòng. Mỗi lần xong sẽ tự sinh phiên tuần kế.",
+  "guide.tip.urgent.title": "Đánh dấu việc gấp",
+  "guide.tip.urgent.desc": "Đặt Mức ưu tiên = \"Cao\" → task có viền đỏ + icon lửa khắp Dashboard / Calendar, không thể bỏ sót.",
+  "guide.tip.voice.title": "Voice capture",
+  "guide.tip.voice.desc": "Trong dialog tạo task, bấm icon mic để nhập tiêu đề bằng giọng nói tiếng Việt.",
+  "guide.tip.notify.title": "Nhắc trước deadline",
+  "guide.tip.notify.desc": "Bật ở Settings → Notifications. Mỗi task chọn nhắc 5p / 15p / 1h / 1d trước.",
+  "guide.tip.recurrence.title": "Recurrence cho việc lặp",
+  "guide.tip.recurrence.desc": "Daily / Ngày làm việc / Hàng tuần / Hàng tháng. Tự spawn phiên mới khi đánh done.",
+  "guide.tip.backup.title": "Backup bằng Export JSON",
+  "guide.tip.backup.desc": "Settings → Export. Dữ liệu lưu LocalStorage trình duyệt, nên export định kỳ.",
+  "guide.tip.import.title": "Import / merge",
+  "guide.tip.import.desc": "Merge từ file JSON cũ. Task trùng id bị bỏ qua, không ghi đè cái hiện tại.",
+  "guide.shortcuts.title": "Phím tắt",
+  "guide.shortcut.palette": "Mở Command Palette / Quick Capture",
+  "guide.shortcut.nav": "Di chuyển trong palette",
+  "guide.shortcut.select": "Chọn / lưu",
+  "guide.shortcut.escape": "Đóng dialog / palette",
 };
 
 const EN: Dict = {
@@ -1287,6 +1345,20 @@ export function I18nProvider({ children }: { children: React.ReactNode }) {
       body: JSON.stringify({ lang }),
     }).catch(() => {});
   }, [lang]);
+
+  // Cross-tab sync: when the user flips language in another tab, mirror
+  // the change here so every open Clearmind window reflects the same
+  // language without a manual reload.
+  useEffect(() => {
+    const onStorage = (e: StorageEvent) => {
+      if (e.key !== LANG_STORAGE_KEY) return;
+      if (e.newValue === "en" || e.newValue === "vi") {
+        setLangState(e.newValue);
+      }
+    };
+    window.addEventListener("storage", onStorage);
+    return () => window.removeEventListener("storage", onStorage);
+  }, []);
 
   const setLang = (l: Lang) => setLangState(l);
 

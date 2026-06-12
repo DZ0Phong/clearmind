@@ -72,6 +72,16 @@ export function AccentProvider({ children }: { children: ReactNode }) {
     return () => obs.disconnect();
   }, [accent]);
 
+  // Cross-tab sync: mirror accent picked in another tab.
+  useEffect(() => {
+    const onStorage = (e: StorageEvent) => {
+      if (e.key !== STORAGE_KEY) return;
+      if (isAccent(e.newValue)) setAccentState(e.newValue);
+    };
+    window.addEventListener("storage", onStorage);
+    return () => window.removeEventListener("storage", onStorage);
+  }, []);
+
   const setAccent = (a: Accent) => {
     try {
       localStorage.setItem(STORAGE_KEY, a);
