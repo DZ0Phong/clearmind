@@ -187,11 +187,24 @@ function fireTest() {
 
 function scheduledList() {
   const list = [];
-  for (const [taskId, entry] of timers.entries()) {
-    list.push({ taskId, title: entry.title, fireAt: entry.fireAt });
+  for (const entry of timers.values()) {
+    list.push({ taskId: entry.taskId, title: entry.title, fireAt: entry.fireAt });
   }
   list.sort((a, b) => a.fireAt - b.fireAt);
   return list;
+}
+
+// Mirror of `nextRecurrence` in src/hooks/use-tasks.tsx — keep these two
+// in sync. CommonJS port for the CLI side.
+function nextRecurrence(deadline, rule) {
+  const d = new Date(deadline);
+  if (rule === "daily") d.setDate(d.getDate() + 1);
+  else if (rule === "weekday") {
+    do d.setDate(d.getDate() + 1);
+    while (d.getDay() === 0 || d.getDay() === 6);
+  } else if (rule === "weekly") d.setDate(d.getDate() + 7);
+  else if (rule === "monthly") d.setMonth(d.getMonth() + 1);
+  return deadline.includes("T") ? d.toISOString() : d.toISOString().slice(0, 10);
 }
 
 function scheduleAll(tasks) {
@@ -199,22 +212,38 @@ function scheduleAll(tasks) {
   if (!Array.isArray(tasks)) return;
   const now = Date.now();
   const WINDOW_MS = 25 * 60 * 60_000;
+  const horizon = now + WINDOW_MS;
   let scheduled = 0;
   for (const t of tasks) {
     if (!t || !t.notify || !t.deadline || t.status === "done") continue;
     const offs = offsetMs(t.notify);
     if (offs === null) continue;
-    const target = new Date(t.deadline).getTime() - offs;
-    if (Number.isNaN(target)) continue;
-    const delay = target - now;
-    if (delay <= 0 || delay > WINDOW_MS) continue;
-    const handle = setTimeout(() => {
-      fire(t);
-      timers.delete(t.id);
-    }, delay);
-    if (handle.unref) handle.unref();
-    timers.set(t.id, { handle, fireAt: target, title: t.title });
-    scheduled++;
+    // Walk occurrences forward from the stored deadline. For non-recurring
+    // tasks the loop yields exactly one entry. For recurring tasks we
+    // expand every occurrence whose fireAt falls in (now, horizon],
+    // stopping at recurrenceEndAt or when the horizon is passed.
+    const endAt = t.recurrenceEndAt ? new Date(t.recurrenceEndAt).getTime() : null;
+    let cursor = t.deadline;
+    let safety = 500; // bound for very-stale recurring rows
+    while (safety-- > 0) {
+      const occMs = new Date(cursor).getTime();
+      if (Number.isNaN(occMs)) break;
+      if (endAt !== null && occMs > endAt) break;
+      const fireAt = occMs - offs;
+      if (fireAt > horizon) break;
+      if (fireAt > now) {
+        const key = `${t.id}:${fireAt}`;
+        const handle = setTimeout(() => {
+          fire(t);
+          timers.delete(key);
+        }, fireAt - now);
+        if (handle.unref) handle.unref();
+        timers.set(key, { handle, fireAt, title: t.title, taskId: t.id });
+        scheduled++;
+      }
+      if (!t.recurrence) break;
+      cursor = nextRecurrence(cursor, t.recurrence);
+    }
   }
   console.log(`[clearmind] Scheduled ${scheduled} native notification(s) in next 25h.`);
 }

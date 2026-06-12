@@ -46,15 +46,42 @@ function readLock(dataDir) {
 // PID-alive alone isn't enough: after reboot Windows can recycle our old PID
 // to an unrelated process (CrossDeviceService.exe, etc.) and we'd refuse to
 // start. Confirm the lock by hitting /api/health on the recorded port.
+//
+// Concurrency: read-then-write of the lockfile used to leave a TOCTOU window
+// where two simultaneous starts (double-click + VBS autostart firing at
+// boot) could both pass the existing-check and both writeFileSync — last
+// write wins, corrupting the recorded pid/port. We close that window with
+// `flag: "wx"` (exclusive create — fails atomically if the file exists).
+// Loser of the race observes EEXIST, re-reads the lock, and returns the
+// winner's port/pid as if it had been there all along.
 async function acquire(dataDir, port) {
   require("./storage").ensureDir(dataDir);
   const existing = readLock(dataDir);
   if (existing && isPidAlive(existing.pid) && await probeHealth(existing.port)) {
     return { acquired: false, existingPort: existing.port, existingPid: existing.pid };
   }
+  // Stale lockfile (pid dead, recycled, or probe failed) — unlink so wx can
+  // create. If two processes both reach here, only one's unlink+wx pair
+  // succeeds; the other's wx hits EEXIST below.
+  if (existing) {
+    try { fs.unlinkSync(lockPath(dataDir)); } catch { /* already gone — race ok */ }
+  }
   const data = { pid: process.pid, port, startedAt: new Date().toISOString() };
-  fs.writeFileSync(lockPath(dataDir), JSON.stringify(data, null, 2), "utf8");
-  return { acquired: true };
+  try {
+    fs.writeFileSync(lockPath(dataDir), JSON.stringify(data, null, 2), { encoding: "utf8", flag: "wx" });
+    return { acquired: true };
+  } catch (e) {
+    if (e && e.code === "EEXIST") {
+      const winner = readLock(dataDir);
+      if (winner) {
+        return { acquired: false, existingPort: winner.port, existingPid: winner.pid };
+      }
+      // Winner unlinked between our wx and our re-read — extremely rare.
+      // Treat as a transient lock state and let caller retry/exit.
+      return { acquired: false, existingPort: null, existingPid: null };
+    }
+    throw e;
+  }
 }
 
 function release(dataDir) {
