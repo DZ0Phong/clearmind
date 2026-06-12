@@ -166,6 +166,7 @@ User edit → setTasks(prev → updated)
 | 19 | F5 sau edit → đôi khi UI revert về cũ vài giây rồi mới đúng (race với PUT) | SSE `/api/events` + inline payload mtime + PUT keepalive + debounce 80ms. Server push mọi thay đổi real-time, snapshot bù ngay khi tab connect. |
 | 20 | Trang Tasks list flat 19+ task gồm cả buổi học lặp → noise | View tabs: `Việc cần làm` (ẩn recurring academic) / `Lịch học` (gộp theo môn, mỗi card "PRN222 · 6 buổi" expandable) / `Tất cả`. Strip "Hôm nay X buổi" pill ở đầu tab default. |
 | 21 | Command palette + tasks page còn label tiếng Anh ("New task", "All Tasks"...) | Dịch hết sang VN nhất quán. Map task type → "Học tập/Cá nhân/Công việc/Khác" trong palette hint. ActiveIdx chỉ reset khi query empty↔non-empty (hết flicker). |
+| 22 | Autostart VBS chạy lúc boot nhưng Clearmind không lên — sau reboot Windows recycle PID cũ trong `clearmind.lock` cho process khác (CrossDeviceService.exe), `acquire()` chỉ `isPidAlive` → tưởng instance đang chạy → exit silent | `single-instance.js: acquire()` thành **async**, sau `isPidAlive` thêm bước `probeHealth(existingPort)` (timeout 800ms). PID alive nhưng probe fail = lock stale → overwrite. `cli.js: runForeground` `await` cả 2 lần gọi acquire. `checkExisting` không đổi (đã có probe sẵn). `menu.js` không đổi (đường này không tự lock). |
 
 ## Architectural decisions
 

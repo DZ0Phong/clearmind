@@ -109,7 +109,7 @@ async function runForeground(opts, dataDir) {
 
   // Acquire single-instance lock so a second `clearmind --tray` boot-launch
   // can't race against a manually-started one.
-  const acq = singleInstance.acquire(dataDir, opts.port);
+  const acq = await singleInstance.acquire(dataDir, opts.port);
   if (!acq.acquired) {
     console.log(`[clearmind] Đã có instance chạy ở port ${acq.existingPort}. Mở dashboard.`);
     if (!opts.noBrowser) openBrowser(`http://localhost:${acq.existingPort}/dashboard`);
@@ -125,7 +125,7 @@ async function runForeground(opts, dataDir) {
 
   // Update lock with the port we actually got (port retry may have shifted it).
   singleInstance.release(dataDir);
-  singleInstance.acquire(dataDir, actualPort);
+  await singleInstance.acquire(dataDir, actualPort);
 
   console.log(`[clearmind] http://localhost:${actualPort}/dashboard  (data: ${dataDir})`);
 

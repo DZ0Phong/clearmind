@@ -19,6 +19,20 @@ function isPidAlive(pid) {
   }
 }
 
+async function probeHealth(port) {
+  if (!port) return false;
+  try {
+    const r = await fetch(`http://127.0.0.1:${port}/api/health`, {
+      signal: AbortSignal.timeout(800),
+    });
+    if (!r.ok) return false;
+    const j = await r.json();
+    return !!(j && j.ok);
+  } catch (_) {
+    return false;
+  }
+}
+
 function readLock(dataDir) {
   const file = lockPath(dataDir);
   if (!fs.existsSync(file)) return null;
@@ -29,10 +43,13 @@ function readLock(dataDir) {
   }
 }
 
-function acquire(dataDir, port) {
+// PID-alive alone isn't enough: after reboot Windows can recycle our old PID
+// to an unrelated process (CrossDeviceService.exe, etc.) and we'd refuse to
+// start. Confirm the lock by hitting /api/health on the recorded port.
+async function acquire(dataDir, port) {
   require("./storage").ensureDir(dataDir);
   const existing = readLock(dataDir);
-  if (existing && isPidAlive(existing.pid)) {
+  if (existing && isPidAlive(existing.pid) && await probeHealth(existing.port)) {
     return { acquired: false, existingPort: existing.port, existingPid: existing.pid };
   }
   const data = { pid: process.pid, port, startedAt: new Date().toISOString() };
