@@ -41,7 +41,7 @@ import {
   Wand2,
   HelpCircle,
 } from "lucide-react";
-import { cn } from "@/lib/utils";
+import { cn, extractSubjectCode } from "@/lib/utils";
 import { Logo } from "@/components/logo";
 import { buildBookmarklet, getBookmarkletBody } from "@/lib/bookmarklet";
 import { useT } from "@/lib/i18n";
@@ -58,15 +58,6 @@ Thứ 4
 13:00 - 15:30  Lập trình hướng đối tượng  Lab C3.501  Thầy Trần C
 Thứ 6
 07:00 - 09:30  Tiếng Anh chuyên ngành  D4.201  Cô Phạm D`;
-
-// Pull just the subject code (e.g. "PRU213") from a free-form title — the
-// import parser may produce "PRU213" alone OR "PRU213 — Lý thuyết", and the
-// existing weekly tasks may carry either form. Matching on the code keeps
-// dedup + override stable regardless of suffix.
-function extractSubjectCode(title: string): string | null {
-  const m = title.match(/\b([A-Z]{3,4}\d{3,4}[a-z]{0,3})\b/);
-  return m ? m[1] : null;
-}
 
 // Slot signature for a weekly class = subject-code (or title) + dow + time.
 // Identifies the RECURRING SCHEDULE (Thu 12:50 PRU213), regardless of week.
@@ -582,10 +573,10 @@ export function ImportPage() {
             key={id}
             onClick={() => setTab(id)}
             className={cn(
-              // Match Settings tab strip exactly: cm-press feedback, px-3.5
-              // (was px-4), and outline focus-ring so keyboard + click feel
-              // consistent across the app.
-              "cm-press flex items-center gap-2 px-3.5 py-1.5 rounded-md text-sm font-medium transition-all whitespace-nowrap",
+              // Match Settings tab strip exactly: px-3 py-1.5 canonical for
+              // pill-tab strips (also used by ThemePicker). Calendar view
+              // toggle is intentionally denser at px-2.5 py-1.
+              "cm-press flex items-center gap-2 px-3 py-1.5 rounded-md text-sm font-medium transition-all whitespace-nowrap",
               "outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50",
               tab === id
                 ? "bg-card text-foreground shadow-sm"

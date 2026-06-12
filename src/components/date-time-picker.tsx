@@ -111,12 +111,12 @@ function TimeStepper({ value, max, step, onChange, ariaLabel }: TimeStepperProps
   };
 
   return (
-    <div className="inline-flex items-stretch h-10 rounded-md border border-input bg-background overflow-hidden focus-within:ring-2 focus-within:ring-ring/40 focus-within:border-ring transition-all">
+    <div className="inline-flex items-stretch h-8 rounded-md border border-input bg-background overflow-hidden focus-within:ring-2 focus-within:ring-ring/40 focus-within:border-ring transition-all">
       <button
         type="button"
         onClick={dec}
         aria-label={t("dtp.decreaseAria", { label: ariaLabel })}
-        className="w-9 flex items-center justify-center text-muted-foreground hover:bg-accent hover:text-foreground active:bg-primary/15 active:text-primary transition-colors border-r border-input"
+        className="w-8 flex items-center justify-center text-muted-foreground hover:bg-accent hover:text-foreground active:bg-primary/15 active:text-primary transition-colors border-r border-input"
       >
         <Minus className="h-3.5 w-3.5" />
       </button>
@@ -135,7 +135,7 @@ function TimeStepper({ value, max, step, onChange, ariaLabel }: TimeStepperProps
         type="button"
         onClick={inc}
         aria-label={t("dtp.increaseAria", { label: ariaLabel })}
-        className="w-9 flex items-center justify-center text-muted-foreground hover:bg-accent hover:text-foreground active:bg-primary/15 active:text-primary transition-colors border-l border-input"
+        className="w-8 flex items-center justify-center text-muted-foreground hover:bg-accent hover:text-foreground active:bg-primary/15 active:text-primary transition-colors border-l border-input"
       >
         <Plus className="h-3.5 w-3.5" />
       </button>

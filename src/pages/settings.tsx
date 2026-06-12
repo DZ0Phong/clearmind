@@ -160,7 +160,7 @@ export function SettingsPage() {
             key={id}
             onClick={() => setTab(id)}
             className={cn(
-              "cm-press inline-flex items-center gap-2 px-3.5 py-1.5 rounded-md text-sm font-medium transition-all whitespace-nowrap",
+              "cm-press inline-flex items-center gap-2 px-3 py-1.5 rounded-md text-sm font-medium transition-all whitespace-nowrap",
               tab === id
                 ? "bg-card text-foreground shadow-sm"
                 : "text-muted-foreground hover:text-foreground"

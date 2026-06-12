@@ -5,7 +5,10 @@ import { cn } from "@/lib/utils";
 
 const ORDER: Accent[] = ["indigo", "violet", "blue", "emerald", "rose", "orange"];
 
-// Circular color swatches. Active one gets a ring + check.
+// Circular color swatches. Active one gets a ring + check. Wrapped in the
+// same pill shell as ThemePicker/LanguagePicker so the three Settings rows
+// share one vertical rhythm — `inline-flex items-center gap-2 p-1
+// rounded-xl border bg-muted/40`.
 export function AccentPicker() {
   const { accent, setAccent } = useAccent();
   const t = useT();
@@ -13,7 +16,7 @@ export function AccentPicker() {
     <div
       role="radiogroup"
       aria-label={t("settings.accent.label")}
-      className="flex items-center gap-2 flex-wrap"
+      className="inline-flex items-center gap-2 p-1 rounded-xl border bg-muted/40 flex-wrap"
     >
       {ORDER.map((a) => {
         const color = ACCENTS[a].light;
@@ -28,7 +31,7 @@ export function AccentPicker() {
             title={t(`accent.${a}`)}
             style={{ background: color }}
             className={cn(
-              "cm-press relative h-8 w-8 rounded-full transition-all duration-200",
+              "cm-press relative h-7 w-7 rounded-full transition-all duration-200",
               "hover:scale-110",
               active
                 ? "ring-2 ring-offset-2 ring-foreground/40 ring-offset-background scale-110"
