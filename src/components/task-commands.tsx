@@ -1,5 +1,11 @@
 /* eslint-disable react-refresh/only-export-components */
-import { createContext, useCallback, useContext, useState } from "react";
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useMemo,
+  useState,
+} from "react";
 import { TaskDialog, type CreatePrefill } from "@/components/task-dialog";
 import { CommandPalette } from "@/components/command-palette";
 import { useTasks } from "@/hooks/use-tasks";
@@ -28,8 +34,15 @@ export function TaskCommandsProvider({ children }: { children: React.ReactNode }
 
   const editing = editId ? tasks.find((t) => t.id === editId) : null;
 
+  // Memo value so useTaskCommands() consumers (Dashboard, Tasks, Calendar,
+  // TopBar) don't re-render when paletteOpen/createOpen/editId flip.
+  const value = useMemo(
+    () => ({ openCreate, openEdit, openPalette }),
+    [openCreate, openEdit, openPalette]
+  );
+
   return (
-    <CommandsContext.Provider value={{ openCreate, openEdit, openPalette }}>
+    <CommandsContext.Provider value={value}>
       {children}
       <CommandPalette
         open={paletteOpen}

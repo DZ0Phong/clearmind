@@ -17,7 +17,6 @@ import {
   parseAny,
   parseICS,
   parseTimetableHTML,
-  parseTimetableText,
   detectKind,
   computeFirstOccurrenceISO,
   type ParsedClass,
@@ -1428,9 +1427,6 @@ function PreviewRow({
     </div>
   );
 }
-
-// Track usage to silence linter for unused parser fn (it's used via parseAny).
-void parseTimetableText;
 
 /**
  * React 19 sanitizes `javascript:` URLs out of href props as an XSS guard,

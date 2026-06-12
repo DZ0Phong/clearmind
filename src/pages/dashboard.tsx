@@ -1,4 +1,4 @@
-import { useEffect, useMemo } from "react";
+import { memo, useEffect, useMemo } from "react";
 import { useNavigate, Link, useSearchParams } from "react-router-dom";
 import { useTickingNow } from "@/lib/use-ticking-now";
 import {
@@ -543,7 +543,13 @@ function UpNextHero({
   );
 }
 
-function AgendaRow({ task, onClick }: { task: Task; onClick: () => void }) {
+const AgendaRow = memo(function AgendaRow({
+  task,
+  onClick,
+}: {
+  task: Task;
+  onClick: () => void;
+}) {
   const t = useT();
   const time = extractTimeLabel(task.deadline);
   const overdue = isPast(task.deadline);
@@ -600,7 +606,7 @@ function AgendaRow({ task, onClick }: { task: Task; onClick: () => void }) {
       </div>
     </div>
   );
-}
+});
 
 function EmptyAgenda({ onCreate }: { onCreate: () => void }) {
   const t = useT();

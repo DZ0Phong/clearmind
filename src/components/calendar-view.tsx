@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { memo, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useTickingNow } from "@/lib/use-ticking-now";
 import FullCalendar from "@fullcalendar/react";
@@ -1060,7 +1060,13 @@ function DayOverviewDialog({
   );
 }
 
-function DayTaskRow({ task, onClick }: { task: Task; onClick: () => void }) {
+const DayTaskRow = memo(function DayTaskRow({
+  task,
+  onClick,
+}: {
+  task: Task;
+  onClick: () => void;
+}) {
   const t = useT();
   const time = extractTimeLabel(task.deadline);
   const col = subjectColor(task.title);
@@ -1114,7 +1120,7 @@ function DayTaskRow({ task, onClick }: { task: Task; onClick: () => void }) {
       </div>
     </div>
   );
-}
+});
 
 /* ───── Agenda view (vertical timeline) ─────────────────────────── */
 
@@ -1332,7 +1338,13 @@ function AgendaDayGroup({
   );
 }
 
-function AgendaItem({ task, onPick }: { task: Task; onPick: () => void }) {
+const AgendaItem = memo(function AgendaItem({
+  task,
+  onPick,
+}: {
+  task: Task;
+  onPick: () => void;
+}) {
   const t = useT();
   const time = extractTimeLabel(task.deadline);
   const col = subjectColor(task.title);
@@ -1402,7 +1414,7 @@ function AgendaItem({ task, onPick }: { task: Task; onPick: () => void }) {
       </div>
     </button>
   );
-}
+});
 
 /* ───── Day view side panel ─────────────────────────────────────── */
 

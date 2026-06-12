@@ -31,7 +31,7 @@ export const formatDeadline = (isoString?: string) => {
 
 export type DateBucket = "overdue" | "today" | "this-week" | "later" | "none";
 
-const BUCKET_ORDER: DateBucket[] = [
+export const BUCKET_ORDER: DateBucket[] = [
   "overdue",
   "today",
   "this-week",
@@ -39,13 +39,7 @@ const BUCKET_ORDER: DateBucket[] = [
   "none",
 ];
 
-export const BUCKET_LABEL: Record<DateBucket, string> = {
-  overdue: "Overdue",
-  today: "Today",
-  "this-week": "This Week",
-  later: "Later",
-  none: "No deadline",
-};
+// (BUCKET_LABEL removed — consume t(`bucket.${name}`) via useT() instead.)
 
 function startOfDay(d: Date): Date {
   const x = new Date(d);
@@ -90,7 +84,27 @@ export function groupByBucket(tasks: Task[]): Record<DateBucket, Task[]> {
   return out;
 }
 
-export { BUCKET_ORDER };
+/* ----------------------------------------------------------------
+   Tiny helpers used across components — consolidated here to avoid
+   the same one-liner being redefined in 7+ files.
+   ---------------------------------------------------------------- */
+
+/** Pad a number to 2 chars with leading zero. */
+export const pad2 = (n: number) => n.toString().padStart(2, "0");
+
+/** YYYY-MM-DD local-time key. Used heavily by calendar grids + bucketing. */
+export function dayKey(d: Date): string {
+  return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
+}
+
+/** Pull the FPT-style subject code (e.g. "PRU213", "EXE101g") from a free-form
+ *  title. Returns null if not found. Used by the importer, the homework
+ *  dialog, and dedup logic — keep this the single source of truth. */
+const SUBJECT_CODE_INLINE = /\b([A-Z]{3,4}\d{3,4}[a-z]{0,3})\b/;
+export function extractSubjectCode(title: string): string | null {
+  const m = title.match(SUBJECT_CODE_INLINE);
+  return m ? m[1] : null;
+}
 
 /* ----------------------------------------------------------------
    Vietnamese natural-language deadline parser
@@ -103,7 +117,6 @@ export { BUCKET_ORDER };
 
 const VI_DOW: Record<string, number> = {
   "chu nhat": 0,
-  "chu nhat ": 0,
   cn: 0,
   "thu hai": 1,
   "thu 2": 1,
@@ -125,7 +138,10 @@ const VI_DOW: Record<string, number> = {
   t7: 6,
 };
 
-// Strip Vietnamese diacritics for keyword matching
+// Strip Vietnamese diacritics for keyword matching. The character class
+// targets Unicode combining marks U+0300..U+036F (the "Combining Diacritical
+// Marks" block) — written as explicit codepoints because the inline literals
+// rendered as an empty range in many editors.
 function stripDiacritics(s: string): string {
   return s
     .normalize("NFD")
@@ -508,14 +524,28 @@ const COLOR_PALETTE = [
 
 export type SubjectColor = (typeof COLOR_PALETTE)[number];
 
+// Memo cache. Called in every TaskRow / AgendaItem / DayTaskRow / calendar
+// chip render — with 200+ tasks in a calendar week view, that's 200+ string
+// hashes per render. Cache by input-string-derived key. Cap at 256 to bound
+// memory; clear oldest on overflow (FIFO via insertion order).
+const SUBJECT_COLOR_CACHE = new Map<string, SubjectColor>();
+
 export function subjectColor(input: string): SubjectColor {
   // Hash first 3 words — typical "subject prefix" (e.g. "Giải tích 2" → "giải tích 2")
   const key = (input || "").toLowerCase().split(/\s+/).slice(0, 3).join(" ");
+  const cached = SUBJECT_COLOR_CACHE.get(key);
+  if (cached) return cached;
   let h = 0;
   for (let i = 0; i < key.length; i++) {
     h = ((h << 5) - h + key.charCodeAt(i)) | 0;
   }
-  return COLOR_PALETTE[Math.abs(h) % COLOR_PALETTE.length];
+  const color = COLOR_PALETTE[Math.abs(h) % COLOR_PALETTE.length];
+  if (SUBJECT_COLOR_CACHE.size >= 256) {
+    const firstKey = SUBJECT_COLOR_CACHE.keys().next().value;
+    if (firstKey !== undefined) SUBJECT_COLOR_CACHE.delete(firstKey);
+  }
+  SUBJECT_COLOR_CACHE.set(key, color);
+  return color;
 }
 
 /* ----------------------------------------------------------------

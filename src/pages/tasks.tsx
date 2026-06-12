@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { memo, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { useTickingNow } from "@/lib/use-ticking-now";
 import { useTasks, type Task, type TaskStatus } from "@/hooks/use-tasks";
@@ -41,7 +41,6 @@ import {
   formatTimeAgoShort,
   groupByBucket,
   BUCKET_ORDER,
-  bucketByDate,
   subjectColor,
   tagStats,
   isRecurringClass,
@@ -106,7 +105,7 @@ function StatusCycler({
 
 const DAY_MS = 24 * 60 * 60_000;
 
-function TaskRow({
+const TaskRow = memo(function TaskRow({
   task,
   parent,
   onHomework,
@@ -335,7 +334,7 @@ function TaskRow({
       </div>
     </div>
   );
-}
+});
 
 export function TasksPage() {
   const { tasks, rollForwardOverdueRecurring, clearDuplicates } = useTasks();
@@ -1108,5 +1107,3 @@ function OverdueAlert({
 
 // re-export for type narrowing reuse if needed
 export type { Filter as TaskFilter };
-// keep imports clean
-void bucketByDate;

@@ -715,21 +715,8 @@ export function computeFirstOccurrenceISO(
   return `${dateStr}T${c.startTime}:00`;
 }
 
-/**
- * @deprecated Use i18n keys `review.dow.{sun|mon|tue|...}` via `useT()`
- * instead. This map is VN-only and bypassed the language toggle. Kept
- * exported as a fallback for anything that still imports it; remove once
- * no consumers remain.
- */
-export const DOW_LABEL_VI: Record<number, string> = {
-  0: "Chủ nhật",
-  1: "Thứ 2",
-  2: "Thứ 3",
-  3: "Thứ 4",
-  4: "Thứ 5",
-  5: "Thứ 6",
-  6: "Thứ 7",
-};
+// DOW_LABEL_VI was deprecated then removed — all consumers now use i18n
+// keys `review.dow.{sun|mon|tue|...}` via useT().
 
 // ---- Event-list parser (one-off events) -----------------------------------
 // Universal format: one line = one event with date + time + title (+ optional
