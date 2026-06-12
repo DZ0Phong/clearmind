@@ -137,9 +137,11 @@
   border-width: 1px !important;
 }
 
-/* Today highlight — subtle bg in cả month + time-grid, day-number nổi bật riêng. */
-.fc .fc-day-today {
-  background: color-mix(in srgb, var(--primary) 6%, transparent) !important;
+/* Today highlight — month view chỉ dùng circle pill on day-number (one
+   indicator, not two). Time-grid giữ subtle column tint vì không có
+   day-number pill ở đó. */
+.fc-daygrid .fc-day-today {
+  background: transparent !important;
 }
 .fc-timegrid .fc-day-today {
   background: color-mix(in srgb, var(--primary) 5%, transparent) !important;
@@ -155,24 +157,11 @@
   padding-right: 4px;
 }
 .fc .fc-daygrid-day-number {
-  font-size: 0.875rem;
+  font-size: 0.8125rem;
   font-weight: 600;
   color: var(--foreground);
   padding: 2px 4px;
-}
-/* Today = circle pill primary, dễ thấy ngay */
-.fc-day-today .fc-daygrid-day-number {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 1.6rem;
-  height: 1.6rem;
-  background: var(--primary);
-  color: var(--primary-foreground);
-  border-radius: 9999px;
-  font-weight: 700;
-  margin: 2px;
-  padding: 0;
+  line-height: 1.2;
 }
 /* Weekend dim nhẹ, ngày tháng khác mờ hẳn */
 .fc-day-sat .fc-daygrid-day-number,
@@ -182,6 +171,26 @@
 .fc-day-other .fc-daygrid-day-number {
   opacity: 0.35;
 }
+/* Today = solid pill primary. min-width + horizontal padding để 1-digit
+   (1-9) và 2-digit (10-31) đều fit gọn, không bị "đè" lên số khi font
+   bold + circle nhỏ. line-height: 1 ép text centered tuyệt đối. Đặt SAU
+   weekend rule để cascade thắng khi hôm nay rơi vào T7/CN. */
+.fc-day-today .fc-daygrid-day-number {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 1.75rem;
+  height: 1.75rem;
+  background: var(--primary);
+  color: white;
+  border-radius: 9999px;
+  font-weight: 600;
+  font-size: 0.8125rem;
+  line-height: 1;
+  margin: 2px;
+  padding: 0 0.4rem;
+  box-shadow: 0 1px 3px color-mix(in srgb, var(--primary) 40%, transparent);
+}
 /* Hover cell mượt cho rõ ngày click được */
 .fc-daygrid-day {
   transition: background 140ms ease;
@@ -189,6 +198,64 @@
 .fc-daygrid-day:hover {
   background: color-mix(in srgb, var(--accent) 50%, transparent);
   cursor: pointer;
+}
+
+/* "+N more" link — make it look like a clickable chip, not raw text */
+.fc .fc-daygrid-more-link {
+  font-size: 0.6875rem;
+  font-weight: 600;
+  color: var(--muted-foreground);
+  background: var(--muted);
+  padding: 1px 5px;
+  border-radius: 4px;
+  margin: 1px 2px 0;
+  transition: all 120ms ease;
+}
+.fc .fc-daygrid-more-link:hover {
+  background: var(--accent);
+  color: var(--accent-foreground);
+}
+
+/* Popover that opens when user clicks "+N more". Default FC styling has
+   no background → opens as a ghost panel overlapping day cells. Give it
+   proper card chrome so it reads as a distinct surface. */
+.fc .fc-popover {
+  background: var(--popover);
+  color: var(--popover-foreground);
+  border: 1px solid var(--border);
+  border-radius: 0.75rem;
+  box-shadow: 0 10px 30px -10px color-mix(in srgb, var(--foreground) 25%, transparent),
+              0 4px 12px -4px color-mix(in srgb, var(--foreground) 15%, transparent);
+  z-index: 50;
+  overflow: hidden;
+  min-width: 220px;
+  max-width: 320px;
+}
+.fc .fc-popover-header {
+  background: var(--muted);
+  color: var(--foreground);
+  padding: 8px 12px;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  border-bottom: 1px solid var(--border);
+}
+.fc .fc-popover-close {
+  color: var(--muted-foreground);
+  opacity: 0.7;
+  font-size: 1rem;
+  padding: 0 4px;
+}
+.fc .fc-popover-close:hover {
+  opacity: 1;
+  color: var(--foreground);
+}
+.fc .fc-popover-body {
+  padding: 4px;
+  max-height: 260px;
+  overflow-y: auto;
+}
+.fc .fc-popover-body .fc-event {
+  margin: 2px 0;
 }
 
 /* Events — chip tint rõ + viền trái 4px màu chủ đề. textColor saturated. */

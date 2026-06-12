@@ -10,27 +10,52 @@ import {
 } from "react";
 
 export type Accent =
-  | "indigo"
-  | "violet"
-  | "blue"
-  | "emerald"
+  | "red"
   | "rose"
-  | "orange";
+  | "pink"
+  | "fuchsia"
+  | "purple"
+  | "violet"
+  | "indigo"
+  | "blue"
+  | "sky"
+  | "cyan"
+  | "teal"
+  | "emerald"
+  | "green"
+  | "amber"
+  | "orange"
+  | "slate";
 
 interface Pair {
   light: string;
   dark: string;
 }
 
-// Light/dark hex pairs — light shade is 500, dark shade is 400, matching
-// the default indigo treatment baked into index.css.
+// Light/dark hex pairs — light shade is 500 (pops on white), dark shade
+// is 400 (pops on near-black) from the Tailwind palette. Both variants
+// were eyeballed against the actual app surface to avoid:
+//   - too pale on light mode (sinks into the off-white card bg)
+//   - too saturated on dark mode (vibrates against the slate-950 page)
+// Order follows the visible hue wheel (red → orange) + slate at the end
+// as a neutral option for users who want a quiet UI.
 export const ACCENTS: Record<Accent, Pair> = {
-  indigo: { light: "#6366f1", dark: "#818cf8" },
-  violet: { light: "#8b5cf6", dark: "#a78bfa" },
-  blue: { light: "#3b82f6", dark: "#60a5fa" },
-  emerald: { light: "#10b981", dark: "#34d399" },
+  red: { light: "#ef4444", dark: "#f87171" },
   rose: { light: "#f43f5e", dark: "#fb7185" },
+  pink: { light: "#ec4899", dark: "#f472b6" },
+  fuchsia: { light: "#d946ef", dark: "#e879f9" },
+  purple: { light: "#a855f7", dark: "#c084fc" },
+  violet: { light: "#8b5cf6", dark: "#a78bfa" },
+  indigo: { light: "#6366f1", dark: "#818cf8" },
+  blue: { light: "#3b82f6", dark: "#60a5fa" },
+  sky: { light: "#0ea5e9", dark: "#38bdf8" },
+  cyan: { light: "#06b6d4", dark: "#22d3ee" },
+  teal: { light: "#14b8a6", dark: "#2dd4bf" },
+  emerald: { light: "#10b981", dark: "#34d399" },
+  green: { light: "#22c55e", dark: "#4ade80" },
+  amber: { light: "#f59e0b", dark: "#fbbf24" },
   orange: { light: "#f97316", dark: "#fb923c" },
+  slate: { light: "#64748b", dark: "#94a3b8" },
 };
 
 const STORAGE_KEY = "clearmind-accent";
