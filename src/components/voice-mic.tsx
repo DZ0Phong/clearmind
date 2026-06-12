@@ -134,6 +134,12 @@ export function VoiceMic({ onText, lang, className, title }: Props) {
   const [wsSupported, setWsSupported] = useState(true);
   const [errMsg, setErrMsg] = useState<string | null>(null);
   const recRef = useRef<SpeechRecognitionInstance | null>(null);
+  // Tracks whether the user *intended* to be listening. Web Speech engines
+  // (Chrome ≈ 60s cap) and natural pauses ≥ a few seconds cause `onend` to
+  // fire even while the user is still mid-utterance. We auto-restart the
+  // session whenever onend fires AND this ref is true (i.e., user hasn't
+  // clicked stop). Cleared in toggle() before rec.stop() to avoid loops.
+  const wantsListenRef = useRef(false);
   const onTextRef = useRef(onText);
   useEffect(() => {
     onTextRef.current = onText;
@@ -174,13 +180,36 @@ export function VoiceMic({ onText, lang, className, title }: Props) {
         if (text.trim()) onTextRef.current(text, r.isFinal);
       }
     };
-    rec.onend = () => setWsListening(false);
-    rec.onspeechend = () => {
-      try { rec.stop(); } catch { /* ignore */ }
+    // No onspeechend handler — previously called rec.stop() on first
+    // detected silence which made natural mid-sentence pauses cut the
+    // session. With continuous=true the engine resumes recognizing new
+    // utterances after a pause.
+    rec.onend = () => {
+      // Chrome's Web Speech ends sessions after ~60s of activity AND
+      // also after some idle thresholds even with continuous=true. If
+      // user still wants to listen, restart silently so the experience
+      // is "press once → record until press again".
+      if (wantsListenRef.current) {
+        try {
+          rec.start();
+          return;
+        } catch {
+          /* InvalidStateError if engine is mid-shutdown — fall through */
+        }
+      }
+      setWsListening(false);
     };
     rec.onerror = (e: SpeechRecognitionErrorEvent) => {
-      setWsListening(false);
       const code = e.error || "unknown";
+      // `no-speech` fires when there's silence at the START of a session
+      // (different from mid-utterance pause). If user still wants to
+      // listen, ignore + let onend's restart kick in. Same for
+      // `audio-capture` transient blips.
+      if (code === "no-speech" || code === "audio-capture") {
+        if (wantsListenRef.current) return;
+      }
+      wantsListenRef.current = false;
+      setWsListening(false);
       if (code === "not-allowed" || code === "service-not-allowed") {
         setErrMsg(t("voice.errPermission"));
       } else if (code === "no-speech") {
@@ -241,9 +270,12 @@ export function VoiceMic({ onText, lang, className, title }: Props) {
       const rec = recRef.current;
       if (!rec) return;
       if (wsListening) {
+        // Clear intent FIRST so onend doesn't auto-restart.
+        wantsListenRef.current = false;
         try { rec.stop(); } catch { /* ignore */ }
         setWsListening(false);
       } else {
+        wantsListenRef.current = true;
         try {
           rec.start();
           setWsListening(true);
@@ -332,6 +364,9 @@ export function VoiceMic({ onText, lang, className, title }: Props) {
       try { localStorage.setItem(VOICE_VARIANT_KEY, defKey); } catch { /* ignore */ }
     }
     if (wsListening) {
+      // Clear intent before abort so onend doesn't auto-restart with the
+      // OLD lang/engine config.
+      wantsListenRef.current = false;
       try { recRef.current?.abort(); } catch { /* ignore */ }
       setWsListening(false);
     }
@@ -346,6 +381,9 @@ export function VoiceMic({ onText, lang, className, title }: Props) {
     }
     setPickerOpen(false);
     if (wsListening) {
+      // Clear intent before abort so onend doesn't auto-restart with the
+      // OLD lang/engine config.
+      wantsListenRef.current = false;
       try { recRef.current?.abort(); } catch { /* ignore */ }
       setWsListening(false);
     }
@@ -404,49 +442,81 @@ export function VoiceMic({ onText, lang, className, title }: Props) {
       ? MicOff
       : Mic;
 
+  // SINGLE-CONTAINER compound control. Previous iterations had two
+  // separate buttons (one shadcn <Button>, one raw <button>) trying to
+  // stay the same height — tailwind-merge collisions + per-button border
+  // accounting kept making the picker visibly shorter than the mic.
+  //
+  // Now: one parent <div> sets the height (h-8), shape (rounded-md), and
+  // border (border). Both children are raw <button> with `flex-1` (or
+  // explicit fixed width for mic) + items-stretch — they fill the
+  // container's height EXACTLY. No height arithmetic per child = no
+  // mismatch ever.
+  const compoundIdle =
+    "border-input bg-background hover:[&>button:hover]:bg-accent dark:border-input dark:bg-input/30";
+  const compoundActive = "border-primary bg-primary text-primary-foreground";
+
   return (
     <div
       id="voice-variant-picker-root"
-      className="relative inline-flex items-center gap-0"
+      className={cn(
+        "relative inline-flex items-stretch h-8 rounded-md border overflow-hidden",
+        "transition-colors shadow-xs",
+        isRecording || isBusy ? compoundActive : compoundIdle,
+        isPulsing && !isBusy &&
+          "animate-pulse ring-2 ring-destructive/40 ring-offset-2 ring-offset-background",
+        className
+      )}
     >
-      <Button
+      {/* MIC half — fixed 32px wide square. */}
+      <button
         type="button"
-        size="icon-sm"
-        variant={isRecording || isBusy ? "default" : "outline"}
         onClick={onMicClick}
         disabled={engine === "whisper" && whisperState === "transcribing"}
         title={errMsg ?? tooltip}
         aria-label={tooltip}
         className={cn(
-          "rounded-r-none border-r-0",
-          isPulsing && !isBusy &&
-            "animate-pulse ring-2 ring-destructive/40 ring-offset-2 ring-offset-background",
-          className
+          "w-8 inline-flex items-center justify-center outline-none",
+          "transition-colors focus-visible:ring-[3px] focus-visible:ring-ring/50",
+          "disabled:opacity-50 disabled:pointer-events-none",
+          !(isRecording || isBusy) && "hover:bg-accent hover:text-accent-foreground"
         )}
       >
-        <MicIcon className={cn(isBusy && "animate-spin")} />
-      </Button>
+        <MicIcon className={cn("h-4 w-4", isBusy && "animate-spin")} />
+      </button>
+
       {!lang && (
-        <Button
-          type="button"
-          size="icon-sm"
-          variant={isRecording || isBusy ? "default" : "outline"}
-          onClick={() => setPickerOpen((v) => !v)}
-          title={t("voice.variantPicker.tooltip")}
-          aria-label={t("voice.variantPicker.tooltip")}
-          className={cn(
-            "rounded-l-none gap-0.5 w-auto px-1.5 text-[10px] font-bold tabular-nums",
-            isPulsing && !isBusy && "animate-pulse"
-          )}
-        >
-          {engine === "whisper" ? (
-            <Brain className="h-2.5 w-2.5" />
-          ) : (
-            <Zap className="h-2.5 w-2.5" />
-          )}
-          {variant.short}
-          <ChevronDown className="h-2.5 w-2.5 opacity-60" />
-        </Button>
+        <>
+          {/* Divider — 1px line that visually links the two halves. */}
+          <span
+            aria-hidden
+            className={cn(
+              "w-px self-stretch",
+              isRecording || isBusy ? "bg-primary-foreground/30" : "bg-border"
+            )}
+          />
+          {/* PICKER half — content-sized. */}
+          <button
+            type="button"
+            onClick={() => setPickerOpen((v) => !v)}
+            title={t("voice.variantPicker.tooltip")}
+            aria-label={t("voice.variantPicker.tooltip")}
+            className={cn(
+              "inline-flex items-center justify-center gap-1.5 px-2.5",
+              "text-xs font-bold tabular-nums outline-none transition-colors",
+              "focus-visible:ring-[3px] focus-visible:ring-ring/50",
+              !(isRecording || isBusy) && "hover:bg-accent hover:text-accent-foreground"
+            )}
+          >
+            {engine === "whisper" ? (
+              <Brain className="h-3.5 w-3.5 shrink-0 opacity-80" />
+            ) : (
+              <Zap className="h-3.5 w-3.5 shrink-0 opacity-80" />
+            )}
+            <span className="leading-none">{variant.short}</span>
+            <ChevronDown className="h-3.5 w-3.5 opacity-60 shrink-0" />
+          </button>
+        </>
       )}
       {pickerOpen && (
         <div className="absolute top-full mt-1.5 right-0 z-50 w-64 rounded-xl border bg-popover shadow-xl p-1.5 animate-in fade-in-0 zoom-in-95">
