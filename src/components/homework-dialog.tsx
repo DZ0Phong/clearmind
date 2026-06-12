@@ -12,6 +12,7 @@ import { Input } from "@/components/ui/input";
 import { AutoTextarea } from "@/components/ui/auto-textarea";
 import { DateTimePicker } from "@/components/date-time-picker";
 import { useTasks, type Task } from "@/hooks/use-tasks";
+import { useT } from "@/lib/i18n";
 import {
   BookOpen,
   Clock,
@@ -52,6 +53,7 @@ function subjectKey(title: string): string {
 
 export function HomeworkDialog({ parentTask, open, onOpenChange }: Props) {
   const { tasks, addTask } = useTasks();
+  const t = useT();
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [choice, setChoice] = useState<Choice>("next-week");
@@ -151,16 +153,16 @@ export function HomeworkDialog({ parentTask, open, onOpenChange }: Props) {
   }> = [
     {
       id: "next-session",
-      label: "Buổi học tới",
+      label: t("homework.choice.nextSession"),
       sublabel: nextSessionDate
         ? formatDeadline(toLocalDateTime(nextSessionDate))
-        : "không có buổi khác",
+        : t("homework.choice.nextSession.empty"),
       icon: Clock,
       available: !!nextSessionDate,
     },
     {
       id: "next-week",
-      label: "Tuần sau",
+      label: t("homework.choice.nextWeek"),
       sublabel: nextWeekDate
         ? formatDeadline(toLocalDateTime(nextWeekDate))
         : null,
@@ -169,7 +171,7 @@ export function HomeworkDialog({ parentTask, open, onOpenChange }: Props) {
     },
     {
       id: "this-week-end",
-      label: "Cuối tuần này",
+      label: t("homework.choice.thisWeekEnd"),
       sublabel: thisWeekEndDate
         ? formatDeadline(toLocalDateTime(thisWeekEndDate))
         : null,
@@ -178,8 +180,10 @@ export function HomeworkDialog({ parentTask, open, onOpenChange }: Props) {
     },
     {
       id: "custom",
-      label: "Tự chọn",
-      sublabel: customDeadline ? formatDeadline(customDeadline) : "ngày bất kỳ",
+      label: t("homework.choice.custom"),
+      sublabel: customDeadline
+        ? formatDeadline(customDeadline)
+        : t("homework.choice.custom.empty"),
       icon: Sparkles,
       available: true,
     },
@@ -191,10 +195,11 @@ export function HomeworkDialog({ parentTask, open, onOpenChange }: Props) {
         <DialogHeader className="px-6 pt-6 pb-3 shrink-0">
           <DialogTitle className="flex items-center gap-2">
             <BookOpen className="h-5 w-5 text-primary" />
-            Thêm bài tập về nhà
+            {t("homework.title")}
           </DialogTitle>
           <DialogDescription>
-            Bài tập của <span className="font-medium">{parentTask.title}</span>
+            {t("homework.parentOf")}{" "}
+            <span className="font-medium">{parentTask.title}</span>
             {parentTask.location && ` (${parentTask.location})`}
           </DialogDescription>
         </DialogHeader>
@@ -202,32 +207,32 @@ export function HomeworkDialog({ parentTask, open, onOpenChange }: Props) {
           <div className="grid gap-4 px-6 py-2 overflow-y-auto flex-1 min-h-0">
             <div>
               <label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                Nội dung
+                {t("homework.contentLabel")}
               </label>
               <Input
                 autoFocus
                 value={title}
                 onChange={(e) => setTitle(e.target.value)}
-                placeholder="VD: Bài 3.4-3.7 sách giáo trình"
+                placeholder={t("homework.contentPh")}
                 className="mt-1.5 h-10"
               />
             </div>
 
             <div>
               <label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                Ghi chú
+                {t("homework.notesLabel")}
               </label>
               <AutoTextarea
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
-                placeholder="Link, ghi chú thêm… (không bắt buộc)"
+                placeholder={t("homework.notesPh")}
                 className="mt-1.5 min-h-[64px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-xs outline-none transition-[color,box-shadow,height] placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50"
               />
             </div>
 
             <div>
               <label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                Hạn nộp
+                {t("homework.deadlineLabel")}
               </label>
               <div className="grid grid-cols-2 gap-2 mt-1.5">
                 {choices.map((c) => {
@@ -270,7 +275,7 @@ export function HomeworkDialog({ parentTask, open, onOpenChange }: Props) {
                   <DateTimePicker
                     value={customDeadline}
                     onChange={setCustomDeadline}
-                    placeholder="Chọn ngày giờ"
+                    placeholder={t("homework.customPickerPh")}
                   />
                 </div>
               )}
@@ -283,10 +288,10 @@ export function HomeworkDialog({ parentTask, open, onOpenChange }: Props) {
               variant="outline"
               onClick={() => onOpenChange(false)}
             >
-              Huỷ
+              {t("common.cancel")}
             </Button>
             <Button type="submit" disabled={!canSave} className="gap-2">
-              <CheckCircle2 className="h-4 w-4" /> Tạo bài tập
+              <CheckCircle2 className="h-4 w-4" /> {t("homework.submit")}
             </Button>
           </DialogFooter>
         </form>

@@ -3,6 +3,7 @@ import { X, Hash } from "lucide-react";
 import { useTasks } from "@/hooks/use-tasks";
 import { tagStats } from "@/lib/utils";
 import { cn } from "@/lib/utils";
+import { useT } from "@/lib/i18n";
 
 interface Props {
   value: string[];
@@ -15,10 +16,12 @@ interface Props {
 export function TagInput({
   value,
   onChange,
-  placeholder = "Thêm tag…",
+  placeholder,
   className,
   max = 10,
 }: Props) {
+  const t = useT();
+  const resolvedPlaceholder = placeholder ?? t("tag.input.placeholder");
   const [draft, setDraft] = useState("");
   const [focused, setFocused] = useState(false);
   const [activeIdx, setActiveIdx] = useState(0);
@@ -75,17 +78,17 @@ export function TagInput({
           "flex flex-wrap items-center gap-1.5 rounded-md border border-input bg-background px-2 py-1.5 shadow-xs transition-[color,box-shadow] focus-within:border-ring focus-within:ring-[3px] focus-within:ring-ring/50"
         )}
       >
-        {value.map((t) => (
+        {value.map((tag) => (
           <span
-            key={t}
+            key={tag}
             className="inline-flex items-center gap-1 rounded-md bg-primary/10 text-primary px-2 py-0.5 text-xs font-medium"
           >
-            #{t}
+            #{tag}
             <button
               type="button"
-              onClick={() => remove(t)}
+              onClick={() => remove(tag)}
               className="opacity-60 hover:opacity-100"
-              aria-label={`Xoá tag ${t}`}
+              aria-label={t("tag.input.removeAria", { tag })}
             >
               <X className="h-3 w-3" />
             </button>
@@ -107,7 +110,7 @@ export function TagInput({
             setFocused(false);
             if (draft) add(draft);
           }}
-          placeholder={value.length ? "" : placeholder}
+          placeholder={value.length ? "" : resolvedPlaceholder}
           className="flex-1 min-w-[80px] bg-transparent text-sm outline-none placeholder:text-muted-foreground py-1"
         />
       </div>
@@ -115,7 +118,7 @@ export function TagInput({
       {showSuggestions && (
         <div className="absolute z-20 left-0 right-0 top-full mt-1 rounded-lg border bg-popover shadow-md overflow-hidden">
           <p className="text-[10px] uppercase tracking-wider text-muted-foreground px-3 pt-2 pb-1">
-            Tag đã dùng
+            {t("tag.input.usedHeader")}
           </p>
           <div className="pb-1.5">
             {suggestions.map((s, i) => (

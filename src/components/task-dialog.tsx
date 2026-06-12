@@ -74,36 +74,35 @@ function toLocalInput(iso?: string): string {
   )}:${pad(d.getMinutes())}`;
 }
 
-const TYPE_OPTIONS: Array<{ value: TaskType; label: string; color: string }> = [
-  { value: "academic", label: "Học tập", color: "#6366f1" },
-  { value: "work", label: "Công việc", color: "#f97316" },
-  { value: "personal", label: "Cá nhân", color: "#10b981" },
-  { value: "other", label: "Khác", color: "#64748b" },
+// Type/priority labels resolve through i18n at render time — see consumers
+// below which read `t("type.${value}")` / `t("priority.${value}")`. The
+// arrays only carry styling now (colors, icons, accents).
+const TYPE_OPTIONS: Array<{ value: TaskType; color: string }> = [
+  { value: "academic", color: "#6366f1" },
+  { value: "work", color: "#f97316" },
+  { value: "personal", color: "#10b981" },
+  { value: "other", color: "#64748b" },
 ];
 
 const PRIORITY_OPTIONS: Array<{
   value: TaskPriority;
-  label: string;
   icon: typeof Flame;
   accent: string;
 }> = [
   {
     value: "high",
-    label: "Cao",
     icon: Flame,
     accent:
       "data-[active=true]:bg-destructive/15 data-[active=true]:text-destructive data-[active=true]:border-destructive/40",
   },
   {
     value: "medium",
-    label: "Vừa",
     icon: AlertTriangle,
     accent:
       "data-[active=true]:bg-orange-500/15 data-[active=true]:text-orange-600 dark:data-[active=true]:text-orange-400 data-[active=true]:border-orange-500/40",
   },
   {
     value: "low",
-    label: "Thấp",
     icon: CheckCircle2,
     accent:
       "data-[active=true]:bg-primary/15 data-[active=true]:text-primary data-[active=true]:border-primary/40",
@@ -489,18 +488,17 @@ export function TaskDialog(props: Mode) {
             {recurrence && (
               <div>
                 <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider flex items-center gap-1">
-                  <CalendarIcon className="h-3 w-3" /> Kết thúc lặp (tuỳ chọn)
+                  <CalendarIcon className="h-3 w-3" /> {t("dialog.recurrenceEnd")}
                 </label>
                 <DateTimePicker
                   value={recurrenceEndAt}
                   onChange={setRecurrenceEndAt}
                   dateOnly
-                  placeholder="Chọn ngày kết thúc"
+                  placeholder={t("dialog.recurrenceEndPicker")}
                   className="mt-1.5"
                 />
                 <p className="text-[10px] text-muted-foreground mt-1">
-                  Hữu ích cho lịch học theo học kỳ — sau ngày này không sinh
-                  phiên mới.
+                  {t("dialog.recurrenceEndHint")}
                 </p>
               </div>
             )}
@@ -508,7 +506,7 @@ export function TaskDialog(props: Mode) {
             {/* Tags */}
             <div>
               <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-                Tags
+                {t("nav.tags")}
               </label>
               <TagInput value={tags} onChange={setTags} className="mt-1.5" />
             </div>
@@ -519,11 +517,11 @@ export function TaskDialog(props: Mode) {
               variant="outline"
               onClick={() => setOpen(false)}
             >
-              Huỷ
+              {t("common.cancel")}
             </Button>
             <Button type="submit" className="gap-2">
               <CheckCircle2 className="h-4 w-4" />
-              {isEdit ? "Lưu thay đổi" : "Tạo task"}
+              {isEdit ? t("dialog.saveChanges") : t("dialog.createTask")}
             </Button>
           </DialogFooter>
         </form>
@@ -557,16 +555,17 @@ function NotifyPreview({
   deadline: string;
   notify: ReminderPref | "";
 }) {
+  const t = useT();
   if (!notify || !deadline) return null;
   const target = new Date(deadline);
   if (Number.isNaN(target.getTime())) return null;
   const offset = NOTIFY_OFFSET_MS[notify];
   const fireAt = new Date(target.getTime() - offset);
   const inPast = fireAt.getTime() < Date.now();
-  const fmt = `${fireAt.getHours().toString().padStart(2, "0")}:${fireAt
+  const time = `${fireAt.getHours().toString().padStart(2, "0")}:${fireAt
     .getMinutes()
     .toString()
-    .padStart(2, "0")} ngày ${fireAt.getDate().toString().padStart(2, "0")}/${(fireAt.getMonth() + 1)
+    .padStart(2, "0")} ${t("dialog.notifyDay")} ${fireAt.getDate().toString().padStart(2, "0")}/${(fireAt.getMonth() + 1)
     .toString()
     .padStart(2, "0")}`;
   return (
@@ -577,7 +576,9 @@ function NotifyPreview({
       )}
     >
       <Bell className="h-3 w-3" />
-      {inPast ? `Đã qua giờ nhắc (${fmt}) — sẽ không bay toast.` : `Sẽ nhắc lúc ${fmt}`}
+      {inPast
+        ? t("dialog.notifyPastHint", { time })
+        : t("dialog.notifyPreview", { time })}
     </p>
   );
 }

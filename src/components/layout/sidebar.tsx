@@ -101,7 +101,10 @@ export function Sidebar() {
                   key={s.name}
                   to={`/tasks?tag=${encodeURIComponent(s.name)}`}
                   className="inline-flex items-center gap-1 rounded-md bg-muted/60 hover:bg-primary/10 hover:text-primary text-muted-foreground text-[11px] px-1.5 py-0.5 font-medium transition-colors"
-                  title={`${s.openCount} task chưa xong (${s.count} tổng cộng)`}
+                  title={t("tag.tooltip", {
+                    open: s.openCount,
+                    total: s.count,
+                  })}
                 >
                   #{s.name}
                   <span className="text-[9px] opacity-70 tabular-nums">

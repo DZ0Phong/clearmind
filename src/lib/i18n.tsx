@@ -125,6 +125,65 @@ const VI: Dict = {
   "noti.actionDone": "Xong",
   "noti.actionTestDismiss": "Đóng",
 
+  // Date-time picker
+  "dtp.placeholderDate": "Chọn ngày",
+  "dtp.placeholderDateTime": "Chọn ngày & giờ",
+  "dtp.clearAria": "Xoá deadline",
+  "dtp.preset.today": "Hôm nay",
+  "dtp.preset.tomorrow": "Mai",
+  "dtp.preset.weekend": "Cuối tuần",
+  "dtp.preset.nextWeek": "Tuần sau",
+  "dtp.timePresetMorning": "Sáng",
+  "dtp.timePresetNoon": "Trưa",
+  "dtp.timePresetAfternoon": "Chiều",
+  "dtp.timePresetEvening": "Tối",
+  "dtp.displayToday": "Hôm nay · {time}",
+  "dtp.displayTomorrow": "Mai · {time}",
+  "dtp.displayTodayDateOnly": "Hôm nay",
+  "dtp.displayTomorrowDateOnly": "Mai",
+  "dtp.decreaseAria": "Giảm {label}",
+  "dtp.increaseAria": "Tăng {label}",
+  "dtp.hourLabel": "Giờ",
+  "dtp.minuteLabel": "Phút",
+
+  // Task dialog
+  "dialog.recurrenceEnd": "Kết thúc lặp (tuỳ chọn)",
+  "dialog.recurrenceEndPicker": "Chọn ngày kết thúc",
+  "dialog.recurrenceEndHint": "Hữu ích cho lịch học theo học kỳ — sau ngày này không sinh phiên mới.",
+  "dialog.saveChanges": "Lưu thay đổi",
+  "dialog.createTask": "Tạo task",
+  "dialog.notifyPreview": "Sẽ nhắc lúc {time}",
+  "dialog.notifyPastHint": "Đã qua giờ nhắc ({time}) — sẽ không bay toast.",
+  "dialog.notifyDay": "ngày",
+
+  // Homework dialog
+  "homework.title": "Thêm bài tập về nhà",
+  "homework.parentOf": "Bài tập của",
+  "homework.contentLabel": "Nội dung",
+  "homework.contentPh": "VD: Bài 3.4-3.7 sách giáo trình",
+  "homework.notesLabel": "Ghi chú",
+  "homework.notesPh": "Link, ghi chú thêm… (không bắt buộc)",
+  "homework.deadlineLabel": "Hạn nộp",
+  "homework.choice.nextSession": "Buổi học tới",
+  "homework.choice.nextSession.empty": "không có buổi khác",
+  "homework.choice.nextWeek": "Tuần sau",
+  "homework.choice.thisWeekEnd": "Cuối tuần này",
+  "homework.choice.custom": "Tự chọn",
+  "homework.choice.custom.empty": "ngày bất kỳ",
+  "homework.customPickerPh": "Chọn ngày giờ",
+  "homework.submit": "Tạo bài tập",
+
+  // Tag chips + sidebar
+  "tag.tooltip": "{open} task chưa xong ({total} tổng cộng)",
+  "tag.input.placeholder": "Thêm tag…",
+  "tag.input.usedHeader": "Tag đã dùng",
+  "tag.input.removeAria": "Xoá tag {tag}",
+
+  // Error boundary
+  "errBoundary.title": "Có lỗi khi render trang",
+  "errBoundary.unknown": "Lỗi không xác định",
+  "errBoundary.savedHint": "Đã lưu vào log nội bộ — vào Settings → \"Nhật ký lỗi\" để xem.",
+
   // Bucket labels
   "bucket.overdue": "Quá hạn",
   "bucket.today": "Hôm nay",
@@ -686,6 +745,65 @@ const EN: Dict = {
   "noti.actionSnooze60": "Snooze 1h",
   "noti.actionDone": "Done",
   "noti.actionTestDismiss": "Dismiss",
+
+  // Date-time picker
+  "dtp.placeholderDate": "Pick a date",
+  "dtp.placeholderDateTime": "Pick date & time",
+  "dtp.clearAria": "Clear deadline",
+  "dtp.preset.today": "Today",
+  "dtp.preset.tomorrow": "Tomorrow",
+  "dtp.preset.weekend": "Weekend",
+  "dtp.preset.nextWeek": "Next week",
+  "dtp.timePresetMorning": "Morning",
+  "dtp.timePresetNoon": "Noon",
+  "dtp.timePresetAfternoon": "Afternoon",
+  "dtp.timePresetEvening": "Evening",
+  "dtp.displayToday": "Today · {time}",
+  "dtp.displayTomorrow": "Tomorrow · {time}",
+  "dtp.displayTodayDateOnly": "Today",
+  "dtp.displayTomorrowDateOnly": "Tomorrow",
+  "dtp.decreaseAria": "Decrease {label}",
+  "dtp.increaseAria": "Increase {label}",
+  "dtp.hourLabel": "Hour",
+  "dtp.minuteLabel": "Minute",
+
+  // Task dialog
+  "dialog.recurrenceEnd": "Recurrence end (optional)",
+  "dialog.recurrenceEndPicker": "Pick end date",
+  "dialog.recurrenceEndHint": "Useful for semester-based class schedules — no new instances spawn after this date.",
+  "dialog.saveChanges": "Save changes",
+  "dialog.createTask": "Create task",
+  "dialog.notifyPreview": "Reminder fires at {time}",
+  "dialog.notifyPastHint": "Reminder time has passed ({time}) — toast won't fire.",
+  "dialog.notifyDay": "on",
+
+  // Homework dialog
+  "homework.title": "Add homework",
+  "homework.parentOf": "Homework for",
+  "homework.contentLabel": "Content",
+  "homework.contentPh": "E.g.: Exercises 3.4-3.7 from textbook",
+  "homework.notesLabel": "Notes",
+  "homework.notesPh": "Link, extra notes… (optional)",
+  "homework.deadlineLabel": "Due",
+  "homework.choice.nextSession": "Next class",
+  "homework.choice.nextSession.empty": "no upcoming session",
+  "homework.choice.nextWeek": "Next week",
+  "homework.choice.thisWeekEnd": "End of this week",
+  "homework.choice.custom": "Custom",
+  "homework.choice.custom.empty": "any date",
+  "homework.customPickerPh": "Pick date & time",
+  "homework.submit": "Create homework",
+
+  // Tag chips + sidebar
+  "tag.tooltip": "{open} open ({total} total)",
+  "tag.input.placeholder": "Add tag…",
+  "tag.input.usedHeader": "Recently used",
+  "tag.input.removeAria": "Remove tag {tag}",
+
+  // Error boundary
+  "errBoundary.title": "Error rendering this page",
+  "errBoundary.unknown": "Unknown error",
+  "errBoundary.savedHint": "Saved to internal log — open Settings → \"Error log\" to view.",
 
   // Bucket labels
   "bucket.overdue": "Overdue",
