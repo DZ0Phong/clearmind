@@ -524,7 +524,7 @@ export function FocusPage() {
               <button
                 onClick={() => setShowTaskPicker(false)}
                 className="text-xs text-muted-foreground hover:text-foreground"
-                aria-label="Đóng"
+                aria-label={t("common.close")}
               >
                 <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"><path d="M3 3l8 8m0-8l-8 8"/></svg>
               </button>
@@ -833,6 +833,7 @@ function Stepper({
   unit?: string;
   onChange: (v: number) => void;
 }) {
+  const t = useT();
   const dec = () => onChange(clamp(value - 1, min, max));
   const inc = () => onChange(clamp(value + 1, min, max));
   return (
@@ -844,7 +845,7 @@ function Stepper({
         <button
           onClick={dec}
           className="cm-press h-6 w-6 rounded inline-flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-muted"
-          aria-label={`Giảm ${label}`}
+          aria-label={t("dtp.decreaseAria", { label })}
         >
           <Minus className="h-3 w-3" />
         </button>
@@ -859,7 +860,7 @@ function Stepper({
         <button
           onClick={inc}
           className="cm-press h-6 w-6 rounded inline-flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-muted"
-          aria-label={`Tăng ${label}`}
+          aria-label={t("dtp.increaseAria", { label })}
         >
           <Plus className="h-3 w-3" />
         </button>

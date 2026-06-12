@@ -46,9 +46,13 @@ import {
 import { cn } from "@/lib/utils";
 import { Logo } from "@/components/logo";
 import { buildBookmarklet, getBookmarkletBody } from "@/lib/bookmarklet";
+import { useT } from "@/lib/i18n";
 
 type Tab = "paste" | "bookmarklet" | "ics";
 
+// NOTE: SAMPLE_TEXT is intentionally Vietnamese — it mimics the timetable text
+// a user would actually paste from a Vietnamese school portal. It feeds the
+// parser as test input, NOT the UI, so leave it as-is regardless of UI locale.
 const SAMPLE_TEXT = `Thứ 2
 07:00 - 09:30  Giải tích 2          A1.404  Thầy Nguyễn Văn A
 09:35 - 11:30  Vật lý đại cương     B2.305  Cô Lê Thị B
@@ -164,6 +168,7 @@ export function ImportPage() {
   const { addTask, updateTask, removeTask, tasks } = useTasks();
   const { toast } = useToast();
   const navigate = useNavigate();
+  const t = useT();
   const [tab, setTab] = useState<Tab>("paste");
   const [raw, setRaw] = useState("");
   const [parsed, setParsed] = useState<ParsedClass[]>([]);
@@ -193,28 +198,28 @@ export function ImportPage() {
         const attCount = items.filter((c) => c.attended).length;
         const realCount = items.length - attCount;
         const attSuffix =
-          attCount > 0 ? ` (${attCount} đã điểm danh sẽ skip)` : "";
+          attCount > 0 ? t("import.toast.attSuffix", { n: attCount }) : "";
         toast({
-          title: `Đã nhận ${realCount} lớp${attSuffix}`,
-          description: "Kiểm tra & chỉnh sửa trước khi import.",
+          title: t("import.toast.detectedClasses.title", { n: realCount, suffix: attSuffix }),
+          description: t("import.toast.detectedClasses.desc"),
           variant: "success",
         });
       } else if (tables === 0) {
         toast({
-          title: "Trang nguồn không có bảng nào",
-          description: `Bookmarklet đã chạy nhưng không tìm thấy <table>. Bạn có chắc đang ở trang timetable? (frames=${frames})`,
+          title: t("import.toast.noTables.title"),
+          description: t("import.toast.noTables.desc", { n: frames }),
           variant: "destructive",
         });
       } else {
         toast({
-          title: `Tìm thấy ${tables} bảng, parse thất bại`,
-          description: `Score tốt nhất=${score}. Layout lạ — thử Paste mode (Ctrl+A → Ctrl+C ở trang trường).`,
+          title: t("import.toast.parseFailed.title", { n: tables }),
+          description: t("import.toast.parseFailed.desc", { score }),
           variant: "destructive",
         });
       }
     } catch (e) {
       toast({
-        title: "Lỗi khi nhận data từ bookmarklet",
+        title: t("import.toast.bmReceiveErr.title"),
         description: String(e),
         variant: "destructive",
       });
@@ -228,9 +233,8 @@ export function ImportPage() {
     setParsed(items);
     if (!items.length) {
       toast({
-        title: "Không tìm thấy lịch học",
-        description:
-          "Thử format khác hoặc paste cả bảng HTML từ trang trường (Ctrl+A → Ctrl+C).",
+        title: t("import.toast.noSchedule.title"),
+        description: t("import.toast.noSchedule.desc"),
         variant: "destructive",
       });
     }
@@ -247,8 +251,8 @@ export function ImportPage() {
         if (items.length) {
           setParsed(items);
           toast({
-            title: `Detected ${items.length} lớp từ HTML`,
-            description: "Đã parse rich-text từ trang web.",
+            title: t("import.toast.htmlDetected.title", { n: items.length }),
+            description: t("import.toast.htmlDetected.desc"),
             variant: "success",
           });
         }
@@ -264,13 +268,13 @@ export function ImportPage() {
     setParsed(items);
     if (items.length) {
       toast({
-        title: `Đã đọc ${items.length} sự kiện`,
-        description: `Từ file ${file.name}`,
+        title: t("import.toast.icsRead.title", { n: items.length }),
+        description: t("import.toast.icsRead.desc", { name: file.name }),
         variant: "success",
       });
     } else {
       toast({
-        title: "File ICS trống hoặc không hợp lệ",
+        title: t("import.toast.icsInvalid.title"),
         variant: "destructive",
       });
     }
@@ -285,7 +289,7 @@ export function ImportPage() {
       setBookmarkletCopied(true);
       setTimeout(() => setBookmarkletCopied(false), 2000);
     } catch {
-      toast({ title: "Không copy được", variant: "destructive" });
+      toast({ title: t("import.toast.copyFailed.title"), variant: "destructive" });
     }
   };
 
@@ -300,18 +304,18 @@ export function ImportPage() {
   //      invites) so the user doesn't double-import them.
   const existingBySlot = useMemo(() => {
     const m = new Map<string, Task>();
-    for (const t of tasks) {
-      const sig = taskSlotSignature(t);
-      if (sig) m.set(sig, t);
+    for (const task of tasks) {
+      const sig = taskSlotSignature(task);
+      if (sig) m.set(sig, task);
     }
     return m;
   }, [tasks]);
 
   const existingByEvent = useMemo(() => {
     const m = new Map<string, Task>();
-    for (const t of tasks) {
-      const sig = taskEventSignature(t);
-      if (sig) m.set(sig, t);
+    for (const task of tasks) {
+      const sig = taskEventSignature(task);
+      if (sig) m.set(sig, task);
     }
     return m;
   }, [tasks]);
@@ -347,9 +351,9 @@ export function ImportPage() {
       const code = extractSubjectCode(c.subject);
       if (code) importSubjects.add(code.toLowerCase());
     }
-    return tasks.filter((t) => {
-      if (t.recurrence !== "weekly" || !t.deadline) return false;
-      const code = extractSubjectCode(t.title);
+    return tasks.filter((task) => {
+      if (task.recurrence !== "weekly" || !task.deadline) return false;
+      const code = extractSubjectCode(task.title);
       return !!code && importSubjects.has(code.toLowerCase());
     });
   }, [parsed, tasks]);
@@ -366,9 +370,9 @@ export function ImportPage() {
       if (!code) continue;
       importSigs.add(`${code.toLowerCase()}|${c.dayOfWeek}|${c.startTime}`);
     }
-    return affectedExisting.filter((t) => {
-      const code = extractSubjectCode(t.title)!.toLowerCase();
-      const d = new Date(t.deadline!);
+    return affectedExisting.filter((task) => {
+      const code = extractSubjectCode(task.title)!.toLowerCase();
+      const d = new Date(task.deadline!);
       const dow = d.getDay();
       const hh = d.getHours().toString().padStart(2, "0");
       const mm = d.getMinutes().toString().padStart(2, "0");
@@ -426,8 +430,8 @@ export function ImportPage() {
     // - Normal mode: only those whose slot was moved (subject in import,
     //   exact dow/time signature not).
     const toDelete = wipeMode ? affectedExisting : displacedExisting;
-    for (const t of toDelete) {
-      removeTask(t.id);
+    for (const task of toDelete) {
+      removeTask(task.id);
       displaced++;
     }
     // In wipe mode, treat every parsed entry as new — the existing matches
@@ -498,18 +502,18 @@ export function ImportPage() {
     }
 
     const parts: string[] = [];
-    if (added > 0) parts.push(`thêm ${added}`);
-    if (updated > 0) parts.push(`cập nhật ${updated}`);
-    if (displaced > 0) parts.push(`xoá ${displaced} lớp cũ đã đổi slot`);
-    if (exactSkipped > 0) parts.push(`bỏ qua ${exactSkipped} đã có`);
-    if (userSkipped > 0) parts.push(`bỏ qua ${userSkipped} theo lựa chọn`);
-    if (skippedAttended > 0) parts.push(`bỏ qua ${skippedAttended} đã điểm danh`);
+    if (added > 0) parts.push(t("import.toast.commit.part.added", { n: added }));
+    if (updated > 0) parts.push(t("import.toast.commit.part.updated", { n: updated }));
+    if (displaced > 0) parts.push(t("import.toast.commit.part.displaced", { n: displaced }));
+    if (exactSkipped > 0) parts.push(t("import.toast.commit.part.skippedExisting", { n: exactSkipped }));
+    if (userSkipped > 0) parts.push(t("import.toast.commit.part.skippedByUser", { n: userSkipped }));
+    if (skippedAttended > 0) parts.push(t("import.toast.commit.part.skippedAttended", { n: skippedAttended }));
     const didSomething = added > 0 || updated > 0 || displaced > 0;
     toast({
       title: didSomething
-        ? `Import xong · ${parts.join(" · ")}`
-        : "Không có gì thay đổi — tất cả đã có sẵn.",
-      description: added > 0 ? "Đang chuyển sang Calendar để bạn xem." : undefined,
+        ? t("import.toast.commit.doneTitle", { parts: parts.join(" · ") })
+        : t("import.toast.commit.nothingTitle"),
+      description: added > 0 ? t("import.toast.commit.gotoCalendar") : undefined,
       variant: didSomething ? "success" : "default",
     });
 
@@ -532,30 +536,29 @@ export function ImportPage() {
   };
 
   const tabs: Array<{ id: Tab; label: string; icon: typeof Bookmark }> = [
-    { id: "paste", label: "Paste", icon: ClipboardPaste },
-    { id: "bookmarklet", label: "Bookmarklet", icon: Bookmark },
-    { id: "ics", label: "File ICS", icon: Upload },
+    { id: "paste", label: t("import.tab.paste"), icon: ClipboardPaste },
+    { id: "bookmarklet", label: t("import.tab.bookmarklet"), icon: Bookmark },
+    { id: "ics", label: t("import.tab.ics"), icon: Upload },
   ];
 
   const inputKind = raw ? detectKind(raw) : null;
   const inputKindLabel =
     inputKind === "ics"
-      ? "ICS Calendar"
+      ? t("import.kind.ics")
       : inputKind === "html"
-      ? "HTML"
+      ? t("import.kind.html")
       : inputKind === "event-list"
-      ? "Sự kiện"
+      ? t("import.kind.event")
       : inputKind === "text"
-      ? "Text"
+      ? t("import.kind.text")
       : null;
 
   return (
     <div className="h-full flex flex-col gap-6">
       <div className="shrink-0">
-        <h2 className="text-3xl font-bold tracking-tight">Import lịch</h2>
+        <h2 className="text-3xl font-bold tracking-tight">{t("import.title")}</h2>
         <p className="text-muted-foreground mt-1">
-          Lịch học hàng tuần, lịch trận đấu, calendar invite (ICS) — paste,
-          bookmark hoặc kéo file vào, Clearmind tự nhận format.
+          {t("import.subtitle")}
         </p>
       </div>
 
@@ -586,11 +589,10 @@ export function ImportPage() {
               <CardHeader>
                 <CardTitle className="flex items-center gap-2 text-lg">
                   <ClipboardPaste className="h-5 w-5 text-primary" />
-                  Paste bảng lịch học
+                  {t("import.paste.title")}
                 </CardTitle>
                 <CardDescription>
-                  Đăng nhập web trường, mở timetable, Ctrl+A → Ctrl+C, paste vào
-                  ô bên dưới. Hỗ trợ cả text thuần và rich-text HTML.
+                  {t("import.paste.desc")}
                 </CardDescription>
               </CardHeader>
               <CardContent className="flex-1 flex flex-col gap-3 min-h-0">
@@ -614,7 +616,7 @@ export function ImportPage() {
                       onClick={() => setRaw(SAMPLE_TEXT)}
                       className="hover:text-foreground underline-offset-2 hover:underline"
                     >
-                      Thử ví dụ mẫu
+                      {t("import.paste.tryExample")}
                     </button>
                   </div>
                   <div className="flex gap-2">
@@ -627,7 +629,7 @@ export function ImportPage() {
                       }}
                       disabled={!raw}
                     >
-                      Xoá
+                      {t("import.paste.clear")}
                     </Button>
                     <Button
                       onClick={handleParse}
@@ -635,7 +637,7 @@ export function ImportPage() {
                       className="gap-2"
                     >
                       <Sparkles className="h-4 w-4" />
-                      Parse
+                      {t("import.paste.parse")}
                     </Button>
                   </div>
                 </div>
@@ -648,11 +650,10 @@ export function ImportPage() {
               <CardHeader>
                 <CardTitle className="flex items-center gap-2 text-lg">
                   <Bookmark className="h-5 w-5 text-primary" />
-                  Bookmarklet 1-click
+                  {t("import.bm.title")}
                 </CardTitle>
                 <CardDescription>
-                  Lưu 1 lần, dùng mãi. Mỗi tuần chỉ cần bấm 1 nút trên trang
-                  trường — Clearmind tự nhận lịch.
+                  {t("import.bm.desc")}
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-5">
@@ -662,20 +663,19 @@ export function ImportPage() {
                   <div className="relative rounded-2xl border-2 border-dashed border-primary/50 bg-card p-5 flex flex-col items-center gap-3">
                     <p className="text-[10px] uppercase font-bold tracking-wider text-primary inline-flex items-center gap-1">
                       <MousePointer2 className="h-3 w-3" />
-                      Kéo nút này lên thanh bookmark ↑
+                      {t("import.bm.dragHint")}
                     </p>
                     <BookmarkletLink
                       href={bookmarklet}
                       className="group inline-flex items-center gap-2.5 px-5 py-3 bg-gradient-to-r from-primary to-indigo-600 text-primary-foreground rounded-xl font-semibold shadow-lg shadow-primary/30 hover:shadow-xl hover:shadow-primary/40 hover:-translate-y-0.5 cursor-grab active:cursor-grabbing transition-all"
-                      title="Kéo lên thanh bookmark, hoặc click chuột phải → Bookmark this link"
+                      title={t("import.bm.dragTitle")}
                     >
                       <Logo className="h-5 w-5 drop-shadow" withGlow={false} />
-                      <span>Import vào Clearmind</span>
+                      <span>{t("import.bm.button")}</span>
                       <Sparkles className="h-4 w-4 opacity-70 group-hover:rotate-12 transition-transform" />
                     </BookmarkletLink>
                     <p className="text-[11px] text-muted-foreground text-center max-w-[260px] leading-relaxed">
-                      Không kéo được? <strong>Click chuột phải</strong> vào nút
-                      → chọn <strong>"Bookmark this link…"</strong>
+                      {t("import.bm.rightClick")}
                     </p>
                   </div>
                 </div>
@@ -687,10 +687,9 @@ export function ImportPage() {
                       <Wand2 className="h-4 w-4" />
                     </div>
                     <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium">Kiểm tra bookmarklet</p>
+                      <p className="text-sm font-medium">{t("import.bm.testTitle")}</p>
                       <p className="text-[11px] text-muted-foreground">
-                        Chạy script ngay tại đây. Trang này không có lịch → sẽ
-                        báo 0 tables — chứng tỏ bookmark đang work.
+                        {t("import.bm.testDesc")}
                       </p>
                     </div>
                   </div>
@@ -704,13 +703,12 @@ export function ImportPage() {
                           // eslint-disable-next-line @typescript-eslint/no-implied-eval
                           new Function(script)();
                           toast({
-                            title: "Đã chạy script",
-                            description:
-                              "Một tab Clearmind mới sẽ mở với diagnostic. Không có tab → check popup blocker.",
+                            title: t("import.toast.scriptRan.title"),
+                            description: t("import.toast.scriptRan.desc"),
                           });
                         } catch (e) {
                           toast({
-                            title: "Script lỗi",
+                            title: t("import.toast.scriptErr.title"),
                             description: String(e),
                             variant: "destructive",
                           });
@@ -718,7 +716,7 @@ export function ImportPage() {
                       }}
                       className="gap-1.5"
                     >
-                      <Sparkles className="h-3.5 w-3.5" /> Chạy thử ngay
+                      <Sparkles className="h-3.5 w-3.5" /> {t("import.bm.runNow")}
                     </Button>
                     <Button
                       size="sm"
@@ -728,13 +726,13 @@ export function ImportPage() {
                         setTab("paste");
                         setParsed(parseAny(SAMPLE_TEXT));
                         toast({
-                          title: "Đã load data mẫu",
-                          description: "Xem preview parser ở bên phải.",
+                          title: t("import.toast.sampleLoaded.title"),
+                          description: t("import.toast.sampleLoaded.desc"),
                         });
                       }}
                       className="gap-1.5"
                     >
-                      Hoặc thử với data mẫu
+                      {t("import.bm.trySample")}
                     </Button>
                   </div>
                 </div>
@@ -742,33 +740,33 @@ export function ImportPage() {
                 {/* Step-by-step */}
                 <div>
                   <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3">
-                    4 bước, 30 giây
+                    {t("import.bm.stepsHeader")}
                   </p>
                   <div className="space-y-2.5">
                     {[
                       {
                         n: 1,
                         icon: Bookmark,
-                        title: "Hiện thanh bookmark",
-                        desc: "Bấm Ctrl+Shift+B (Windows / Linux) hoặc Cmd+Shift+B (Mac).",
+                        title: t("import.bm.step1Title"),
+                        desc: t("import.bm.step1Desc"),
                       },
                       {
                         n: 2,
                         icon: MousePointer2,
-                        title: "Kéo nút ở trên lên thanh bookmark",
-                        desc: 'Hoặc click chuột phải vào nút → "Bookmark this link".',
+                        title: t("import.bm.step2Title"),
+                        desc: t("import.bm.step2Desc"),
                       },
                       {
                         n: 3,
                         icon: Globe,
-                        title: "Mở trang lịch của trường",
-                        desc: "Đăng nhập, vào timetable (lịch tuần / kỳ).",
+                        title: t("import.bm.step3Title"),
+                        desc: t("import.bm.step3Desc"),
                       },
                       {
                         n: 4,
                         icon: Wand2,
-                        title: "Bấm bookmark vừa lưu",
-                        desc: "Clearmind mở tab mới với data đã scrape sẵn. Review → Import.",
+                        title: t("import.bm.step4Title"),
+                        desc: t("import.bm.step4Desc"),
                       },
                     ].map(({ n, icon: Icon, title, desc }) => (
                       <div
@@ -796,38 +794,30 @@ export function ImportPage() {
                 <details className="rounded-lg border bg-muted/20">
                   <summary className="cursor-pointer text-xs font-semibold px-3 py-2 inline-flex items-center gap-1.5">
                     <HelpCircle className="h-3.5 w-3.5" />
-                    Bookmark không có logo, hoặc cần code thô?
+                    {t("import.bm.helpSummary")}
                   </summary>
                   <div className="px-3 pb-3 space-y-3 text-xs">
                     <div className="space-y-2 text-muted-foreground leading-relaxed">
                       <p>
-                        <strong>about:blank#blocked khi bấm bookmark:</strong>{" "}
-                        Bạn đã kéo bookmark từ phiên bản cũ — React 19 chặn{" "}
-                        <code>javascript:</code> URL. Đã fix ở bản này, hãy{" "}
-                        <strong>xoá bookmark cũ và kéo lại</strong> từ nút phía
-                        trên.
+                        <strong>{t("import.bm.help.aboutBlankTitle")}</strong>{" "}
+                        {t("import.bm.help.aboutBlankBody")}
                       </p>
                       <p>
-                        <strong>Logo bookmark:</strong> Chrome / Edge không hiển
-                        thị icon cho bookmark dạng <code>javascript:</code> —
-                        đây là giới hạn trình duyệt, không sửa được. Đổi tên
-                        bookmark thành <code>✨ Clearmind</code> để dễ nhận
-                        biết.
+                        <strong>{t("import.bm.help.logoTitle")}</strong>{" "}
+                        {t("import.bm.help.logoBody")}
                       </p>
                       <p>
-                        <strong>Trang trường chặn:</strong> Một số trang có CSP
-                        ngăn script chạy. Khi đó dùng tab "Paste" — copy nội
-                        dung trang rồi paste.
+                        <strong>{t("import.bm.help.cspTitle")}</strong>{" "}
+                        {t("import.bm.help.cspBody")}
                       </p>
                       <p>
-                        <strong>Bookmark mở tab trắng:</strong> Popup blocker.
-                        Confirm dialog sẽ hỏi mở trong tab hiện tại — đồng ý
-                        rồi bấm Back để quay về trang trường.
+                        <strong>{t("import.bm.help.blankTabTitle")}</strong>{" "}
+                        {t("import.bm.help.blankTabBody")}
                       </p>
                     </div>
                     <div className="relative">
                       <p className="text-[10px] uppercase font-bold tracking-wider mb-1">
-                        Code thô
+                        {t("import.bm.rawHeader")}
                       </p>
                       <textarea
                         readOnly
@@ -845,11 +835,11 @@ export function ImportPage() {
                       >
                         {bookmarkletCopied ? (
                           <>
-                            <Check className="h-3 w-3" /> Copied
+                            <Check className="h-3 w-3" /> {t("import.bm.copied")}
                           </>
                         ) : (
                           <>
-                            <Copy className="h-3 w-3" /> Copy
+                            <Copy className="h-3 w-3" /> {t("import.bm.copy")}
                           </>
                         )}
                       </Button>
@@ -865,17 +855,17 @@ export function ImportPage() {
               <CardHeader>
                 <CardTitle className="flex items-center gap-2 text-lg">
                   <Upload className="h-5 w-5 text-primary" />
-                  Upload file .ics
+                  {t("import.ics.title")}
                 </CardTitle>
                 <CardDescription>
-                  Nếu trường có export iCalendar, kéo thả file vào đây.
+                  {t("import.ics.desc")}
                 </CardDescription>
               </CardHeader>
               <CardContent>
                 <FileDropZone onFile={handleIcsFile} />
                 {raw && inputKind === "ics" && (
                   <p className="text-xs text-emerald-600 dark:text-emerald-400 mt-3 inline-flex items-center gap-1">
-                    <CheckCircle2 className="h-3 w-3" /> Đã đọc file ICS hợp lệ.
+                    <CheckCircle2 className="h-3 w-3" /> {t("import.ics.valid")}
                   </p>
                 )}
               </CardContent>
@@ -891,11 +881,10 @@ export function ImportPage() {
                 <div>
                   <CardTitle className="flex items-center gap-2 text-lg">
                     <CalendarPlus className="h-5 w-5 text-primary" />
-                    Xem trước ({parsed.length})
+                    {t("import.preview.title", { n: parsed.length })}
                   </CardTitle>
                   <CardDescription>
-                    Sửa lại nếu cần, sau đó "Import vào lịch" để tạo task lặp
-                    lại hàng tuần.
+                    {t("import.preview.desc")}
                   </CardDescription>
                 </div>
                 {parsed.length > 0 && (() => {
@@ -912,18 +901,23 @@ export function ImportPage() {
                       disabled={willChange === 0}
                       title={
                         willChange === 0
-                          ? "Tất cả đã có sẵn — không có gì để import."
+                          ? t("import.preview.btn.titleEmpty")
                           : wipeMode
-                          ? `Xoá ${affectedExisting.length} lớp cũ + tạo lại ${parsed.filter((c) => !c.attended).length} lớp mới`
+                          ? t("import.preview.btn.titleWipe", {
+                              n: affectedExisting.length,
+                              m: parsed.filter((c) => !c.attended).length,
+                            })
                           : undefined
                       }
                     >
                       <CalendarPlus className="h-4 w-4" />
                       {willChange === 0
-                        ? "Không có gì mới"
+                        ? t("import.preview.btn.empty")
                         : wipeMode
-                        ? `Xoá & tạo lại ${parsed.filter((c) => !c.attended).length} lớp`
-                        : `Import ${willChange} thay đổi`}
+                        ? t("import.preview.btn.wipeRecreate", {
+                            n: parsed.filter((c) => !c.attended).length,
+                          })
+                        : t("import.preview.btn.import", { n: willChange })}
                     </Button>
                   );
                 })()}
@@ -940,42 +934,42 @@ export function ImportPage() {
                       {previewSummary.news > 0 && (
                         <span className="inline-flex items-center gap-1 px-2 py-1 rounded-md bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border border-emerald-500/30 font-medium">
                           <Sparkles className="h-3 w-3" />
-                          {previewSummary.news} mới
+                          {t("import.preview.status.new", { n: previewSummary.news })}
                         </span>
                       )}
                       {previewSummary.changed > 0 && (
                         <span className="inline-flex items-center gap-1 px-2 py-1 rounded-md bg-amber-500/10 text-amber-700 dark:text-amber-400 border border-amber-500/30 font-medium">
                           <AlertCircle className="h-3 w-3" />
-                          {previewSummary.changed} đã đổi (sẽ cập nhật)
+                          {t("import.preview.status.changed", { n: previewSummary.changed })}
                         </span>
                       )}
                       {displacedExisting.length > 0 && (
                         <span
                           className="inline-flex items-center gap-1 px-2 py-1 rounded-md bg-rose-500/10 text-rose-700 dark:text-rose-400 border border-rose-500/30 font-medium"
                           title={displacedExisting
-                            .map((t) => {
-                              const d = t.deadline ? new Date(t.deadline) : null;
+                            .map((task) => {
+                              const d = task.deadline ? new Date(task.deadline) : null;
                               const dow = d ? DOW_LABEL_VI[d.getDay()] : "";
                               const hh = d ? d.getHours().toString().padStart(2, "0") : "";
                               const mm = d ? d.getMinutes().toString().padStart(2, "0") : "";
-                              return `${t.title} · ${dow} ${hh}:${mm}`;
+                              return `${task.title} · ${dow} ${hh}:${mm}`;
                             })
                             .join("\n")}
                         >
                           <X className="h-3 w-3" />
-                          {displacedExisting.length} lớp cũ sẽ xoá (đã đổi slot)
+                          {t("import.preview.status.displaced", { n: displacedExisting.length })}
                         </span>
                       )}
                       {previewSummary.exact > 0 && (
                         <span className="inline-flex items-center gap-1 px-2 py-1 rounded-md bg-muted text-muted-foreground border border-border font-medium">
                           <Check className="h-3 w-3" />
-                          {previewSummary.exact} đã có (bỏ qua)
+                          {t("import.preview.status.exact", { n: previewSummary.exact })}
                         </span>
                       )}
                       {skippedAttended > 0 && (
                         <span className="inline-flex items-center gap-1 px-2 py-1 rounded-md bg-muted text-muted-foreground border border-border font-medium">
                           <CheckCircle2 className="h-3 w-3" />
-                          {skippedAttended} đã điểm danh
+                          {t("import.preview.status.attended", { n: skippedAttended })}
                         </span>
                       )}
                     </div>
@@ -1002,23 +996,21 @@ export function ImportPage() {
                         />
                         <div className="flex-1 min-w-0">
                           <p className="text-xs font-semibold">
-                            Xoá lịch cũ rồi import lại ({affectedExisting.length} task)
+                            {t("import.wipe.title", { n: affectedExisting.length })}
                           </p>
                           <p className="text-[11px] text-muted-foreground mt-0.5 leading-relaxed">
-                            Dùng khi lịch trường là nguồn duy nhất đúng — sẽ xoá hết task
-                            lặp tuần cũ của các môn trong lần import này (kể cả task đã
-                            done hoặc bài tập con đang treo), rồi tạo lại sạch.
+                            {t("import.wipe.desc")}
                           </p>
                         </div>
                       </label>
                       <details className="text-[11px]">
                         <summary className="cursor-pointer text-muted-foreground hover:text-foreground transition-colors inline-flex items-center gap-1">
                           <Info className="h-3 w-3" />
-                          Xem {affectedExisting.length} task sẽ bị ảnh hưởng
+                          {t("import.wipe.viewAffected", { n: affectedExisting.length })}
                         </summary>
                         <ul className="mt-2 space-y-1 max-h-40 overflow-y-auto pr-1">
-                          {affectedExisting.map((t) => {
-                            const d = t.deadline ? new Date(t.deadline) : null;
+                          {affectedExisting.map((task) => {
+                            const d = task.deadline ? new Date(task.deadline) : null;
                             const dow = d ? DOW_LABEL_VI[d.getDay()] : "";
                             const hh = d ? d.getHours().toString().padStart(2, "0") : "—";
                             const mm = d ? d.getMinutes().toString().padStart(2, "0") : "—";
@@ -1026,18 +1018,18 @@ export function ImportPage() {
                               ? `${d.getDate().toString().padStart(2, "0")}/${(d.getMonth() + 1).toString().padStart(2, "0")}`
                               : "";
                             const statusLabel =
-                              t.status === "done"
-                                ? "✓ done"
-                                : t.status === "in-progress"
-                                ? "đang làm"
-                                : "todo";
+                              task.status === "done"
+                                ? t("import.row.statusDone")
+                                : task.status === "in-progress"
+                                ? t("import.row.statusInProgress")
+                                : t("import.row.statusTodo");
                             return (
                               <li
-                                key={t.id}
+                                key={task.id}
                                 className="flex items-center gap-2 tabular-nums text-muted-foreground"
                               >
                                 <span className="font-medium text-foreground truncate flex-1">
-                                  {t.title}
+                                  {task.title}
                                 </span>
                                 <span>{dow}</span>
                                 <span>{hh}:{mm}</span>
@@ -1059,17 +1051,17 @@ export function ImportPage() {
                       <CalendarRange className="h-4 w-4 text-muted-foreground shrink-0" />
                       <div className="flex-1 min-w-0">
                         <p className="text-xs font-semibold">
-                          Học kỳ kết thúc ngày
+                          {t("import.semester.title")}
                         </p>
                         <p className="text-[11px] text-muted-foreground">
-                          Sau ngày này không sinh phiên mới nữa.
+                          {t("import.semester.hint")}
                         </p>
                       </div>
                       <DateTimePicker
                         value={semesterEnd}
                         onChange={setSemesterEnd}
                         dateOnly
-                        placeholder="Chọn ngày kết thúc"
+                        placeholder={t("import.semester.placeholder")}
                         className="w-[180px]"
                       />
                     </div>
@@ -1098,6 +1090,7 @@ export function ImportPage() {
 function FileDropZone({ onFile }: { onFile: (f: File) => void }) {
   const [dragging, setDragging] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
+  const t = useT();
 
   return (
     <div
@@ -1121,8 +1114,8 @@ function FileDropZone({ onFile }: { onFile: (f: File) => void }) {
       )}
     >
       <Upload className="h-8 w-8 text-muted-foreground" />
-      <p className="text-sm font-medium">Kéo thả file .ics vào đây</p>
-      <p className="text-xs text-muted-foreground">hoặc click để chọn file</p>
+      <p className="text-sm font-medium">{t("import.ics.dropHint")}</p>
+      <p className="text-xs text-muted-foreground">{t("import.ics.clickHint")}</p>
       <input
         ref={inputRef}
         type="file"
@@ -1139,16 +1132,16 @@ function FileDropZone({ onFile }: { onFile: (f: File) => void }) {
 }
 
 function EmptyPreview() {
+  const t = useT();
   return (
     <div className="flex-1 flex flex-col items-center justify-center text-center gap-4 py-12">
       <div className="h-16 w-16 rounded-2xl bg-primary/10 flex items-center justify-center">
         <CalendarPlus className="h-8 w-8 text-primary" />
       </div>
       <div className="max-w-sm">
-        <p className="font-semibold">Chưa có dữ liệu</p>
+        <p className="font-semibold">{t("import.preview.empty.title")}</p>
         <p className="text-sm text-muted-foreground mt-1 leading-relaxed">
-          Chọn 1 trong 3 cách ở bên trái: paste bảng, dùng bookmarklet, hoặc
-          upload file .ics. Kết quả sẽ hiện ở đây.
+          {t("import.preview.empty.hint")}
         </p>
       </div>
     </div>
@@ -1199,6 +1192,7 @@ function PreviewList({
   skipChangedIds: Set<string>;
   onToggleSkip: (id: string) => void;
 }) {
+  const t = useT();
   // Group strategy depends on event shape:
   //  - All recurring (timetable): group by dayOfWeek — one row per slot.
   //  - Any one-off (event-list, ICS invites): group by exact startDate so two
@@ -1267,7 +1261,7 @@ function PreviewList({
               </span>
               <span className="text-muted-foreground/70 font-normal">
                 ({group.length}
-                {attendedCount > 0 ? `, ${attendedCount} đã điểm danh` : ""})
+                {attendedCount > 0 ? t("import.row.groupAttended", { n: attendedCount }) : ""})
               </span>
             </p>
             <div className="space-y-2">
@@ -1305,6 +1299,7 @@ function PreviewRow({
   onChange: (patch: Partial<ParsedClass>) => void;
   onRemove: () => void;
 }) {
+  const t = useT();
   const valid = item.subject.trim().length >= 2 && /^\d{2}:\d{2}$/.test(item.startTime);
   const isExact = meta?.kind === "exact";
   const isChanged = meta?.kind === "changed";
@@ -1325,27 +1320,27 @@ function PreviewRow({
           {item.attended && (
             <span className="inline-flex items-center gap-1 text-emerald-600 dark:text-emerald-400">
               <CheckCircle2 className="h-3 w-3" />
-              Đã điểm danh
+              {t("import.row.attended")}
             </span>
           )}
           {isExact && (
             <span className="inline-flex items-center gap-1 text-muted-foreground">
               <Check className="h-3 w-3" />
-              Đã có — sẽ bỏ qua
+              {t("import.row.skipExisting")}
             </span>
           )}
           {isChanged && (
             <>
               <span className="inline-flex items-center gap-1 text-amber-600 dark:text-amber-400">
                 <AlertCircle className="h-3 w-3" />
-                {skipped ? "Bỏ qua thay đổi" : "Sẽ cập nhật"}
+                {skipped ? t("import.row.skipChange") : t("import.row.willUpdate")}
               </span>
               {meta?.changes?.map((c) => (
                 <span
                   key={c.field}
                   className="inline-flex items-center gap-1 text-[10px] normal-case tracking-normal font-medium text-amber-700 dark:text-amber-400 bg-amber-500/10 px-1.5 py-0.5 rounded-md"
                 >
-                  {c.field === "location" ? "Phòng" : "Giờ kết thúc"}:
+                  {c.field === "location" ? t("import.row.field.location") : t("import.row.field.endTime")}:
                   <span className="line-through opacity-60">{c.from}</span>
                   →
                   <span>{c.to}</span>
@@ -1357,7 +1352,7 @@ function PreviewRow({
                   onClick={onToggleSkip}
                   className="ml-auto text-[10px] normal-case tracking-normal underline-offset-2 hover:underline text-muted-foreground"
                 >
-                  {skipped ? "Cập nhật lại" : "Bỏ qua"}
+                  {skipped ? t("import.row.toggleSkip.unskip") : t("import.row.toggleSkip.skip")}
                 </button>
               )}
             </>
@@ -1370,7 +1365,7 @@ function PreviewRow({
         <Input
           value={item.subject}
           onChange={(e) => onChange({ subject: e.target.value })}
-          placeholder="Tên môn"
+          placeholder={t("import.row.subjectPh")}
           className="h-8 text-sm px-2.5 flex-[2] min-w-0 max-w-[220px]"
         />
         {/* Time pair — fixed widths so HH:MM never crops. */}
@@ -1378,14 +1373,14 @@ function PreviewRow({
         <Input
           value={item.startTime}
           onChange={(e) => onChange({ startTime: e.target.value })}
-          placeholder="HH:MM"
+          placeholder={t("import.row.timePh")}
           className="h-8 text-xs tabular-nums w-[68px] px-1.5 text-center shrink-0"
         />
         <span className="text-muted-foreground text-xs shrink-0">–</span>
         <Input
           value={item.endTime ?? ""}
           onChange={(e) => onChange({ endTime: e.target.value })}
-          placeholder="HH:MM"
+          placeholder={t("import.row.timePh")}
           className="h-8 text-xs tabular-nums w-[68px] px-1.5 text-center shrink-0"
         />
         {/* Location — fills remaining space. */}
@@ -1393,13 +1388,13 @@ function PreviewRow({
         <Input
           value={item.location ?? ""}
           onChange={(e) => onChange({ location: e.target.value })}
-          placeholder="Phòng"
+          placeholder={t("import.row.roomPh")}
           className="h-8 text-xs px-2 flex-1 min-w-0"
         />
         <button
           onClick={onRemove}
           className="h-8 w-8 shrink-0 rounded-md text-muted-foreground hover:bg-destructive/10 hover:text-destructive transition-colors flex items-center justify-center"
-          aria-label="Bỏ"
+          aria-label={t("import.row.removeAria")}
           type="button"
         >
           <X className="h-3.5 w-3.5" />
@@ -1408,7 +1403,7 @@ function PreviewRow({
       {!valid && (
         <p className="text-[10px] text-destructive mt-1.5 inline-flex items-center gap-1">
           <AlertCircle className="h-3 w-3" />
-          Chưa hợp lệ — kiểm tra title & giờ.
+          {t("import.row.invalid")}
         </p>
       )}
       {item.raw && item.raw.length > 0 && (

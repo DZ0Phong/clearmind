@@ -233,9 +233,22 @@ export function TasksProvider({ children }: { children: React.ReactNode }) {
         if (mtimeMs > lastMtimeRef.current) lastMtimeRef.current = mtimeMs;
         return;
       }
-      // Có edit chưa save? Bỏ qua — debounced PUT sẽ flush trước, event
-      // tiếp theo sẽ là phiên bản đã merge edit của ta.
-      if (lastSyncedRef.current !== JSON.stringify(tasksRef.current)) return;
+      // Có edit chưa save? Drop event NHƯNG warn + lưu payload trong window
+      // global để debug. Audit flagged this as critical: nếu tab khác edit
+      // task khác trong cùng debounce window (80ms), edit đó có thể mất vì
+      // PUT là full-array replace (last-write-wins). Full merge cần per-task
+      // version + diff — defer. Console warning ít nhất giúp tracer được
+      // payload bị mất từ devtools.
+      if (lastSyncedRef.current !== JSON.stringify(tasksRef.current)) {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        (window as any).__CLEARMIND_DROPPED_SSE__ = { tasks: incoming, mtimeMs, at: Date.now() };
+        console.warn(
+          "[clearmind] SSE update dropped — local has uncommitted edits. " +
+            "If another tab edited the SAME 80ms window, that edit may be lost. " +
+            "Payload stashed at window.__CLEARMIND_DROPPED_SSE__."
+        );
+        return;
+      }
       setTasks(incoming);
       lastSyncedRef.current = serialized;
       lastMtimeRef.current = mtimeMs;
