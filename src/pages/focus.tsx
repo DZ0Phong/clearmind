@@ -6,13 +6,7 @@ import {
   useCallback,
 } from "react";
 import { useSearchParams } from "react-router-dom";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { useTasks, type Task } from "@/hooks/use-tasks";
 import { useToast } from "@/components/toast";
@@ -23,9 +17,6 @@ import {
   RotateCcw,
   Timer,
   SkipForward,
-  Hourglass,
-  MapPin,
-  Flame,
   Minus,
   Plus,
   Coffee,
@@ -36,12 +27,7 @@ import {
   ChevronDown,
   TrendingUp,
 } from "lucide-react";
-import {
-  cn,
-  subjectColor,
-  formatDeadline,
-  extractTimeLabel,
-} from "@/lib/utils";
+import { cn, subjectColor } from "@/lib/utils";
 
 type Mode = "work" | "short-break" | "long-break";
 
@@ -119,33 +105,73 @@ function isSameDay(iso: string, day: Date) {
   );
 }
 
-// Two-note ascending chime via Web Audio API — no asset shipping.
-function playChime(volume = 0.25) {
+/**
+ * Tibetan-bowl-style alarm loop. Each "strike" stacks 4 harmonic sines with
+ * a long exponential decay (~4s) so the tone breathes like a real singing
+ * bowl rather than a beep. The strike repeats every ~4.5s until stop() is
+ * called — alarm-clock semantics, not a one-shot chime. Safety auto-stop
+ * after 90s so a forgotten browser tab doesn't ring forever.
+ */
+function playAlarmLoop({ volume = 0.32 }: { volume?: number } = {}): {
+  stop: () => void;
+} {
+  let active = true;
+  let timeoutId: number | null = null;
+  let safetyId: number | null = null;
+  let ctx: AudioContext | null = null;
   try {
     const Ctx =
       window.AudioContext ||
       (window as unknown as { webkitAudioContext: typeof AudioContext })
         .webkitAudioContext;
-    if (!Ctx) return;
-    const ctx = new Ctx();
+    if (!Ctx) return { stop: () => {} };
+    ctx = new Ctx();
+  } catch {
+    return { stop: () => {} };
+  }
+
+  const strike = () => {
+    if (!active || !ctx) return;
     const t = ctx.currentTime;
-    [880, 1320].forEach((freq, i) => {
+    // Bowl-like harmonics: fundamental + perfect-fifth + octave + a touch of
+    // higher partial for sparkle. Slight detune on partial 2 → subtle beat
+    // that sounds organic instead of synthetic.
+    const harmonics = [
+      { freq: 523, gain: 0.5 },    // C5
+      { freq: 783.5, gain: 0.28 }, // G5 (slightly detuned from perfect 5th)
+      { freq: 1046, gain: 0.15 },  // C6 octave
+      { freq: 1568, gain: 0.06 },  // G6 sparkle
+    ];
+    for (const h of harmonics) {
       const osc = ctx.createOscillator();
       const gain = ctx.createGain();
       osc.type = "sine";
-      osc.frequency.value = freq;
-      const startAt = t + i * 0.15;
-      gain.gain.setValueAtTime(0, startAt);
-      gain.gain.linearRampToValueAtTime(volume, startAt + 0.02);
-      gain.gain.exponentialRampToValueAtTime(0.001, startAt + 0.6);
+      osc.frequency.value = h.freq;
+      gain.gain.setValueAtTime(0, t);
+      gain.gain.linearRampToValueAtTime(volume * h.gain, t + 0.05);
+      gain.gain.exponentialRampToValueAtTime(0.0005, t + 4);
       osc.connect(gain).connect(ctx.destination);
-      osc.start(startAt);
-      osc.stop(startAt + 0.7);
-    });
-    setTimeout(() => ctx.close(), 1500);
-  } catch {
-    /* AudioContext blocked — ignore */
-  }
+      osc.start(t);
+      osc.stop(t + 4.1);
+    }
+    timeoutId = window.setTimeout(strike, 4500);
+  };
+
+  strike();
+  safetyId = window.setTimeout(() => {
+    active = false;
+    if (timeoutId) clearTimeout(timeoutId);
+    try { ctx?.close(); } catch (_) {}
+  }, 90_000);
+
+  return {
+    stop: () => {
+      active = false;
+      if (timeoutId) clearTimeout(timeoutId);
+      if (safetyId) clearTimeout(safetyId);
+      try { ctx?.close(); } catch (_) {}
+    },
+  };
 }
 
 function modeMinutes(m: Mode, s: FocusSettings) {
@@ -200,6 +226,12 @@ export function FocusPage() {
   const [remaining, setRemaining] = useState(settings.work * 60);
   const [running, setRunning] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
+  const [showTaskPicker, setShowTaskPicker] = useState(false);
+  // Alarm-clock mode: when timer hits 0 we start a looping Tibetan-bowl
+  // strike every 4.5s and freeze on the "ringing" screen until the user
+  // explicitly dismisses. No silent auto-advance — user always knows.
+  const [ringing, setRinging] = useState(false);
+  const alarmRef = useRef<{ stop: () => void } | null>(null);
   const startedAtRef = useRef<number | null>(null);
 
   useEffect(() => {
@@ -253,16 +285,36 @@ export function FocusPage() {
     [tasks]
   );
 
+  // Timer reached 0: ring the bell (looping) and freeze on a dedicated
+  // "ringing" screen. We do NOT advance mode automatically — the user
+  // dismisses (dismissAlarm) and only then do we transition.
   const handleComplete = useCallback(() => {
     setRunning(false);
-    if (settings.sound) playChime();
+    setRemaining(0);
     if (mode === "work") {
-      const elapsedSec = settings.work * 60 - remaining;
+      // Persist the session minutes immediately so they show up in stats
+      // even if the user walks away from the alarm screen.
+      const elapsedSec = settings.work * 60;
       const minutes = Math.max(1, Math.round(elapsedSec / 60));
       if (taskId) incrementPomodoro(taskId, minutes);
       setSessions((prev) =>
         [...prev, { at: new Date().toISOString(), minutes }].slice(-100)
       );
+    }
+    if (settings.sound) {
+      try { alarmRef.current?.stop(); } catch (_) {}
+      alarmRef.current = playAlarmLoop();
+    }
+    setRinging(true);
+  }, [mode, settings, taskId, incrementPomodoro]);
+
+  // User-explicit dismiss → stop the bell, advance to the next phase, and
+  // surface a success toast summarising what just happened.
+  const dismissAlarm = useCallback(() => {
+    try { alarmRef.current?.stop(); } catch (_) {}
+    alarmRef.current = null;
+    setRinging(false);
+    if (mode === "work") {
       const completedRound = round + 1;
       const isLong = completedRound >= settings.rounds;
       const nextMode: Mode = isLong ? "long-break" : "short-break";
@@ -271,7 +323,7 @@ export function FocusPage() {
           ? t("focus.toastLongBreak", { n: settings.rounds })
           : t("focus.toastWorkEnd"),
         description: t("focus.toastSummary", {
-          n: minutes,
+          n: settings.work,
           title: activeTask ? " · " + activeTask.title : "",
           b: modeMinutes(nextMode, settings),
         }),
@@ -293,16 +345,14 @@ export function FocusPage() {
         startedAtRef.current = Date.now();
       }
     }
-  }, [
-    mode,
-    remaining,
-    taskId,
-    settings,
-    round,
-    activeTask,
-    incrementPomodoro,
-    toast,
-  ]);
+  }, [mode, round, settings, activeTask, toast, t]);
+
+  // Safety net: stop any lingering alarm on unmount (route change, F5…).
+  useEffect(() => {
+    return () => {
+      try { alarmRef.current?.stop(); } catch (_) {}
+    };
+  }, []);
 
   // Tick
   useEffect(() => {
@@ -335,7 +385,8 @@ export function FocusPage() {
     handleComplete();
   }, [handleComplete]);
 
-  // Keyboard shortcuts — Space toggles, R resets, S skips.
+  // Keyboard shortcuts — when ringing, ANY key dismisses (alarm-clock
+  // semantics). Otherwise Space toggles, R resets, S skips.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const tgt = e.target as HTMLElement | null;
@@ -345,6 +396,11 @@ export function FocusPage() {
           tgt.tagName === "TEXTAREA" ||
           tgt.isContentEditable)
       ) {
+        return;
+      }
+      if (ringing) {
+        e.preventDefault();
+        dismissAlarm();
         return;
       }
       if (e.code === "Space") {
@@ -359,7 +415,7 @@ export function FocusPage() {
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [running, start, pause, reset, skip]);
+  }, [running, ringing, start, pause, reset, skip, dismissAlarm]);
 
   const mm = Math.floor(remaining / 60).toString().padStart(2, "0");
   const ss = (remaining % 60).toString().padStart(2, "0");
@@ -398,98 +454,198 @@ export function FocusPage() {
   );
 
   return (
-    <div className="h-full flex flex-col gap-6">
-      <div className="shrink-0 flex items-start justify-between gap-4 flex-wrap">
-        <div>
-          <h2 className="text-3xl font-bold tracking-tight">{t("focus.title")}</h2>
-          <p className="text-muted-foreground mt-1">{t("focus.subtitle")}</p>
+    <div className="h-full flex flex-col gap-4 max-w-2xl mx-auto w-full">
+      {/* Compact top bar: title left, today stats + sound toggle right */}
+      <div className="shrink-0 flex items-center justify-between gap-3 flex-wrap">
+        <div className="min-w-0">
+          <h2 className="text-2xl font-bold tracking-tight">{t("focus.title")}</h2>
         </div>
-        <div className="flex items-center gap-2">
-          <span className="text-xs text-muted-foreground inline-flex items-center gap-1.5">
+        <div className="flex items-center gap-3 text-xs">
+          <span className="text-muted-foreground inline-flex items-center gap-1.5 tabular-nums">
             <TrendingUp className="h-3.5 w-3.5" />
-            {t("focus.today")}
+            {todayStats.minutes}m · {t("focus.sessionsCount", { n: todayStats.count })}
           </span>
-          <span className="text-sm font-semibold tabular-nums">
-            {todayStats.minutes}m
-          </span>
-          <span className="text-xs text-muted-foreground tabular-nums">
-            · {t("focus.sessionsCount", { n: todayStats.count })}
-          </span>
+          <button
+            onClick={() => setSettings((s) => ({ ...s, sound: !s.sound }))}
+            className="cm-press inline-flex items-center gap-1 px-2 py-1 rounded-md text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+            title={settings.sound ? t("focus.soundOn") : t("focus.soundOff")}
+            aria-label={settings.sound ? t("focus.soundOn") : t("focus.soundOff")}
+          >
+            {settings.sound ? (
+              <Volume2 className="h-3.5 w-3.5" />
+            ) : (
+              <VolumeX className="h-3.5 w-3.5" />
+            )}
+          </button>
         </div>
       </div>
 
-      <div className="flex-1 grid grid-cols-1 lg:grid-cols-3 gap-6 min-h-0">
-        <div className="lg:col-span-2 flex flex-col gap-4 min-h-0">
-          <Card
+      {/* Active task chip — minimal one-liner. Click to swap; × to clear. */}
+      <div className="shrink-0 relative">
+        {activeTask ? (
+          <div className="inline-flex items-center gap-2 max-w-full px-3 py-1.5 rounded-full border bg-card/60 backdrop-blur-sm">
+            <span
+              className={cn(
+                "h-1.5 w-1.5 rounded-full shrink-0",
+                subjectColor(activeTask.title).dot
+              )}
+              aria-hidden
+            />
+            <button
+              onClick={() => setShowTaskPicker((v) => !v)}
+              className="cm-press text-xs font-medium truncate hover:text-primary transition-colors text-left"
+              title={activeTask.title}
+            >
+              {activeTask.title}
+            </button>
+            <button
+              onClick={() => setTaskId(null)}
+              className="text-muted-foreground hover:text-destructive transition-colors shrink-0"
+              aria-label="Bỏ chọn task"
+            >
+              <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"><path d="M3 3l6 6m0-6l-6 6"/></svg>
+            </button>
+          </div>
+        ) : (
+          <button
+            onClick={() => setShowTaskPicker((v) => !v)}
+            className="cm-press inline-flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
+          >
+            <Plus className="h-3 w-3" />
+            {t("focus.pickTask")}
+          </button>
+        )}
+        {showTaskPicker && (
+          <div className="absolute z-20 top-full mt-2 left-0 w-full max-w-md rounded-xl border bg-card shadow-lg p-2 max-h-[55vh] overflow-y-auto">
+            <div className="flex items-center justify-between px-2 pb-2">
+              <p className="text-[11px] uppercase tracking-wider font-semibold text-muted-foreground">
+                {t("focus.pickTask")}
+              </p>
+              <button
+                onClick={() => setShowTaskPicker(false)}
+                className="text-xs text-muted-foreground hover:text-foreground"
+                aria-label="Đóng"
+              >
+                <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"><path d="M3 3l8 8m0-8l-8 8"/></svg>
+              </button>
+            </div>
+            <button
+              onClick={() => { setTaskId(null); setShowTaskPicker(false); }}
+              className={cn(
+                "cm-press w-full text-left px-3 py-2 rounded-md text-sm transition-colors",
+                !taskId ? "bg-primary/10 text-primary" : "hover:bg-accent"
+              )}
+            >
+              {t("focus.noTaskOpt")}
+            </button>
+            {undone.length === 0 ? (
+              <p className="text-xs text-muted-foreground text-center py-4">
+                {t("focus.inboxZero")}
+              </p>
+            ) : (
+              undone.map((task) => {
+                const col = subjectColor(task.title);
+                return (
+                  <button
+                    key={task.id}
+                    onClick={() => { setTaskId(task.id); setShowTaskPicker(false); }}
+                    className={cn(
+                      "cm-press w-full text-left px-3 py-2 rounded-md flex items-center gap-2 text-sm transition-colors",
+                      taskId === task.id
+                        ? "bg-primary/10 text-primary"
+                        : "hover:bg-accent"
+                    )}
+                  >
+                    <span className={cn("h-1.5 w-1.5 rounded-full shrink-0", col.dot)} aria-hidden />
+                    <span className="truncate flex-1">{task.title}</span>
+                    {(task.pomodoroMinutes || 0) > 0 && (
+                      <span className="text-[10px] text-muted-foreground tabular-nums shrink-0">
+                        {task.pomodoroMinutes}m
+                      </span>
+                    )}
+                  </button>
+                );
+              })
+            )}
+          </div>
+        )}
+      </div>
+
+      <Card
+        className={cn(
+          "bg-gradient-to-br border shadow-sm flex-1 transition-all duration-500",
+          tone.bg
+        )}
+      >
+        <CardContent className="flex flex-col items-center justify-center py-8 gap-5">
+          {/* Mode + round dots */}
+          <div className="flex items-center gap-3">
+            <span className={cn("text-xs font-semibold uppercase tracking-wider inline-flex items-center gap-1.5", tone.text)}>
+              {mode === "work" ? <Timer className="h-3.5 w-3.5" /> : <Coffee className="h-3.5 w-3.5" />}
+              {t(MODE_I18N_KEY[mode])}
+            </span>
+            <span className="text-muted-foreground/40">·</span>
+            <div className="flex items-center gap-1.5">
+              {Array.from({ length: settings.rounds }).map((_, i) => (
+                <span
+                  key={i}
+                  className={cn(
+                    "h-1.5 w-1.5 rounded-full transition-all duration-300",
+                    i < round
+                      ? "bg-primary"
+                      : i === round && mode === "work"
+                      ? "bg-primary/40 ring-2 ring-primary/30 scale-125"
+                      : "bg-muted-foreground/20"
+                  )}
+                  title={`Round ${i + 1} / ${settings.rounds}`}
+                />
+              ))}
+            </div>
+          </div>
+
+          {/* Timer circle */}
+          <div
             className={cn(
-              "bg-gradient-to-br border shadow-sm flex-1 transition-all duration-500",
-              tone.bg
+              "relative h-64 w-64 rounded-full border-8 flex items-center justify-center transition-all duration-500",
+              tone.ring,
+              running && tone.glow,
+              ringing && "cm-late-pulse border-primary/50"
             )}
           >
-            <CardHeader>
-              <CardTitle className="flex items-center justify-between gap-2 flex-wrap">
-                <span className="inline-flex items-center gap-2">
-                  {mode === "work" ? (
-                    <Timer className={cn("h-5 w-5", tone.text)} />
-                  ) : (
-                    <Coffee className={cn("h-5 w-5", tone.text)} />
-                  )}
-                  {t(MODE_I18N_KEY[mode])}
-                </span>
-                {/* Round dots — full cycle of `rounds` work sessions */}
-                <div className="flex items-center gap-1.5">
-                  {Array.from({ length: settings.rounds }).map((_, i) => (
-                    <span
-                      key={i}
-                      className={cn(
-                        "h-2 w-2 rounded-full transition-all duration-300",
-                        i < round
-                          ? "bg-primary"
-                          : i === round && mode === "work"
-                          ? "bg-primary/40 ring-2 ring-primary/30 scale-110"
-                          : "bg-muted-foreground/20"
-                      )}
-                      title={`Round ${i + 1} / ${settings.rounds}`}
-                    />
-                  ))}
-                </div>
-              </CardTitle>
-              <CardDescription>
-                {activeTask
-                  ? t("focus.activePrefix") + activeTask.title
-                  : mode === "work"
-                  ? t("focus.descNoTaskWork")
-                  : t("focus.descBreak")}
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="flex flex-col items-center justify-center py-8 gap-6">
-              <div
+            <svg
+              className="absolute inset-0 -rotate-90"
+              viewBox="0 0 100 100"
+              aria-hidden
+            >
+              <circle
+                cx="50"
+                cy="50"
+                r="46"
+                fill="none"
+                strokeWidth="8"
                 className={cn(
-                  "relative h-64 w-64 rounded-full border-8 flex items-center justify-center transition-all duration-500",
-                  tone.ring,
-                  running && tone.glow
+                  tone.stroke,
+                  "transition-[stroke-dasharray] duration-700"
                 )}
-              >
-                <svg
-                  className="absolute inset-0 -rotate-90"
-                  viewBox="0 0 100 100"
-                  aria-hidden
-                >
-                  <circle
-                    cx="50"
-                    cy="50"
-                    r="46"
-                    fill="none"
-                    strokeWidth="8"
-                    className={cn(
-                      tone.stroke,
-                      "transition-[stroke-dasharray] duration-700"
-                    )}
-                    strokeDasharray={`${progress * 289.03} 289.03`}
-                    strokeLinecap="round"
-                  />
-                </svg>
-                <div className="text-center">
+                strokeDasharray={`${(ringing ? 1 : progress) * 289.03} 289.03`}
+                strokeLinecap="round"
+              />
+            </svg>
+            <div className="text-center">
+              {ringing ? (
+                <>
+                  <p className={cn("text-5xl font-bold tracking-tight", tone.text)}>
+                    ✓
+                  </p>
+                  <p className="text-sm font-semibold mt-1">
+                    {mode === "work" ? t("focus.toastWorkEnd") : t("focus.toastBreakEnd")}
+                  </p>
+                  <p className="text-[10px] uppercase tracking-wider text-muted-foreground mt-1">
+                    {t("focus.alarmRinging")}
+                  </p>
+                </>
+              ) : (
+                <>
                   <p
                     className={cn(
                       "text-6xl font-bold tracking-tight tabular-nums transition-colors",
@@ -498,258 +654,166 @@ export function FocusPage() {
                   >
                     {mm}:{ss}
                   </p>
-                  <p className="text-xs uppercase tracking-wider text-muted-foreground mt-2">
+                  <p className="text-[10px] uppercase tracking-wider text-muted-foreground mt-2">
                     {running ? t("focus.running") : t(MODE_SHORT_KEY[mode])}
                   </p>
-                </div>
-              </div>
+                </>
+              )}
+            </div>
+          </div>
 
-              <div className="flex items-center gap-2">
-                {!running ? (
-                  <Button onClick={start} size="lg" className="gap-2 cm-press">
-                    <Play className="h-4 w-4" /> {t("focus.start")}
-                    <kbd className="ml-1 text-[10px] opacity-60 hidden md:inline">
-                      Space
-                    </kbd>
-                  </Button>
-                ) : (
-                  <Button
-                    onClick={pause}
-                    size="lg"
-                    variant="outline"
-                    className="gap-2 cm-press"
-                  >
-                    <Pause className="h-4 w-4" /> {t("focus.pause")}
-                    <kbd className="ml-1 text-[10px] opacity-60 hidden md:inline">
-                      Space
-                    </kbd>
-                  </Button>
-                )}
+          {/* Control buttons — swap to big "Dừng chuông" when ringing */}
+          {ringing ? (
+            <Button
+              onClick={dismissAlarm}
+              size="lg"
+              className="gap-2 cm-press text-base px-8"
+              autoFocus
+            >
+              <VolumeX className="h-4 w-4" /> {t("focus.alarmDismiss")}
+              <kbd className="ml-1 text-[10px] opacity-60 hidden md:inline">Space</kbd>
+            </Button>
+          ) : (
+            <div className="flex items-center gap-2">
+              {!running ? (
+                <Button onClick={start} size="lg" className="gap-2 cm-press">
+                  <Play className="h-4 w-4" /> {t("focus.start")}
+                  <kbd className="ml-1 text-[10px] opacity-60 hidden md:inline">
+                    Space
+                  </kbd>
+                </Button>
+              ) : (
                 <Button
-                  onClick={reset}
+                  onClick={pause}
                   size="lg"
                   variant="outline"
                   className="gap-2 cm-press"
-                  title={t("focus.reset") + " (R)"}
                 >
-                  <RotateCcw className="h-4 w-4" />
-                  <span className="hidden sm:inline">{t("focus.reset")}</span>
+                  <Pause className="h-4 w-4" /> {t("focus.pause")}
+                  <kbd className="ml-1 text-[10px] opacity-60 hidden md:inline">
+                    Space
+                  </kbd>
                 </Button>
-                <Button
-                  onClick={skip}
-                  size="lg"
-                  variant="ghost"
-                  className="gap-2 cm-press"
-                  title={t("focus.skip") + " (S)"}
-                >
-                  <SkipForward className="h-4 w-4" />
-                  <span className="hidden sm:inline">{t("focus.skip")}</span>
-                </Button>
-              </div>
-
-              {/* Presets row */}
-              <div className="flex items-center gap-1.5 flex-wrap justify-center">
-                {PRESETS.map((p) => {
-                  const Icon = p.icon;
-                  const active = matchingPreset?.label === p.label;
-                  return (
-                    <button
-                      key={p.label}
-                      onClick={() => applyPreset(p)}
-                      className={cn(
-                        "cm-press inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium border transition-all duration-200",
-                        active
-                          ? "bg-primary/10 border-primary/40 text-primary"
-                          : "bg-muted/40 border-border text-muted-foreground hover:text-foreground hover:bg-muted"
-                      )}
-                    >
-                      <Icon className="h-3 w-3" />
-                      {p.label}
-                      <span className="opacity-70 tabular-nums">
-                        {p.work}/{p.shortBreak}
-                      </span>
-                    </button>
-                  );
-                })}
-                <button
-                  onClick={() => setShowSettings((v) => !v)}
-                  className={cn(
-                    "cm-press inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium border transition-all duration-200",
-                    showSettings
-                      ? "bg-muted border-border text-foreground"
-                      : "bg-muted/40 border-border text-muted-foreground hover:text-foreground hover:bg-muted"
-                  )}
-                >
-                  {t("focus.tune")}
-                  <ChevronDown
-                    className={cn(
-                      "h-3 w-3 transition-transform duration-200",
-                      showSettings && "rotate-180"
-                    )}
-                  />
-                </button>
-              </div>
-
-              {/* Custom adjustments — collapsible */}
-              <div
-                className={cn(
-                  "cm-collapse w-full max-w-md",
-                  showSettings && "is-open"
-                )}
-              >
-                <div>
-                  <div className="pt-2 grid grid-cols-2 sm:grid-cols-4 gap-3">
-                    <Stepper
-                      label={t("focus.label.work")}
-                      value={settings.work}
-                      min={1}
-                      max={180}
-                      onChange={(v) =>
-                        setSettings((s) => ({ ...s, work: v }))
-                      }
-                    />
-                    <Stepper
-                      label={t("focus.label.short")}
-                      value={settings.shortBreak}
-                      min={1}
-                      max={60}
-                      onChange={(v) =>
-                        setSettings((s) => ({ ...s, shortBreak: v }))
-                      }
-                    />
-                    <Stepper
-                      label={t("focus.label.long")}
-                      value={settings.longBreak}
-                      min={1}
-                      max={90}
-                      onChange={(v) =>
-                        setSettings((s) => ({ ...s, longBreak: v }))
-                      }
-                    />
-                    <Stepper
-                      label={t("focus.label.rounds")}
-                      value={settings.rounds}
-                      min={1}
-                      max={10}
-                      unit=""
-                      onChange={(v) =>
-                        setSettings((s) => ({ ...s, rounds: v }))
-                      }
-                    />
-                  </div>
-                  <div className="pt-3 flex items-center justify-between gap-3 flex-wrap">
-                    <Toggle
-                      checked={settings.autoStart}
-                      onChange={(v) =>
-                        setSettings((s) => ({ ...s, autoStart: v }))
-                      }
-                      label={t("focus.autoStart")}
-                      hint={t("focus.autoStartHint")}
-                    />
-                    <button
-                      onClick={() =>
-                        setSettings((s) => ({ ...s, sound: !s.sound }))
-                      }
-                      className="cm-press inline-flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-md border bg-muted/30 hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
-                      title={settings.sound ? "Tắt âm" : "Bật âm"}
-                    >
-                      {settings.sound ? (
-                        <Volume2 className="h-3.5 w-3.5" />
-                      ) : (
-                        <VolumeX className="h-3.5 w-3.5" />
-                      )}
-                      {settings.sound ? t("focus.soundOn") : t("focus.soundOff")}
-                    </button>
-                  </div>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-
-        <Card className="bg-card border shadow-sm overflow-hidden">
-          <CardHeader>
-            <CardTitle>{t("focus.pickTask")}</CardTitle>
-            <CardDescription>{t("focus.pickHint")}</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-2 overflow-y-auto max-h-[60vh]">
-            <button
-              onClick={() => setTaskId(null)}
-              className={cn(
-                "cm-press w-full text-left p-3 rounded-lg border transition-colors",
-                !taskId
-                  ? "bg-primary/10 border-primary/30 text-primary"
-                  : "bg-background/50 hover:bg-accent"
               )}
-            >
-              <p className="text-sm font-medium">{t("focus.noTaskOpt")}</p>
-              <p className="text-xs text-muted-foreground mt-0.5">
-                {t("focus.noTaskOptHint")}
-              </p>
-            </button>
-            {undone.length === 0 ? (
-              <p className="text-sm text-muted-foreground text-center py-8">
-                {t("focus.inboxZero")}
-              </p>
-            ) : (
-              undone.map((task, i) => {
-                const col = subjectColor(task.title);
-                const time = extractTimeLabel(task.deadline);
+              <Button
+                onClick={reset}
+                size="lg"
+                variant="outline"
+                className="gap-2 cm-press"
+                title={t("focus.reset") + " (R)"}
+              >
+                <RotateCcw className="h-4 w-4" />
+                <span className="hidden sm:inline">{t("focus.reset")}</span>
+              </Button>
+              <Button
+                onClick={skip}
+                size="lg"
+                variant="ghost"
+                className="gap-2 cm-press"
+                title={t("focus.skip") + " (S)"}
+              >
+                <SkipForward className="h-4 w-4" />
+                <span className="hidden sm:inline">{t("focus.skip")}</span>
+              </Button>
+            </div>
+          )}
+
+          {/* Presets row — hidden while ringing to keep focus on dismiss */}
+          {!ringing && (
+            <div className="flex items-center gap-1.5 flex-wrap justify-center">
+              {PRESETS.map((p) => {
+                const Icon = p.icon;
+                const active = matchingPreset?.label === p.label;
                 return (
                   <button
-                    key={task.id}
-                    onClick={() => setTaskId(task.id)}
-                    style={{
-                      animationDelay: `${Math.min(i, 10) * 20}ms`,
-                    }}
+                    key={p.label}
+                    onClick={() => applyPreset(p)}
                     className={cn(
-                      "cm-list-enter cm-press relative w-full text-left p-3 pl-4 rounded-lg border transition-colors overflow-hidden",
-                      taskId === task.id
-                        ? "bg-primary/10 border-primary/30"
-                        : "bg-background/50 hover:bg-accent",
-                      task.priority === "high" &&
-                        taskId !== task.id &&
-                        "border-destructive/30"
+                      "cm-press inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium border transition-all duration-200",
+                      active
+                        ? "bg-primary/10 border-primary/40 text-primary"
+                        : "bg-muted/40 border-border text-muted-foreground hover:text-foreground hover:bg-muted"
                     )}
                   >
-                    <span
-                      className={cn(
-                        "absolute left-0 top-0 bottom-0 w-1",
-                        col.dot
-                      )}
-                      aria-hidden
-                    />
-                    <p className="text-sm font-medium truncate">{task.title}</p>
-                    <div className="flex items-center gap-2 mt-1 flex-wrap text-[10px] text-muted-foreground">
-                      <span>{t(`type.${task.type}`)}</span>
-                      {task.priority === "high" && (
-                        <span className="text-destructive font-semibold inline-flex items-center gap-0.5">
-                          <Flame className="h-2.5 w-2.5" /> {t("priority.urgent")}
-                        </span>
-                      )}
-                      {time && (
-                        <span className="tabular-nums">
-                          {time} · {formatDeadline(task.deadline)}
-                        </span>
-                      )}
-                      {task.location && (
-                        <span className="inline-flex items-center gap-0.5">
-                          <MapPin className="h-2.5 w-2.5" /> {task.location}
-                        </span>
-                      )}
-                      {(task.pomodoroMinutes || 0) > 0 && (
-                        <span className="text-emerald-600 dark:text-emerald-400 inline-flex items-center gap-1">
-                          <Hourglass className="h-3 w-3" /> {task.pomodoroMinutes}m
-                        </span>
-                      )}
-                    </div>
+                    <Icon className="h-3 w-3" />
+                    {p.label}
+                    <span className="opacity-70 tabular-nums">
+                      {p.work}/{p.shortBreak}
+                    </span>
                   </button>
                 );
-              })
+              })}
+              <button
+                onClick={() => setShowSettings((v) => !v)}
+                className={cn(
+                  "cm-press inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium border transition-all duration-200",
+                  showSettings
+                    ? "bg-muted border-border text-foreground"
+                    : "bg-muted/40 border-border text-muted-foreground hover:text-foreground hover:bg-muted"
+                )}
+              >
+                {t("focus.tune")}
+                <ChevronDown
+                  className={cn(
+                    "h-3 w-3 transition-transform duration-200",
+                    showSettings && "rotate-180"
+                  )}
+                />
+              </button>
+            </div>
+          )}
+
+          {/* Custom adjustments — collapsed by default */}
+          <div
+            className={cn(
+              "cm-collapse w-full max-w-md",
+              showSettings && !ringing && "is-open"
             )}
-          </CardContent>
-        </Card>
-      </div>
+          >
+            <div>
+              <div className="pt-2 grid grid-cols-2 sm:grid-cols-4 gap-3">
+                <Stepper
+                  label={t("focus.label.work")}
+                  value={settings.work}
+                  min={1}
+                  max={180}
+                  onChange={(v) => setSettings((s) => ({ ...s, work: v }))}
+                />
+                <Stepper
+                  label={t("focus.label.short")}
+                  value={settings.shortBreak}
+                  min={1}
+                  max={60}
+                  onChange={(v) => setSettings((s) => ({ ...s, shortBreak: v }))}
+                />
+                <Stepper
+                  label={t("focus.label.long")}
+                  value={settings.longBreak}
+                  min={1}
+                  max={90}
+                  onChange={(v) => setSettings((s) => ({ ...s, longBreak: v }))}
+                />
+                <Stepper
+                  label={t("focus.label.rounds")}
+                  value={settings.rounds}
+                  min={1}
+                  max={10}
+                  unit=""
+                  onChange={(v) => setSettings((s) => ({ ...s, rounds: v }))}
+                />
+              </div>
+              <div className="pt-3">
+                <Toggle
+                  checked={settings.autoStart}
+                  onChange={(v) => setSettings((s) => ({ ...s, autoStart: v }))}
+                  label={t("focus.autoStart")}
+                  hint={t("focus.autoStartHint")}
+                />
+              </div>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
     </div>
   );
 }

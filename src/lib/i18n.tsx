@@ -316,6 +316,8 @@ const VI: Dict = {
   "focus.toastBreakEnd": "Hết giờ nghỉ",
   "focus.toastReady": "Sẵn sàng phiên mới.",
   "focus.toastSummary": "+{n}p{title} · nghỉ {b}p",
+  "focus.alarmRinging": "Chuông đang reo",
+  "focus.alarmDismiss": "Dừng chuông",
 
   // Settings — labels used in cards
   "settings.notifTitle": "Thông báo",
@@ -657,6 +659,8 @@ const EN: Dict = {
   "focus.toastBreakEnd": "Break over",
   "focus.toastReady": "Ready for the next session.",
   "focus.toastSummary": "+{n}m{title} · break {b}m",
+  "focus.alarmRinging": "Alarm is ringing",
+  "focus.alarmDismiss": "Stop alarm",
 
   // Settings — labels used in cards
   "settings.notifTitle": "Notifications",
