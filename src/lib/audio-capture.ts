@@ -27,11 +27,15 @@ export interface AudioCaptureHandle {
 export async function startMicCapture(): Promise<AudioCaptureHandle> {
   const stream = await navigator.mediaDevices.getUserMedia({
     audio: {
-      // Hint browser to skip noise suppression — Whisper is robust + we
-      // want the raw signal. Browsers can still ignore this hint.
+      // For Whisper: disable browser-side noise suppression + AGC. The
+      // model is robust to background noise but VERY sensitive to chopped
+      // plosives and squashed dynamics (which AGC + NS both introduce).
+      // We want the raw mic signal. Browsers can still ignore these hints.
+      // Echo cancellation stays on — feedback from speakers would corrupt
+      // the spectrogram far worse than the alternative.
       echoCancellation: true,
-      noiseSuppression: true,
-      autoGainControl: true,
+      noiseSuppression: false,
+      autoGainControl: false,
       channelCount: 1,
     },
   });

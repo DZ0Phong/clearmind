@@ -3,6 +3,7 @@ import React, {
   useState,
   useEffect,
   useCallback,
+  useMemo,
   useRef,
   createContext,
   useContext,
@@ -225,6 +226,11 @@ export function TasksProvider({ children }: { children: React.ReactNode }) {
     const es = new EventSource("/api/events");
 
     const applyServer = (incoming: Task[], mtimeMs: number) => {
+      // mtime=0 sentinel ('no data yet'): server emits 0 when the data
+      // file doesn't exist yet. AFTER we've successfully synced once
+      // (lastMtimeRef > 0), a fresh 0 means stale/buggy — never apply,
+      // it would silently wipe in-memory edits.
+      if (mtimeMs === 0 && lastMtimeRef.current > 0) return;
       // Bỏ qua nếu version cũ hơn cái ta đang có (chống echo lệch order).
       if (mtimeMs > 0 && mtimeMs < lastMtimeRef.current) return;
       const serialized = JSON.stringify(incoming);
@@ -254,13 +260,24 @@ export function TasksProvider({ children }: { children: React.ReactNode }) {
       lastMtimeRef.current = mtimeMs;
     };
 
+    // Both handlers wrap JSON.parse in try/catch — a malformed SSE
+    // event (network corruption, future protocol change) shouldn't
+    // bubble as Uncaught and pollute the global error log.
     es.addEventListener("snapshot", (ev) => {
-      const { tasks: t, mtimeMs } = JSON.parse((ev as MessageEvent).data);
-      applyServer(t, mtimeMs);
+      try {
+        const { tasks: t, mtimeMs } = JSON.parse((ev as MessageEvent).data);
+        applyServer(t, mtimeMs);
+      } catch (e) {
+        console.warn("[clearmind] SSE snapshot parse failed:", e);
+      }
     });
     es.addEventListener("tasks-updated", (ev) => {
-      const { tasks: t, mtimeMs } = JSON.parse((ev as MessageEvent).data);
-      applyServer(t, mtimeMs);
+      try {
+        const { tasks: t, mtimeMs } = JSON.parse((ev as MessageEvent).data);
+        applyServer(t, mtimeMs);
+      } catch (e) {
+        console.warn("[clearmind] SSE tasks-updated parse failed:", e);
+      }
     });
 
     return () => es.close();
@@ -643,12 +660,18 @@ export function TasksProvider({ children }: { children: React.ReactNode }) {
       let added = 0;
       setTasks((prev) => {
         const byId = new Map(prev.map((t) => [t.id, t]));
-        for (const t of incoming) {
-          if (!t.id) t.id = crypto.randomUUID();
-          if (!t.createdAt) t.createdAt = new Date().toISOString();
-          if (!t.status) t.status = "todo";
-          if (!byId.has(t.id)) {
-            byId.set(t.id, t);
+        for (const incomingTask of incoming) {
+          // Build a fresh object so we never mutate the caller's payload
+          // — JSON.parse output may be retained by integration tests or
+          // future ndjson stream readers.
+          const safe: Task = {
+            ...incomingTask,
+            id: incomingTask.id || crypto.randomUUID(),
+            createdAt: incomingTask.createdAt || new Date().toISOString(),
+            status: incomingTask.status || "todo",
+          };
+          if (!byId.has(safe.id)) {
+            byId.set(safe.id, safe);
             added++;
           }
         }
@@ -683,28 +706,49 @@ export function TasksProvider({ children }: { children: React.ReactNode }) {
     return ok;
   }, []);
 
+  // Memoize the context value so consumers (Dashboard, Tasks, Calendar,
+  // Topbar overdue badge…) don't re-render on every TasksProvider update.
+  // Most actions are useCallback'd; tasks + notificationsEnabled are the
+  // real change drivers.
+  const value = useMemo(
+    () => ({
+      tasks,
+      addTask,
+      updateTaskStatus,
+      cycleStatus,
+      updateTask,
+      removeTask,
+      snoozeTask,
+      clearAll,
+      exportJson,
+      importJson,
+      incrementPomodoro,
+      rollForwardOverdueRecurring,
+      clearDuplicates,
+      notificationsEnabled,
+      requestNotifications,
+    }),
+    [
+      tasks,
+      addTask,
+      updateTaskStatus,
+      cycleStatus,
+      updateTask,
+      removeTask,
+      snoozeTask,
+      clearAll,
+      exportJson,
+      importJson,
+      incrementPomodoro,
+      rollForwardOverdueRecurring,
+      clearDuplicates,
+      notificationsEnabled,
+      requestNotifications,
+    ]
+  );
+
   return (
-    <TasksContext.Provider
-      value={{
-        tasks,
-        addTask,
-        updateTaskStatus,
-        cycleStatus,
-        updateTask,
-        removeTask,
-        snoozeTask,
-        clearAll,
-        exportJson,
-        importJson,
-        incrementPomodoro,
-        rollForwardOverdueRecurring,
-        clearDuplicates,
-        notificationsEnabled,
-        requestNotifications,
-      }}
-    >
-      {children}
-    </TasksContext.Provider>
+    <TasksContext.Provider value={value}>{children}</TasksContext.Provider>
   );
 }
 

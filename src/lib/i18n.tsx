@@ -1,5 +1,12 @@
 /* eslint-disable react-refresh/only-export-components */
-import React, { createContext, useContext, useEffect, useState } from "react";
+import React, {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useState,
+} from "react";
 
 export type Lang = "vi" | "en";
 
@@ -1674,12 +1681,20 @@ const I18nContext = createContext<I18nContextValue | null>(null);
 
 export function I18nProvider({ children }: { children: React.ReactNode }) {
   const [lang, setLangState] = useState<Lang>(() => {
-    const saved = localStorage.getItem(LANG_STORAGE_KEY);
-    return saved === "en" ? "en" : "vi";
+    try {
+      const saved = localStorage.getItem(LANG_STORAGE_KEY);
+      return saved === "en" ? "en" : "vi";
+    } catch {
+      return "vi";
+    }
   });
 
   useEffect(() => {
-    localStorage.setItem(LANG_STORAGE_KEY, lang);
+    try {
+      localStorage.setItem(LANG_STORAGE_KEY, lang);
+    } catch {
+      /* private mode / quota — silently ignore */
+    }
     document.documentElement.setAttribute("lang", lang);
     // Sync sang CLI để notification dùng đúng ngôn ngữ. Bỏ qua lỗi
     // (chạy dev hay CLI tắt → tiếp tục bình thường).
@@ -1704,17 +1719,23 @@ export function I18nProvider({ children }: { children: React.ReactNode }) {
     return () => window.removeEventListener("storage", onStorage);
   }, []);
 
-  const setLang = (l: Lang) => setLangState(l);
-
-  const t = (key: string, params?: Record<string, string | number>): string => {
-    const dict = ALL[lang];
-    const raw = dict[key] ?? VI[key] ?? key;
-    return format(raw, params);
-  };
-
-  return (
-    <I18nContext.Provider value={{ lang, setLang, t }}>{children}</I18nContext.Provider>
+  // Memoize t + setLang + provider value so consumers don't re-render on
+  // every parent update. Previously `t` was a fresh fn each render, which
+  // (a) broke memoization in components like VoiceMic (effect deps={[t]}
+  // tore down SpeechRecognition mid-utterance) and (b) caused cascading
+  // re-renders through every useT() / useI18n() consumer.
+  const setLang = useCallback((l: Lang) => setLangState(l), []);
+  const t = useMemo(
+    () => (key: string, params?: Record<string, string | number>): string => {
+      const dict = ALL[lang];
+      const raw = dict[key] ?? VI[key] ?? key;
+      return format(raw, params);
+    },
+    [lang]
   );
+  const value = useMemo(() => ({ lang, setLang, t }), [lang, setLang, t]);
+
+  return <I18nContext.Provider value={value}>{children}</I18nContext.Provider>;
 }
 
 export function useI18n(): I18nContextValue {

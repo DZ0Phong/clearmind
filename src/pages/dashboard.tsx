@@ -97,7 +97,16 @@ export function Dashboard() {
     );
   }, [tasks, now]);
 
-  const weekStrip = useMemo(() => buildWeekStrip(tasks), [tasks]);
+  // Build localized weekday labels once per language flip — buildWeekStrip
+  // receives them as a 7-element array indexed by getDay().
+  const dowLabels = useMemo(
+    () => DOW_I18N_KEYS.map((k) => t(k)),
+    [t]
+  );
+  const weekStrip = useMemo(
+    () => buildWeekStrip(tasks, dowLabels),
+    [tasks, dowLabels]
+  );
 
   const recentDone = useMemo(
     () =>
@@ -723,9 +732,19 @@ interface DayCell {
   tasks: Task[];
 }
 
-const DOW_SHORT = ["CN", "T2", "T3", "T4", "T5", "T6", "T7"];
+// Sun..Sat order, indexed by Date.getDay(). Resolved at render time via
+// useT() so the labels follow the app language toggle.
+const DOW_I18N_KEYS = [
+  "review.dow.sun",
+  "review.dow.mon",
+  "review.dow.tue",
+  "review.dow.wed",
+  "review.dow.thu",
+  "review.dow.fri",
+  "review.dow.sat",
+];
 
-function buildWeekStrip(tasks: Task[]): DayCell[] {
+function buildWeekStrip(tasks: Task[], dowLabels: string[]): DayCell[] {
   const now = new Date();
   // Anchor to Monday of current week
   const monday = new Date(now);
@@ -755,7 +774,7 @@ function buildWeekStrip(tasks: Task[]): DayCell[] {
     out.push({
       iso,
       day: d.getDate(),
-      dowLabel: DOW_SHORT[d.getDay()],
+      dowLabel: dowLabels[d.getDay()] ?? "",
       isToday: d.getTime() === today.getTime(),
       isPast: d.getTime() < today.getTime(),
       tasks: sortByTimeOfDay(dayTasks),
@@ -764,7 +783,7 @@ function buildWeekStrip(tasks: Task[]): DayCell[] {
   return out;
 }
 
-type T = (key: string, params?: Record<string, string | number>) => string;
+type T = ReturnType<typeof useT>;
 
 function greet(t: T): string {
   const h = new Date().getHours();

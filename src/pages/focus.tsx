@@ -285,28 +285,54 @@ export function FocusPage() {
     [tasks]
   );
 
-  // Timer reached 0: ring the bell (looping) and freeze on a dedicated
-  // "ringing" screen. We do NOT advance mode automatically — the user
-  // dismisses (dismissAlarm) and only then do we transition.
-  const handleComplete = useCallback(() => {
-    setRunning(false);
-    setRemaining(0);
-    if (mode === "work") {
-      // Persist the session minutes immediately so they show up in stats
-      // even if the user walks away from the alarm screen.
-      const elapsedSec = settings.work * 60;
-      const minutes = Math.max(1, Math.round(elapsedSec / 60));
-      if (taskId) incrementPomodoro(taskId, minutes);
-      setSessions((prev) =>
-        [...prev, { at: new Date().toISOString(), minutes }].slice(-100)
-      );
-    }
-    if (settings.sound) {
-      try { alarmRef.current?.stop(); } catch (_) {}
-      alarmRef.current = playAlarmLoop();
-    }
-    setRinging(true);
-  }, [mode, settings, taskId, incrementPomodoro]);
+  // Timer reached 0 OR user clicked Skip: credit elapsed minutes (not the
+  // full planned duration — skip used to grant the full 25min after only
+  // 3 seconds of focus), ring the bell loop, freeze on the ringing screen.
+  // `viaSkip=true` from skip() suppresses the alarm sound (user already
+  // pressed a button — no need for a bell).
+  const handleComplete = useCallback(
+    (viaSkip = false) => {
+      setRunning(false);
+      if (mode === "work") {
+        // Actual elapsed seconds since session start, capped at the planned
+        // total so a buggy ref doesn't credit forever.
+        const plannedSec = settings.work * 60;
+        const elapsedFromTimer = Math.max(0, plannedSec - remaining);
+        const elapsedFromRef = startedAtRef.current
+          ? Math.floor((Date.now() - startedAtRef.current) / 1000)
+          : elapsedFromTimer;
+        const elapsedSec = Math.min(
+          plannedSec,
+          Math.max(elapsedFromTimer, elapsedFromRef)
+        );
+        // Only log when the user actually focused >=60s — avoids inflating
+        // stats when a session is created and immediately skipped.
+        if (elapsedSec >= 60) {
+          const minutes = Math.max(1, Math.round(elapsedSec / 60));
+          if (taskId) incrementPomodoro(taskId, minutes);
+          setSessions((prev) =>
+            [...prev, { at: new Date().toISOString(), minutes }].slice(-100)
+          );
+        }
+      }
+      setRemaining(0);
+      if (!viaSkip && settings.sound) {
+        try { alarmRef.current?.stop(); } catch (_) { /* ignore */ }
+        alarmRef.current = playAlarmLoop();
+      }
+      setRinging(!viaSkip);
+    },
+    [mode, settings, taskId, incrementPomodoro, remaining]
+  );
+
+  // Ref-mirror of handleComplete so the tick interval always calls the
+  // freshest version. Without this, the interval captures handleComplete
+  // at start time — if user edits settings/task/mode mid-run, the OLD
+  // handleComplete fires with stale settings (wrong credit, wrong toast).
+  const handleCompleteRef = useRef(handleComplete);
+  useEffect(() => {
+    handleCompleteRef.current = handleComplete;
+  }, [handleComplete]);
 
   // User-explicit dismiss → stop the bell, advance to the next phase, and
   // surface a success toast summarising what just happened.
@@ -354,21 +380,28 @@ export function FocusPage() {
     };
   }, []);
 
-  // Tick
+  // Tick — keep the setState updater pure and call handleComplete
+  // OUTSIDE the updater. Previously the updater invoked handleComplete
+  // directly, which double-fired in React 19 strict mode (the updater
+  // runs twice to surface impurity) → minutes credited twice, two alarm
+  // loops layered, double toast.
   useEffect(() => {
     if (!running) return;
     const id = window.setInterval(() => {
+      let didComplete = false;
       setRemaining((r) => {
         if (r <= 1) {
-          window.clearInterval(id);
-          handleComplete();
+          didComplete = true;
           return 0;
         }
         return r - 1;
       });
+      if (didComplete) {
+        window.clearInterval(id);
+        handleCompleteRef.current();
+      }
     }, 1000);
     return () => window.clearInterval(id);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [running]);
 
   const start = useCallback(() => {
@@ -382,7 +415,9 @@ export function FocusPage() {
   }, [mode, settings]);
   const skip = useCallback(() => {
     setRunning(false);
-    handleComplete();
+    // viaSkip=true → credit elapsed time (not full duration) + suppress
+    // alarm sound (user explicitly chose to skip; no bell needed).
+    handleComplete(true);
   }, [handleComplete]);
 
   // Keyboard shortcuts — when ringing, ANY key dismisses (alarm-clock

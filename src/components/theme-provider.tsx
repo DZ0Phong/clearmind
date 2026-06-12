@@ -1,4 +1,11 @@
-import React, { createContext, useContext, useEffect, useState } from "react"
+import React, {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useState,
+} from "react"
 
 type Theme = "dark" | "light" | "system"
 
@@ -26,9 +33,13 @@ export function ThemeProvider({
   storageKey = "clearmind-theme",
   ...props
 }: ThemeProviderProps) {
-  const [theme, setTheme] = useState<Theme>(
-    () => (localStorage.getItem(storageKey) as Theme) || defaultTheme
-  )
+  const [theme, setTheme] = useState<Theme>(() => {
+    try {
+      return (localStorage.getItem(storageKey) as Theme) || defaultTheme;
+    } catch {
+      return defaultTheme;
+    }
+  })
 
   useEffect(() => {
     const root = window.document.documentElement
@@ -68,13 +79,23 @@ export function ThemeProvider({
     return () => window.removeEventListener("storage", onStorage)
   }, [storageKey])
 
-  const value = {
-    theme,
-    setTheme: (theme: Theme) => {
-      localStorage.setItem(storageKey, theme)
-      setTheme(theme)
+  // Memoize so consumers don't re-render on every parent update. Storage
+  // write wrapped in try/catch — private mode + quota.
+  const setThemeStable = useCallback(
+    (next: Theme) => {
+      try {
+        localStorage.setItem(storageKey, next)
+      } catch {
+        /* ignore */
+      }
+      setTheme(next)
     },
-  }
+    [storageKey]
+  )
+  const value = useMemo(
+    () => ({ theme, setTheme: setThemeStable }),
+    [theme, setThemeStable]
+  )
 
   return (
     <ThemeProviderContext.Provider {...props} value={value}>

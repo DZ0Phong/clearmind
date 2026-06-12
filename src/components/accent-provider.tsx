@@ -1,5 +1,13 @@
 /* eslint-disable react-refresh/only-export-components */
-import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useState,
+  type ReactNode,
+} from "react";
 
 export type Accent =
   | "indigo"
@@ -82,16 +90,17 @@ export function AccentProvider({ children }: { children: ReactNode }) {
     return () => window.removeEventListener("storage", onStorage);
   }, []);
 
-  const setAccent = (a: Accent) => {
+  const setAccent = useCallback((a: Accent) => {
     try {
       localStorage.setItem(STORAGE_KEY, a);
     } catch {
-      /* storage full — ignore */
+      /* storage full / private mode — ignore */
     }
     setAccentState(a);
-  };
+  }, []);
 
-  return <Ctx.Provider value={{ accent, setAccent }}>{children}</Ctx.Provider>;
+  const value = useMemo(() => ({ accent, setAccent }), [accent, setAccent]);
+  return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }
 
 export function useAccent() {

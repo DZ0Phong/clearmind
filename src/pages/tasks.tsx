@@ -969,11 +969,21 @@ function SubjectGroup({
   const t = useT();
   const color = subjectColor(title);
   const next = instances.find((x) => x.status !== "done") || instances[0];
-  // Tóm tắt: thứ + giờ + phòng của buổi kế tiếp.
+  // Tóm tắt: thứ + giờ + ngày của buổi kế tiếp. DOW pulled from i18n so
+  // the label follows the app language toggle (was hardcoded VN).
   const summary = (() => {
     if (!next?.deadline) return null;
     const d = new Date(next.deadline);
-    const dow = ["CN", "T2", "T3", "T4", "T5", "T6", "T7"][d.getDay()];
+    const dowKeys = [
+      "review.dow.sun",
+      "review.dow.mon",
+      "review.dow.tue",
+      "review.dow.wed",
+      "review.dow.thu",
+      "review.dow.fri",
+      "review.dow.sat",
+    ];
+    const dow = t(dowKeys[d.getDay()] ?? "review.dow.sun");
     const hh = d.getHours().toString().padStart(2, "0");
     const mm = d.getMinutes().toString().padStart(2, "0");
     const dd = d.getDate().toString().padStart(2, "0");

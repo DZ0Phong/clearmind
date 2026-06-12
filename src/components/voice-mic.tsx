@@ -137,7 +137,7 @@ export function VoiceMic({ onText, lang, className, title }: Props) {
   const onTextRef = useRef(onText);
   useEffect(() => {
     onTextRef.current = onText;
-  });
+  }, [onText]);
 
   // Whisper state -------------------------------------------------------
   const [whisperState, setWhisperState] = useState<WhisperState>("idle");
@@ -205,7 +205,16 @@ export function VoiceMic({ onText, lang, className, title }: Props) {
     const offState = onWhisperState((s) => setWhisperState(s));
     const offProgress = onWhisperProgress((p) => {
       if (typeof p.progress === "number") {
-        setWhisperPercent(Math.round(p.progress));
+        // transformers.js reports progress as 0..100 in current versions
+        // but historically used 0..1 — normalize defensively.
+        const pct = p.progress > 1 ? p.progress : p.progress * 100;
+        setWhisperPercent(Math.min(100, Math.round(pct)));
+      } else if (
+        typeof p.loaded === "number" &&
+        typeof p.total === "number" &&
+        p.total > 0
+      ) {
+        setWhisperPercent(Math.round((p.loaded / p.total) * 100));
       } else if (p.status === "done" || p.status === "ready") {
         setWhisperPercent(100);
       }
@@ -252,12 +261,15 @@ export function VoiceMic({ onText, lang, className, title }: Props) {
       captureRef.current = null;
       try {
         const pcm = await handle.stop();
-        if (pcm.length < 16000 * 0.3) {
+        // 150ms is shorter than a typical short word ("có"/"no"/"ok").
+        // Below that we likely captured only the mousedown click sound.
+        if (pcm.length < 16000 * 0.15) {
           setErrMsg(t("voice.errNoSpeech"));
           return;
         }
         const text = await whisperTranscribe(pcm, variant.whisperLang || undefined);
         if (text) onTextRef.current(text, true);
+        else setErrMsg(t("voice.errNoSpeech"));
       } catch (err) {
         setErrMsg(t("voice.whisper.errTranscribe", { err: (err as Error).message }));
       }

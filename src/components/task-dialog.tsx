@@ -267,7 +267,7 @@ export function TaskDialog(props: Mode) {
               }`}
             >
               <Plus className="h-5 w-5" />
-              Quick Capture
+              {t("nav.quickCapture")}
             </Button>
           )}
         </DialogTrigger>
