@@ -123,6 +123,27 @@ const VI: Dict = {
   "dashboard.emptyAgendaTitle": "Một ngày trống lý tưởng",
   "dashboard.emptyAgendaHint": "Không có việc dí — đúng lúc thêm những thứ đáng làm. Bấm ⌘K hoặc nút dưới.",
   "dashboard.emptyAgendaButton": "Thêm task đầu tiên",
+  "dashboard.emptyAgendaImport": "Hoặc Import lịch học",
+
+  // First-run welcome modal
+  "welcome.title": "Chào mừng đến Clearmind",
+  "welcome.subtitle": "Bộ não phụ cho việc học",
+  "welcome.intro": "Thiết lập 3 thứ này để Clearmind hoạt động tốt nhất — bạn có thể bỏ qua và làm sau.",
+  "welcome.notify.cta": "Bật thông báo deadline",
+  "welcome.notify.hint": "Toast Windows nhắc khi sắp tới hạn (5p / 15p / 1h / 1d).",
+  "welcome.notify.granted": "Thông báo đã bật",
+  "welcome.autostart.cta": "Khởi động cùng Windows",
+  "welcome.autostart.hint": "Clearmind tự chạy ngầm khi bạn bật máy — không cần mở lại.",
+  "welcome.autostart.enabled": "Đã bật autostart",
+  "welcome.import.cta": "Import lịch học từ trường",
+  "welcome.import.hint": "Paste TKB / ICS / Google Calendar — Clearmind tự tạo task hàng tuần.",
+  "welcome.skip": "Bỏ qua",
+  "welcome.done": "Bắt đầu dùng",
+  "welcome.dismiss": "Đóng",
+
+  // CLI tray icon hint
+  "tray.hint.title": "Mẹo:",
+  "tray.hint.body": "Clearmind đang chạy ở System Tray (góc phải taskbar). Right-click icon cho Quick Capture, Focus, Backup.",
 
   // Notifications
   "noti.fallbackBody": "Deadline đang tới.",
@@ -946,6 +967,27 @@ const EN: Dict = {
   "dashboard.emptyAgendaTitle": "A clear day",
   "dashboard.emptyAgendaHint": "Nothing urgent — perfect time to add what matters. Press ⌘K or the button below.",
   "dashboard.emptyAgendaButton": "Add first task",
+  "dashboard.emptyAgendaImport": "Or import your timetable",
+
+  // First-run welcome modal
+  "welcome.title": "Welcome to Clearmind",
+  "welcome.subtitle": "Your second brain for school",
+  "welcome.intro": "Set up these 3 things to get the most out of Clearmind — you can skip and do them later.",
+  "welcome.notify.cta": "Enable deadline notifications",
+  "welcome.notify.hint": "Windows toast reminders before each deadline (5m / 15m / 1h / 1d).",
+  "welcome.notify.granted": "Notifications enabled",
+  "welcome.autostart.cta": "Start with Windows",
+  "welcome.autostart.hint": "Clearmind runs in the background on boot — no need to open it again.",
+  "welcome.autostart.enabled": "Autostart enabled",
+  "welcome.import.cta": "Import your class schedule",
+  "welcome.import.hint": "Paste timetable / ICS / Google Calendar — recurring tasks created automatically.",
+  "welcome.skip": "Skip for now",
+  "welcome.done": "Get started",
+  "welcome.dismiss": "Close",
+
+  // CLI tray icon hint
+  "tray.hint.title": "Tip:",
+  "tray.hint.body": "Clearmind is running in the System Tray (bottom-right). Right-click the icon for Quick Capture, Focus, Backup.",
 
   // Notifications
   "noti.fallbackBody": "Deadline approaching.",

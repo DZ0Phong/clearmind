@@ -37,6 +37,7 @@ import {
   subjectColor,
   cn,
 } from "@/lib/utils";
+import { FirstRunWelcome } from "@/components/first-run-welcome";
 
 export function Dashboard() {
   const { tasks } = useTasks();
@@ -175,6 +176,7 @@ export function Dashboard() {
 
   return (
     <div className="h-full flex flex-col gap-6">
+      <FirstRunWelcome />
       {/* Top: greeting + stats */}
       <div className="shrink-0 flex flex-col md:flex-row md:items-end md:justify-between gap-4">
         <div>
@@ -621,9 +623,19 @@ function EmptyAgenda({ onCreate }: { onCreate: () => void }) {
           {t("dashboard.emptyAgendaHint")}
         </p>
       </div>
-      <Button onClick={onCreate} className="gap-1.5" size="sm">
-        <Sparkles className="h-3.5 w-3.5" /> {t("dashboard.emptyAgendaButton")}
-      </Button>
+      <div className="flex items-center gap-2">
+        <Button onClick={onCreate} className="gap-1.5" size="sm" data-testid="empty-agenda-create">
+          <Sparkles className="h-3.5 w-3.5" /> {t("dashboard.emptyAgendaButton")}
+        </Button>
+        <Link
+          to="/import"
+          data-testid="empty-agenda-import"
+          className="cm-press inline-flex items-center gap-1.5 h-9 px-3 rounded-md text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
+        >
+          {t("dashboard.emptyAgendaImport")}
+          <ChevronRight className="h-3.5 w-3.5" />
+        </Link>
+      </div>
     </div>
   );
 }
