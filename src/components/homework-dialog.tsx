@@ -12,7 +12,7 @@ import { Input } from "@/components/ui/input";
 import { AutoTextarea } from "@/components/ui/auto-textarea";
 import { DateTimePicker } from "@/components/date-time-picker";
 import { useTasks, type Task } from "@/hooks/use-tasks";
-import { useT } from "@/lib/i18n";
+import { useT, useDateFns } from "@/lib/i18n";
 import {
   BookOpen,
   Clock,
@@ -21,7 +21,7 @@ import {
   Sparkles,
   CheckCircle2,
 } from "lucide-react";
-import { cn, formatDeadline, extractSubjectCode } from "@/lib/utils";
+import { cn, extractSubjectCode } from "@/lib/utils";
 
 interface Props {
   parentTask: Task;
@@ -56,6 +56,7 @@ function subjectKey(title: string): string {
 export function HomeworkDialog({ parentTask, open, onOpenChange }: Props) {
   const { tasks, addTask } = useTasks();
   const t = useT();
+  const { formatDeadline } = useDateFns();
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [choice, setChoice] = useState<Choice>("next-week");
@@ -70,8 +71,11 @@ export function HomeworkDialog({ parentTask, open, onOpenChange }: Props) {
     }
   }, [open]);
 
-  // Find the next session of the SAME subject (different weekday in the
-  // same week, OR next week's occurrence — whichever comes first).
+  // Find the next session of the SAME subject — any future task tagged
+  // #lich-hoc with matching subject key. After the one-off import switch
+  // each class meeting is its own task with deadline=that specific day,
+  // so the candidate set is just "future class meetings of the same
+  // subject" — no recurrence walking required.
   const nextSessionDate = useMemo<Date | null>(() => {
     if (!parentTask.deadline) return null;
     const subjPrefix = subjectKey(parentTask.title);
@@ -79,22 +83,20 @@ export function HomeworkDialog({ parentTask, open, onOpenChange }: Props) {
     const candidates: Date[] = [];
     for (const t of tasks) {
       if (t.id === parentTask.id) continue;
-      if (t.recurrence !== "weekly" || !t.deadline) continue;
+      if (!t.deadline) continue;
+      if (!(t.tags || []).includes("lich-hoc")) continue;
       if (subjectKey(t.title) !== subjPrefix) continue;
-      // Compute the closest occurrence of t AFTER parentDate
-      const base = new Date(t.deadline);
-      while (base <= parentDate) base.setDate(base.getDate() + 7);
-      candidates.push(base);
+      const d = new Date(t.deadline);
+      if (d <= parentDate) continue;
+      candidates.push(d);
     }
-    // Also consider this same task's next week (always available)
+    // Fallback: same task one week later (covers users who haven't
+    // imported next week yet but want to pin homework to that slot).
     const selfNext = new Date(parentDate);
     selfNext.setDate(selfNext.getDate() + 7);
 
-    // Choose the closest candidate that is NOT the same as self-next-week
     candidates.sort((a, b) => a.getTime() - b.getTime());
-    const inWeek = candidates.find(
-      (d) => d.getTime() < selfNext.getTime()
-    );
+    const inWeek = candidates.find((d) => d.getTime() < selfNext.getTime());
     return inWeek || null;
   }, [tasks, parentTask]);
 

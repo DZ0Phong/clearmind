@@ -34,8 +34,8 @@ import {
   type RecurrenceRule,
   type ReminderPref,
 } from "@/hooks/use-tasks";
-import { classifyTitle, parseNlDeadline, formatDeadline, suggestTags, cn } from "@/lib/utils";
-import { useT } from "@/lib/i18n";
+import { classifyTitle, parseNlDeadline, suggestTags, cn } from "@/lib/utils";
+import { useT, useDateFns } from "@/lib/i18n";
 
 export interface CreatePrefill {
   deadline?: string; // local datetime "YYYY-MM-DDTHH:mm" or ISO
@@ -112,6 +112,7 @@ const PRIORITY_OPTIONS: Array<{
 export function TaskDialog(props: Mode) {
   const { addTask, updateTask } = useTasks();
   const t = useT();
+  const { formatDeadline } = useDateFns();
   const isEdit = props.kind === "edit";
   const existing = isEdit ? props.task : null;
 

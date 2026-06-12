@@ -22,8 +22,8 @@ import {
   ArrowRight,
   Minus,
 } from "lucide-react";
-import { cn, formatDeadline, isPast, isRecurringClass } from "@/lib/utils";
-import { useT, useLocaleTag } from "@/lib/i18n";
+import { cn, dayKey, isPast, isRecurringClass } from "@/lib/utils";
+import { useT, useLocaleTag, useDateFns } from "@/lib/i18n";
 
 type T = ReturnType<typeof useT>;
 
@@ -45,23 +45,17 @@ function startOfWeekAgo(now: Date, weeksAgo: number): Date {
   return d;
 }
 
-function dayKey(d: Date): string {
-  return `${d.getFullYear()}-${(d.getMonth() + 1)
-    .toString()
-    .padStart(2, "0")}-${d.getDate().toString().padStart(2, "0")}`;
-}
-
 interface DayCell {
   date: Date;
   count: number;
 }
 
 /** Build a 12-week (84-day) activity heatmap, oldest first, sliced to today. */
-function buildHeatmap(tasks: Task[], now: Date): DayCell[][] {
+function buildHeatmap(tasks: Task[], now: Date, tz?: string): DayCell[][] {
   const counts = new Map<string, number>();
   for (const t of tasks) {
     if (t.status !== "done" || !t.completedAt) continue;
-    const k = dayKey(new Date(t.completedAt));
+    const k = dayKey(new Date(t.completedAt), tz);
     counts.set(k, (counts.get(k) ?? 0) + 1);
   }
   const weeks: DayCell[][] = [];
@@ -75,7 +69,7 @@ function buildHeatmap(tasks: Task[], now: Date): DayCell[][] {
     for (let d = 0; d < 7; d++) {
       const day = new Date(start);
       day.setDate(start.getDate() + w * 7 + d);
-      week.push({ date: day, count: counts.get(dayKey(day)) ?? 0 });
+      week.push({ date: day, count: counts.get(dayKey(day, tz)) ?? 0 });
     }
     weeks.push(week);
   }
@@ -312,6 +306,7 @@ export function ReviewPage() {
   const { tasks } = useTasks();
   const t = useT();
   const localeTag = useLocaleTag();
+  const { tz, formatDeadline } = useDateFns();
   const DOW_LABELS = [
     t("review.dow.mon"),
     t("review.dow.tue"),
@@ -373,16 +368,16 @@ export function ReviewPage() {
     const completedDays = new Set(
       tasks
         .filter((t) => t.status === "done" && t.completedAt)
-        .map((t) => dayKey(new Date(t.completedAt!)))
+        .map((t) => dayKey(new Date(t.completedAt!), tz))
     );
     let streak = 0;
     const cursor = new Date(now);
-    while (completedDays.has(dayKey(cursor))) {
+    while (completedDays.has(dayKey(cursor, tz))) {
       streak++;
       cursor.setDate(cursor.getDate() - 1);
     }
 
-    const heatmap = buildHeatmap(tasks, now);
+    const heatmap = buildHeatmap(tasks, now, tz);
     const heatmapMax = Math.max(
       1,
       ...heatmap.flat().map((c) => c.count)

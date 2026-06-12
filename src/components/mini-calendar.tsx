@@ -3,21 +3,14 @@ import { ChevronLeft, ChevronRight } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { useTasks } from "@/hooks/use-tasks";
 import { cn } from "@/lib/utils";
-import { useT, useLocaleTag } from "@/lib/i18n";
-
-function pad(n: number) {
-  return n.toString().padStart(2, "0");
-}
-
-function dayKey(d: Date) {
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
-}
+import { useT, useLocaleTag, useDateFns } from "@/lib/i18n";
 
 export function MiniCalendar() {
   const navigate = useNavigate();
   const { tasks } = useTasks();
   const t = useT();
   const localeTag = useLocaleTag();
+  const { dayKey } = useDateFns();
   // Mon-first week ordering matches the rest of the app (Vietnamese & most
   // European calendars start on Monday). The shifted index keeps Sunday at
   // the end so the heatmap visually matches the FullCalendar week view.
@@ -35,20 +28,66 @@ export function MiniCalendar() {
     return new Date(d.getFullYear(), d.getMonth(), 1);
   });
 
-  // Build a set of dayKeys that have any tasks + map to the highest-priority bucket
+  // Build a set of dayKeys that have any tasks + map to the highest-priority
+  // bucket. Recurring tasks (weekly/daily/weekday/monthly) are EXPANDED
+  // into the visible month — previously only the stored `deadline` got a
+  // dot, so a weekly class showed up on its first Monday and the four
+  // other Mondays were blank, defeating the heatmap's whole purpose.
   const dayMeta = useMemo(() => {
     const meta = new Map<string, { count: number; urgent: boolean }>();
+    const monthStart = new Date(
+      viewMonth.getFullYear(),
+      viewMonth.getMonth(),
+      1
+    );
+    const monthEnd = new Date(
+      viewMonth.getFullYear(),
+      viewMonth.getMonth() + 1,
+      0
+    );
+    monthEnd.setHours(23, 59, 59, 999);
+    const renderCap = new Date();
+    renderCap.setMonth(renderCap.getMonth() + 6); // matches calendar-view fallback
+
+    const addOcc = (date: Date, urgent: boolean) => {
+      const k = dayKey(date);
+      const prev = meta.get(k) ?? { count: 0, urgent: false };
+      meta.set(k, { count: prev.count + 1, urgent: prev.urgent || urgent });
+    };
+
     for (const task of tasks) {
       if (!task.deadline || task.status === "done") continue;
-      const k = dayKey(new Date(task.deadline));
-      const prev = meta.get(k) ?? { count: 0, urgent: false };
-      meta.set(k, {
-        count: prev.count + 1,
-        urgent: prev.urgent || task.priority === "high",
-      });
+      const first = new Date(task.deadline);
+      if (Number.isNaN(first.getTime())) continue;
+      const urgent = task.priority === "high";
+
+      if (!task.recurrence) {
+        if (first >= monthStart && first <= monthEnd) addOcc(first, urgent);
+        continue;
+      }
+      const endCap = task.recurrenceEndAt
+        ? new Date(task.recurrenceEndAt)
+        : renderCap;
+      const cursor = new Date(first);
+      let safety = 200;
+      while (safety-- > 0 && cursor <= monthEnd && cursor <= endCap) {
+        if (cursor >= monthStart) addOcc(cursor, urgent);
+        if (task.recurrence === "daily") {
+          cursor.setDate(cursor.getDate() + 1);
+        } else if (task.recurrence === "weekday") {
+          do cursor.setDate(cursor.getDate() + 1);
+          while (cursor.getDay() === 0 || cursor.getDay() === 6);
+        } else if (task.recurrence === "weekly") {
+          cursor.setDate(cursor.getDate() + 7);
+        } else if (task.recurrence === "monthly") {
+          cursor.setMonth(cursor.getMonth() + 1);
+        } else {
+          break;
+        }
+      }
     }
     return meta;
-  }, [tasks]);
+  }, [tasks, viewMonth]);
 
   // Build Mon-start calendar grid.
   const grid = useMemo(() => {

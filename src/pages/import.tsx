@@ -10,7 +10,6 @@ import {
 } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { DateTimePicker } from "@/components/date-time-picker";
 import { useTasks } from "@/hooks/use-tasks";
 import { useToast } from "@/components/toast";
 import {
@@ -59,15 +58,6 @@ Thứ 4
 Thứ 6
 07:00 - 09:30  Tiếng Anh chuyên ngành  D4.201  Cô Phạm D`;
 
-// Slot signature for a weekly class = subject-code (or title) + dow + time.
-// Identifies the RECURRING SCHEDULE (Thu 12:50 PRU213), regardless of week.
-// One weekly task in the store = one slot, no matter how many weeks it spans.
-function classSignature(title: string, dow: number, startTime: string): string {
-  const code = extractSubjectCode(title);
-  const key = code ? code.toLowerCase() : title.trim().toLowerCase();
-  return `w|${dow}|${startTime}|${key}`;
-}
-
 // One-off event signature = date + time + title-key. Two events at the same
 // time on different days are different. Two events same time, same day, same
 // title = duplicate (e.g. user re-pastes same WC fixture list).
@@ -78,34 +68,9 @@ function eventSignature(title: string, dateYmd: string, startTime: string): stri
 }
 
 /**
- * Slot signature for an existing weekly task. Returns null if:
- *   - task is not weekly-recurring
- *   - task's recurrenceEndAt has already passed (old semester — treat as
- *     "no longer covering this slot" so a fresh import creates new tasks
- *     for the new term)
- */
-function taskSlotSignature(t: {
-  title: string;
-  deadline?: string;
-  recurrence?: string | null;
-  recurrenceEndAt?: string | null;
-}): string | null {
-  if (t.recurrence !== "weekly" || !t.deadline) return null;
-  if (t.recurrenceEndAt) {
-    const endAt = new Date(t.recurrenceEndAt).getTime();
-    if (!Number.isNaN(endAt) && endAt < Date.now()) return null;
-  }
-  const d = new Date(t.deadline);
-  if (Number.isNaN(d.getTime())) return null;
-  const dow = d.getDay();
-  const hh = d.getHours().toString().padStart(2, "0");
-  const mm = d.getMinutes().toString().padStart(2, "0");
-  return classSignature(t.title, dow, `${hh}:${mm}`);
-}
-
-/**
- * Per-event signature for non-recurring tasks. Used by the one-off event
- * importer (sports fixtures, single meetings) to detect "đã có".
+ * Per-event signature for non-recurring tasks. Used by all imports now
+ * (model switched from weekly-recurring to one-off-per-week) to detect
+ * "đã có" against existing one-off tasks.
  */
 function taskEventSignature(t: {
   title: string;
@@ -118,10 +83,6 @@ function taskEventSignature(t: {
   const hh = d.getHours().toString().padStart(2, "0");
   const mm = d.getMinutes().toString().padStart(2, "0");
   return eventSignature(t.title, t.deadline.slice(0, 10), `${hh}:${mm}`);
-}
-
-function parsedSlotSignature(c: ParsedClass): string {
-  return classSignature(c.subject, c.dayOfWeek, c.startTime);
 }
 
 function parsedEventSignature(c: ParsedClass): string {
@@ -176,7 +137,6 @@ export function ImportPage() {
   const [tab, setTab] = useState<Tab>("paste");
   const [raw, setRaw] = useState("");
   const [parsed, setParsed] = useState<ParsedClass[]>([]);
-  const [semesterEnd, setSemesterEnd] = useState<string>("");
   const [bookmarkletCopied, setBookmarkletCopied] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
@@ -299,22 +259,11 @@ export function ImportPage() {
 
   // ---- Per-row classification (new / exact / changed) -------------------
   // Two indexes:
-  //   1. existingBySlot — weekly recurring tasks keyed by SLOT (subject-code
-  //      + dow + time). A weekly task owns its slot indefinitely; re-importing
-  //      the same school timetable should always find it and skip, not create
-  //      a second copy at last-week's date (the original duplicate bug).
-  //   2. existingByEvent — non-recurring tasks keyed by exact (date, time,
-  //      title). Used for one-off events (WC fixtures, single calendar
-  //      invites) so the user doesn't double-import them.
-  const existingBySlot = useMemo(() => {
-    const m = new Map<string, Task>();
-    for (const task of tasks) {
-      const sig = taskSlotSignature(task);
-      if (sig) m.set(sig, task);
-    }
-    return m;
-  }, [tasks]);
-
+  // existingByEvent: non-recurring tasks keyed by (subject + date + time).
+  // Since all imports are now one-off, this is the only dedup index we
+  // need. Legacy weekly tasks (created before the model switch) are NOT
+  // checked here — they live in their own slot until the user manually
+  // wipes them via wipeMode below.
   const existingByEvent = useMemo(() => {
     const m = new Map<string, Task>();
     for (const task of tasks) {
@@ -327,10 +276,13 @@ export function ImportPage() {
   const rowMetas = useMemo(() => {
     const out: Record<string, RowMeta> = {};
     for (const c of parsed) {
-      const sig = c.oneOff ? parsedEventSignature(c) : parsedSlotSignature(c);
-      const existing = c.oneOff
-        ? existingByEvent.get(sig)
-        : existingBySlot.get(sig);
+      // All parsed entries are imported as one-off now, so dedup is
+      // purely event-signature (subject + date + time). Slot-based dedup
+      // (subj + dow + time) is no longer needed — kept on the existing
+      // weekly tasks only as a legacy escape hatch for users with
+      // pre-change recurring data.
+      const sig = parsedEventSignature(c);
+      const existing = existingByEvent.get(sig);
       if (!existing) {
         out[c.id] = { kind: "new" };
         continue;
@@ -341,7 +293,7 @@ export function ImportPage() {
         : { kind: "changed", existingId: existing.id, changes };
     }
     return out;
-  }, [parsed, existingBySlot, existingByEvent]);
+  }, [parsed, existingByEvent]);
 
   // All existing weekly tasks whose subject appears in the recurring portion
   // of the import. Used for (a) displaced-slot detection and (b) the explicit
@@ -362,17 +314,30 @@ export function ImportPage() {
     });
   }, [parsed, tasks]);
 
-  // Subset of affectedExisting whose (subject, dow, startTime) signature is
-  // NOT in the parsed import — the school moved that subject to a different
-  // slot. Removed automatically on normal import so old slots stop spawning.
+  // Subset of affectedExisting that's *probably* been displaced by the
+  // import — same SUBJECT + same DOW appears in the new schedule but at a
+  // different TIME, i.e. the school shifted that class within the same
+  // weekday. We do NOT flag a task whose dow is absent from the import at
+  // all: that's almost always a legit other section (online lecture,
+  // weekend tutorial, lab slot in a different week) that the user simply
+  // didn't include in this paste — silently deleting those was the
+  // original data-loss bug.
   const displacedExisting = useMemo(() => {
     if (!affectedExisting.length) return [] as Task[];
-    const importSigs = new Set<string>();
+    const importFullSigs = new Set<string>(); // subj|dow|HH:MM — exact slot
+    const importDowsBySubj = new Map<string, Set<number>>(); // subj → set of dows
     for (const c of parsed) {
       if (c.oneOff) continue;
       const code = extractSubjectCode(c.subject);
       if (!code) continue;
-      importSigs.add(`${code.toLowerCase()}|${c.dayOfWeek}|${c.startTime}`);
+      const key = code.toLowerCase();
+      importFullSigs.add(`${key}|${c.dayOfWeek}|${c.startTime}`);
+      let dows = importDowsBySubj.get(key);
+      if (!dows) {
+        dows = new Set<number>();
+        importDowsBySubj.set(key, dows);
+      }
+      dows.add(c.dayOfWeek);
     }
     return affectedExisting.filter((task) => {
       const code = extractSubjectCode(task.title)!.toLowerCase();
@@ -380,7 +345,14 @@ export function ImportPage() {
       const dow = d.getDay();
       const hh = d.getHours().toString().padStart(2, "0");
       const mm = d.getMinutes().toString().padStart(2, "0");
-      return !importSigs.has(`${code}|${dow}|${hh}:${mm}`);
+      const fullSig = `${code}|${dow}|${hh}:${mm}`;
+      if (importFullSigs.has(fullSig)) return false; // exact match — not displaced
+      const dowsForSubj = importDowsBySubj.get(code);
+      // Subject's dow not in import at all → likely just "this section
+      // wasn't pasted" (different lab / online / extra slot). Leave alone.
+      if (!dowsForSubj || !dowsForSubj.has(dow)) return false;
+      // Same subj + same dow, different time → school moved the slot.
+      return true;
     });
   }, [affectedExisting, parsed]);
 
@@ -427,16 +399,20 @@ export function ImportPage() {
 
   const commitImport = () => {
     if (!importable.length) return;
-    const semesterEndIso = semesterEnd
-      ? new Date(semesterEnd + "T23:59:59").toISOString()
-      : undefined;
 
     let added = 0;
     let updated = 0;
     let exactSkipped = 0;
     let userSkipped = 0;
     let displaced = 0;
+    let batchDedupSkipped = 0;
     const actuallyAdded: ParsedClass[] = [];
+    // Intra-batch dedup: the parser can occasionally produce two ParsedClass
+    // rows with the same slot signature (e.g., school portal lists the same
+    // class twice under different room labels). Without this guard, both
+    // would call addTask() in the same commit, creating an instant
+    // duplicate that the post-import dedup banner then has to clean up.
+    const batchSigs = new Set<string>();
 
     // Phase 1: delete recurring tasks the import is going to supersede.
     // - Wipe mode: every weekly task whose subject is in the import (clean slate).
@@ -479,44 +455,34 @@ export function ImportPage() {
         updated++;
         continue;
       }
-      // new
+      // Intra-batch dedup — both class slots and one-off events key on
+      // subj+date+time now that everything imports as a single-occurrence
+      // task. User explicitly chose this model: "cần tuần nào thì thêm
+      // tuần đó" — paste a week, get tasks for that week, no semester-
+      // long expansion to clean up later.
+      const batchSig = parsedEventSignature(c);
+      if (batchSigs.has(batchSig)) {
+        batchDedupSkipped++;
+        continue;
+      }
+      batchSigs.add(batchSig);
+
       const firstOcc = computeFirstOccurrenceISO(c);
       const desc = [c.endTime ? `Kết thúc: ${c.endTime}` : null, c.notes]
         .filter(Boolean)
         .join("\n");
-      if (c.oneOff) {
-        // One-off event (sports match, calendar invite…) — no recurrence,
-        // type default "other", neutral priority. User tags it via the
-        // import-source toggle below if they want a custom default.
-        addTask({
-          title: c.subject,
-          description: desc || undefined,
-          type: "other",
-          priority: "medium",
-          location: c.location,
-          deadline: new Date(firstOcc).toISOString(),
-          recurrence: null,
-          tags: ["su-kien"],
-          notify: "15m",
-        });
-      } else {
-        addTask({
-          title: c.subject,
-          description: desc || undefined,
-          type: "academic",
-          priority: "medium",
-          location: c.location,
-          deadline: new Date(firstOcc).toISOString(),
-          recurrence: "weekly",
-          recurrenceEndAt:
-            semesterEndIso ??
-            (c.endDate
-              ? new Date(c.endDate + "T23:59:59").toISOString()
-              : null),
-          tags: ["lich-hoc"],
-          notify: "15m",
-        });
-      }
+      const isClass = !c.oneOff;
+      addTask({
+        title: c.subject,
+        description: desc || undefined,
+        type: isClass ? "academic" : "other",
+        priority: "medium",
+        location: c.location,
+        deadline: new Date(firstOcc).toISOString(),
+        recurrence: null,
+        tags: [isClass ? "lich-hoc" : "su-kien"],
+        notify: "15m",
+      });
       added++;
       actuallyAdded.push(c);
     }
@@ -527,6 +493,7 @@ export function ImportPage() {
     if (displaced > 0) parts.push(t("import.toast.commit.part.displaced", { n: displaced }));
     if (exactSkipped > 0) parts.push(t("import.toast.commit.part.skippedExisting", { n: exactSkipped }));
     if (userSkipped > 0) parts.push(t("import.toast.commit.part.skippedByUser", { n: userSkipped }));
+    if (batchDedupSkipped > 0) parts.push(t("import.toast.commit.part.batchDedup", { n: batchDedupSkipped }));
     if (skippedAttended > 0) parts.push(t("import.toast.commit.part.skippedAttended", { n: skippedAttended }));
     const didSomething = added > 0 || updated > 0 || displaced > 0;
     toast({
@@ -1140,29 +1107,6 @@ export function ImportPage() {
                           })}
                         </ul>
                       </details>
-                    </div>
-                  )}
-
-                  {/* Semester end picker — only meaningful for weekly recurring
-                      classes. Hidden when the import is entirely one-off events. */}
-                  {parsed.some((c) => !c.oneOff) && (
-                    <div className="flex items-center gap-3 p-3 rounded-lg border bg-muted/30">
-                      <CalendarRange className="h-4 w-4 text-muted-foreground shrink-0" />
-                      <div className="flex-1 min-w-0">
-                        <p className="text-xs font-semibold">
-                          {t("import.semester.title")}
-                        </p>
-                        <p className="text-[11px] text-muted-foreground">
-                          {t("import.semester.hint")}
-                        </p>
-                      </div>
-                      <DateTimePicker
-                        value={semesterEnd}
-                        onChange={setSemesterEnd}
-                        dateOnly
-                        placeholder={t("import.semester.placeholder")}
-                        className="w-[180px]"
-                      />
                     </div>
                   )}
 

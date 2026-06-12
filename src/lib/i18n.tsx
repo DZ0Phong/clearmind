@@ -1,4 +1,15 @@
 /* eslint-disable react-refresh/only-export-components */
+import {
+  bucketByDate as utilsBucketByDate,
+  canonicalTimeZone,
+  dayKey as utilsDayKey,
+  extractTimeLabel as utilsExtractTimeLabel,
+  formatDeadline as utilsFormatDeadline,
+  formatTimeAgoShort as utilsFormatTimeAgoShort,
+  groupByBucket as utilsGroupByBucket,
+  isToday as utilsIsToday,
+  tzDateParts as utilsTzDateParts,
+} from "@/lib/utils";
 import React, {
   createContext,
   useCallback,
@@ -31,6 +42,7 @@ const VI: Dict = {
   "nav.settings": "Cài đặt",
   "nav.quickCapture": "Thêm nhanh",
   "nav.tags": "Tags",
+  "sidebar.tagline": "Your external brain",
 
   // Topbar
   "topbar.searchPlaceholder": "Tìm task, lệnh, điều hướng…",
@@ -68,6 +80,8 @@ const VI: Dict = {
   "common.weekend": "Cuối tuần",
   "common.allDay": "Cả ngày",
   "common.undo": "Hoàn tác",
+  "dup.toast.autoCleaned": "Đã tự dọn {n} task trùng lặp",
+  "dup.toast.autoCleanedBody": "Cùng môn / thứ / giờ / phòng — giữ bản mới nhất. Bấm Hoàn tác nếu lỡ.",
   "common.restore": "Khôi phục",
   "common.loading": "Đang tải…",
   "common.empty": "Trống",
@@ -142,8 +156,22 @@ const VI: Dict = {
   "welcome.dismiss": "Đóng",
 
   // CLI tray icon hint
-  "tray.hint.title": "Mẹo:",
-  "tray.hint.body": "Clearmind đang chạy ở System Tray (góc phải taskbar). Right-click icon cho Quick Capture, Focus, Backup.",
+  "tip.label": "Mẹo:",
+  "tip.nextTitle": "Mẹo tiếp theo",
+  "tip.tray": "Clearmind đang chạy ở System Tray (góc phải taskbar). Right-click icon cho Quick Capture, Focus, Backup.",
+  "tip.cmdK": "Bấm ⌘K / Ctrl+K mở Command Palette — gõ tên task, lệnh, hoặc trang để jump nhanh.",
+  "tip.voiceMic": "Trong dialog tạo task, click icon mic để đọc nội dung — Whisper chuyển tiếng Việt + Anh thành text.",
+  "tip.calendarDrag": "Calendar (Tuần/Ngày): kéo-thả task sang ô khác để reschedule — không cần mở dialog.",
+  "tip.focusMode": "Focus mode (sidebar) là Pomodoro: chọn task → 25 phút deep work + chime báo hết giờ.",
+  "tip.importPaste": "Import: paste trực tiếp lịch học từ portal trường (Ctrl+A → Ctrl+C → paste). Parser tự tách môn/giờ/phòng.",
+  "tip.tagFilter": "Click vào #tag bất cứ đâu để filter task theo tag. VD: #thi-fe chỉ hiện task ôn thi cuối kỳ.",
+  "tip.whisper": "Whisper engine (toggle trong voice picker) chạy offline, mixed VN+EN — không cần Internet sau lần load model đầu tiên.",
+  "tip.notification": "CLI mode có native Windows toast với 3 action: Hoãn 10p / 1h / Xong — bấm trực tiếp trên toast không cần mở app.",
+  "tip.review": "Review page cho thấy 12-week focus heatmap + streak — kiểm tra weekly để duy trì momentum.",
+  "tip.darkMode": "Switch theme nhanh: click moon/sun icon ở topbar. Đồng bộ với Settings → Giao diện + tất cả tab khác.",
+  "tip.autostart": "Settings → Hệ thống → Khởi động cùng Windows — Clearmind chạy ngầm khi bật máy, không cần mở app.",
+  "tip.bookmarklet": "Settings → Hệ thống → Bookmarklet — kéo lên bookmark bar, click khi đang ở portal trường để import 1-click.",
+  "tip.history": "CLI mode có 3 slot history (previous-1/2/3). Settings → Hệ thống → Khôi phục slot nếu lỡ tay xoá nhầm.",
 
   // Notifications
   "noti.fallbackBody": "Deadline đang tới.",
@@ -409,12 +437,36 @@ const VI: Dict = {
   "settings.accent.hint": "Đổi màu primary trong toàn app — buttons, links, highlights.",
 
   // Accent colors
-  "accent.indigo": "Tím (mặc định)",
+  "accent.red": "Đỏ",
+  "accent.rose": "Hồng đào",
+  "accent.pink": "Hồng",
+  "accent.fuchsia": "Hồng tím",
+  "accent.purple": "Tím",
   "accent.violet": "Tím đậm",
+  "accent.indigo": "Chàm (mặc định)",
   "accent.blue": "Xanh dương",
+  "accent.sky": "Xanh trời",
+  "accent.cyan": "Lục lam",
+  "accent.teal": "Xanh mòng két",
   "accent.emerald": "Xanh ngọc",
-  "accent.rose": "Hồng",
+  "accent.green": "Xanh lá",
+  "accent.amber": "Vàng hổ phách",
   "accent.orange": "Cam",
+  "accent.slate": "Xám trung tính",
+  "settings.accent.more": "Xem thêm màu",
+  "settings.tz.label": "Múi giờ",
+  "settings.tz.hint": "Ảnh hưởng đồng hồ + lịch hiển thị.",
+  "settings.tz.modeDevice": "Thiết bị",
+  "settings.tz.modeDeviceHint": "Bám theo múi giờ của trình duyệt hiện tại.",
+  "settings.tz.modeCli": "CLI server",
+  "settings.tz.modeCliHint": "Theo máy đang chạy CLI ({tz}). Hữu ích khi laptop bạn ở nơi khác nhưng muốn xem theo giờ nhà.",
+  "settings.tz.modeCliUnavailable": "Cần chạy CLI mode để dùng option này.",
+  "settings.tz.modeManual": "Tùy chọn",
+  "settings.tz.modeManualHint": "Chọn 1 múi giờ cụ thể từ danh sách.",
+  "settings.tz.change": "Đổi",
+  "settings.tz.cliOffline": "CLI offline — không lấy được múi giờ máy chủ.",
+  "settings.tz.searchPlaceholder": "Tìm thành phố hoặc UTC offset…",
+  "settings.tz.searchEmpty": "Không có múi giờ khớp.",
 
   // Dashboard
   "dash.greet.morning": "Chào buổi sáng",
@@ -519,9 +571,17 @@ const VI: Dict = {
   "settings.tagRename": "Đổi tên",
   "settings.tagDelete": "Xoá",
   "settings.tagMerge": "Gộp",
-  "settings.tagRenamePrompt": "Đổi tên tag '{old}' thành:",
-  "settings.tagMergePrompt": "Gộp tag '{old}' vào tag nào? (gõ tên tag đích)",
-  "settings.tagDeleteConfirm": "Xoá tag '{name}' khỏi {n} task?",
+  "settings.tagRenameTitle": "Đổi tên tag #{old}",
+  "settings.tagRenameDesc": "Mọi task đang dùng tag này sẽ chuyển sang tên mới.",
+  "settings.tagRenamePlaceholder": "Tên tag mới…",
+  "settings.tagRenameCta": "Đổi tên",
+  "settings.tagMergeTitle": "Gộp tag #{old}",
+  "settings.tagMergeDesc": "Mọi task đang dùng #{old} sẽ chuyển sang tag đích bên dưới.",
+  "settings.tagMergePlaceholder": "Tag đích…",
+  "settings.tagMergeCta": "Gộp",
+  "settings.tagDeleteTitle": "Xoá tag #{name}?",
+  "settings.tagDeleteDesc": "Tag sẽ bị gỡ khỏi {n} task. Task không bị xoá, chỉ tag.",
+  "settings.tagDeleteCta": "Xoá tag",
   "settings.tagRenamedToast": "Đã đổi {old} → {new}",
   "settings.tagDeletedToast": "Đã xoá tag {name}",
   "settings.tagMergedToast": "Đã gộp {old} vào {new}",
@@ -556,7 +616,9 @@ const VI: Dict = {
   "settings.clearAll.title": "Xoá toàn bộ",
   "settings.clearAll.hint": "Xoá toàn bộ task trên trình duyệt này.",
   "settings.clearAll.button": "Xoá",
-  "settings.clearAll.confirm": "Xoá toàn bộ task? Không thể hoàn tác.",
+  "settings.clearAll.confirmTitle": "Xoá toàn bộ task?",
+  "settings.clearAll.confirmBody": "Toàn bộ task hiện tại sẽ bị xoá vĩnh viễn. Bản sao đĩa (slot history) vẫn còn — vào Cài đặt → Hệ thống để khôi phục nếu cần.",
+  "settings.clearAll.confirmCta": "Xoá hết",
   "settings.clearAll.toast": "Đã xoá toàn bộ",
 
   // Settings — Notifications toast messages
@@ -582,7 +644,7 @@ const VI: Dict = {
   "settings.cli.row.platform": "Platform",
   "settings.cli.row.dataFile": "Data file",
   "settings.cli.autostart.title": "Khởi động cùng Windows",
-  "settings.cli.autostart.hint": "Tạo shortcut ẩn ở Startup folder. Boot máy là Clearmind tự sống ngầm + tray icon.",
+  "settings.cli.autostart.hint": "Boot máy là Clearmind tự chạy ngầm với tray icon.",
   "settings.cli.autostart.on": "Đang bật",
   "settings.cli.autostart.off": "Bật",
   "settings.cli.autostart.toastOnTitle": "Đã bật auto-start",
@@ -609,7 +671,9 @@ const VI: Dict = {
   "settings.cli.recover.slotEmpty": "trống",
   "settings.cli.recover.slotMeta": "{n} task · {time}",
   "settings.cli.recover.button": "Khôi phục",
-  "settings.cli.recover.confirm": "Khôi phục từ previous-{n} ({count} task)? Data hiện tại sẽ swap sang slot này — bấm lần nữa để undo. Sau đó F5 để tải lại.",
+  "settings.cli.recover.confirmTitle": "Khôi phục từ slot previous-{n}?",
+  "settings.cli.recover.confirmBody": "Sẽ thay {count} task hiện tại bằng nội dung slot previous-{n}. Data hiện tại swap vào slot — bấm khôi phục lần nữa để hoàn tác. F5 sau khi xong.",
+  "settings.cli.recover.confirmCta": "Khôi phục slot {n}",
   "settings.cli.recover.toastOkTitle": "Đã khôi phục previous-{n}",
   "settings.cli.recover.toastOkDesc": "{n} task. F5 để tải lại.",
   "settings.cli.recover.toastFailTitle": "Khôi phục thất bại",
@@ -861,6 +925,7 @@ const VI: Dict = {
   "import.toast.commit.part.displaced": "xoá {n} lớp cũ đã đổi slot",
   "import.toast.commit.part.skippedExisting": "bỏ qua {n} đã có",
   "import.toast.commit.part.skippedByUser": "bỏ qua {n} theo lựa chọn",
+  "import.toast.commit.part.batchDedup": "bỏ qua {n} trùng trong cùng lần paste",
   "import.toast.commit.part.skippedAttended": "bỏ qua {n} đã điểm danh",
   "import.toast.commit.doneTitle": "Import xong · {parts}",
   "import.toast.commit.nothingTitle": "Không có gì thay đổi — tất cả đã có sẵn.",
@@ -879,6 +944,7 @@ const EN: Dict = {
   "nav.settings": "Settings",
   "nav.quickCapture": "Quick capture",
   "nav.tags": "Tags",
+  "sidebar.tagline": "Your external brain",
 
   // Topbar
   "topbar.searchPlaceholder": "Search tasks, commands, pages…",
@@ -916,6 +982,8 @@ const EN: Dict = {
   "common.weekend": "Weekend",
   "common.allDay": "All day",
   "common.undo": "Undo",
+  "dup.toast.autoCleaned": "Auto-removed {n} duplicate task(s)",
+  "dup.toast.autoCleanedBody": "Same subject / day / time / room — kept the newest. Undo if it was wanted.",
   "common.restore": "Restore",
   "common.loading": "Loading…",
   "common.empty": "Empty",
@@ -990,8 +1058,22 @@ const EN: Dict = {
   "welcome.dismiss": "Close",
 
   // CLI tray icon hint
-  "tray.hint.title": "Tip:",
-  "tray.hint.body": "Clearmind is running in the System Tray (bottom-right). Right-click the icon for Quick Capture, Focus, Backup.",
+  "tip.label": "Tip:",
+  "tip.nextTitle": "Next tip",
+  "tip.tray": "Clearmind is running in the System Tray (bottom-right). Right-click the icon for Quick Capture, Focus, Backup.",
+  "tip.cmdK": "Press ⌘K / Ctrl+K to open the Command Palette — type a task, command, or page to jump there fast.",
+  "tip.voiceMic": "Inside the task dialog, click the mic icon to dictate — Whisper transcribes mixed VN + EN.",
+  "tip.calendarDrag": "Calendar (Week/Day): drag a task to a different slot to reschedule. No dialog needed.",
+  "tip.focusMode": "Focus mode (sidebar) is a Pomodoro: pick a task → 25 min deep work + chime when time's up.",
+  "tip.importPaste": "Import: paste your timetable straight from the school portal (Ctrl+A → Ctrl+C → paste). The parser splits subject / time / room.",
+  "tip.tagFilter": "Click any #tag anywhere to filter tasks by that tag. E.g. #thi-fe only shows finals-prep tasks.",
+  "tip.whisper": "Whisper engine (toggle in the voice picker) runs offline, mixed VN + EN — no Internet after first model load.",
+  "tip.notification": "CLI mode delivers native Windows toasts with 3 actions: Snooze 10m / 1h / Done — right on the toast.",
+  "tip.review": "The Review page surfaces a 12-week focus heatmap + streak — check it weekly to keep momentum.",
+  "tip.darkMode": "Quick theme switch: click the moon/sun icon in the topbar. Syncs to Settings → Appearance + every other tab.",
+  "tip.autostart": "Settings → System → Start with Windows — Clearmind runs in the background on boot, no manual launch.",
+  "tip.bookmarklet": "Settings → System → Bookmarklet — drag to the bookmark bar, click on the school portal to import in one click.",
+  "tip.history": "CLI mode keeps 3 history slots (previous-1/2/3). Settings → System → restore a slot if you nuked data by accident.",
 
   // Notifications
   "noti.fallbackBody": "Deadline approaching.",
@@ -1257,12 +1339,36 @@ const EN: Dict = {
   "settings.accent.hint": "Tints buttons, links and highlights app-wide.",
 
   // Accent colors
-  "accent.indigo": "Indigo (default)",
-  "accent.violet": "Violet",
-  "accent.blue": "Blue",
-  "accent.emerald": "Emerald",
+  "accent.red": "Red",
   "accent.rose": "Rose",
+  "accent.pink": "Pink",
+  "accent.fuchsia": "Fuchsia",
+  "accent.purple": "Purple",
+  "accent.violet": "Violet",
+  "accent.indigo": "Indigo (default)",
+  "accent.blue": "Blue",
+  "accent.sky": "Sky",
+  "accent.cyan": "Cyan",
+  "accent.teal": "Teal",
+  "accent.emerald": "Emerald",
+  "accent.green": "Green",
+  "accent.amber": "Amber",
   "accent.orange": "Orange",
+  "accent.slate": "Slate",
+  "settings.accent.more": "More colors",
+  "settings.tz.label": "Time zone",
+  "settings.tz.hint": "Affects the clock + calendar display.",
+  "settings.tz.modeDevice": "Device",
+  "settings.tz.modeDeviceHint": "Follow this browser's time zone.",
+  "settings.tz.modeCli": "CLI server",
+  "settings.tz.modeCliHint": "Follow the machine running CLI ({tz}). Handy when your laptop is travelling but you want home-machine time.",
+  "settings.tz.modeCliUnavailable": "Available only in CLI mode.",
+  "settings.tz.modeManual": "Custom",
+  "settings.tz.modeManualHint": "Pick a specific time zone from the list.",
+  "settings.tz.change": "Change",
+  "settings.tz.cliOffline": "CLI offline — couldn't read server time zone.",
+  "settings.tz.searchPlaceholder": "Search city or UTC offset…",
+  "settings.tz.searchEmpty": "No time zones match.",
 
   // Dashboard
   "dash.greet.morning": "Good morning",
@@ -1367,9 +1473,17 @@ const EN: Dict = {
   "settings.tagRename": "Rename",
   "settings.tagDelete": "Delete",
   "settings.tagMerge": "Merge",
-  "settings.tagRenamePrompt": "Rename tag '{old}' to:",
-  "settings.tagMergePrompt": "Merge tag '{old}' into which tag? (type target tag name)",
-  "settings.tagDeleteConfirm": "Delete tag '{name}' from {n} tasks?",
+  "settings.tagRenameTitle": "Rename tag #{old}",
+  "settings.tagRenameDesc": "Every task using this tag will switch to the new name.",
+  "settings.tagRenamePlaceholder": "New tag name…",
+  "settings.tagRenameCta": "Rename",
+  "settings.tagMergeTitle": "Merge tag #{old}",
+  "settings.tagMergeDesc": "Every task using #{old} will switch to the target tag below.",
+  "settings.tagMergePlaceholder": "Target tag…",
+  "settings.tagMergeCta": "Merge",
+  "settings.tagDeleteTitle": "Delete tag #{name}?",
+  "settings.tagDeleteDesc": "The tag is removed from {n} task(s). The tasks themselves stay — only the tag is dropped.",
+  "settings.tagDeleteCta": "Delete tag",
   "settings.tagRenamedToast": "Renamed {old} → {new}",
   "settings.tagDeletedToast": "Deleted tag {name}",
   "settings.tagMergedToast": "Merged {old} into {new}",
@@ -1404,7 +1518,9 @@ const EN: Dict = {
   "settings.clearAll.title": "Clear all data",
   "settings.clearAll.hint": "Delete every task on this browser.",
   "settings.clearAll.button": "Clear",
-  "settings.clearAll.confirm": "Delete every task? This cannot be undone.",
+  "settings.clearAll.confirmTitle": "Delete every task?",
+  "settings.clearAll.confirmBody": "Every task is permanently removed. The on-disk history slots are untouched — open Settings → System to restore if you need to.",
+  "settings.clearAll.confirmCta": "Delete all",
   "settings.clearAll.toast": "All data cleared",
 
   // Settings — Notifications toast messages
@@ -1430,7 +1546,7 @@ const EN: Dict = {
   "settings.cli.row.platform": "Platform",
   "settings.cli.row.dataFile": "Data file",
   "settings.cli.autostart.title": "Start with Windows",
-  "settings.cli.autostart.hint": "Creates a hidden shortcut in the Startup folder. Clearmind launches silently with tray icon at boot.",
+  "settings.cli.autostart.hint": "Clearmind launches silently with the tray icon at boot.",
   "settings.cli.autostart.on": "On",
   "settings.cli.autostart.off": "Enable",
   "settings.cli.autostart.toastOnTitle": "Auto-start enabled",
@@ -1457,7 +1573,9 @@ const EN: Dict = {
   "settings.cli.recover.slotEmpty": "empty",
   "settings.cli.recover.slotMeta": "{n} tasks · {time}",
   "settings.cli.recover.button": "Restore",
-  "settings.cli.recover.confirm": "Restore from previous-{n} ({count} tasks)? Your current data swaps into this slot — click again to undo. Then F5 to reload.",
+  "settings.cli.recover.confirmTitle": "Restore from slot previous-{n}?",
+  "settings.cli.recover.confirmBody": "Replaces your current {count} task(s) with the contents of slot previous-{n}. The current data swaps INTO that slot — click restore again to undo. F5 after.",
+  "settings.cli.recover.confirmCta": "Restore slot {n}",
   "settings.cli.recover.toastOkTitle": "Restored previous-{n}",
   "settings.cli.recover.toastOkDesc": "{n} tasks. F5 to reload.",
   "settings.cli.recover.toastFailTitle": "Restore failed",
@@ -1709,6 +1827,7 @@ const EN: Dict = {
   "import.toast.commit.part.displaced": "removed {n} relocated classes",
   "import.toast.commit.part.skippedExisting": "skipped {n} already there",
   "import.toast.commit.part.skippedByUser": "skipped {n} per your choice",
+  "import.toast.commit.part.batchDedup": "skipped {n} duplicate(s) in same paste",
   "import.toast.commit.part.skippedAttended": "skipped {n} attended",
   "import.toast.commit.doneTitle": "Import complete · {parts}",
   "import.toast.commit.nothingTitle": "Nothing changed — everything already exists.",
@@ -1723,13 +1842,51 @@ function format(s: string, params?: Record<string, string | number>): string {
   return s.replace(/\{(\w+)\}/g, (_, k) => String(params[k] ?? `{${k}}`));
 }
 
+/**
+ * Time-zone source:
+ *   - "device" → use the browser's tz (Intl.DateTimeFormat default)
+ *   - "cli"    → use the CLI server's tz (the machine running clearmind);
+ *                useful when the user is on a traveling laptop but wants
+ *                their schedule rendered in the home machine's time
+ *   - "manual" → use the IANA name in `timeZoneManual`
+ */
+export type TimeZoneMode = "device" | "cli" | "manual";
+
 interface I18nContextValue {
   lang: Lang;
   setLang: (l: Lang) => void;
+  /**
+   * Resolved IANA tz that consumers should pass to `toLocaleString` /
+   * `Intl.DateTimeFormat` / FullCalendar. Empty string means "use device"
+   * (Intl treats `undefined` the same way — see `useTimeZoneOption`).
+   *
+   * NOTE: internal date arithmetic (isToday, deadline comparison) still
+   * runs in the browser's system tz — converting that to a chosen tz is
+   * a deeper refactor deferred to a future change.
+   */
+  timeZone: string;
+  timeZoneMode: TimeZoneMode;
+  setTimeZoneMode: (m: TimeZoneMode) => void;
+  /** IANA name used when mode === "manual". */
+  timeZoneManual: string;
+  setTimeZoneManual: (tz: string) => void;
+  /** CLI server's tz (live from /api/health). Empty if not CLI mode / probe failed. */
+  cliTimeZone: string;
   t: (key: string, params?: Record<string, string | number>) => string;
 }
 
 const I18nContext = createContext<I18nContextValue | null>(null);
+
+const TZ_MODE_KEY = "clearmind_tz_mode";
+const TZ_MANUAL_KEY = "clearmind_tz_manual";
+
+function deviceTimeZone(): string {
+  try {
+    return Intl.DateTimeFormat().resolvedOptions().timeZone || "";
+  } catch {
+    return "";
+  }
+}
 
 export function I18nProvider({ children }: { children: React.ReactNode }) {
   const [lang, setLangState] = useState<Lang>(() => {
@@ -1740,6 +1897,52 @@ export function I18nProvider({ children }: { children: React.ReactNode }) {
       return "vi";
     }
   });
+  const [timeZoneMode, setTimeZoneModeState] = useState<TimeZoneMode>(() => {
+    try {
+      const v = localStorage.getItem(TZ_MODE_KEY);
+      if (v === "device" || v === "cli" || v === "manual") return v;
+    } catch {
+      /* ignore */
+    }
+    return "device";
+  });
+  const [timeZoneManual, setTimeZoneManualState] = useState<string>(() => {
+    try {
+      return localStorage.getItem(TZ_MANUAL_KEY) || deviceTimeZone();
+    } catch {
+      return deviceTimeZone();
+    }
+  });
+  const [cliTimeZone, setCliTimeZone] = useState<string>("");
+
+  // Fetch the CLI host's tz once at mount. Normalise through the alias
+  // map so a server reporting the legacy "Asia/Saigon" matches the
+  // canonical "Asia/Ho_Chi_Minh" the picker UI uses.
+  useEffect(() => {
+    let alive = true;
+    const probe = async () => {
+      try {
+        const r = await fetch("/api/health", { signal: AbortSignal.timeout(2000) });
+        if (!r.ok) return;
+        const j = (await r.json()) as { tz?: string };
+        if (alive && j.tz) setCliTimeZone(canonicalTimeZone(j.tz));
+      } catch {
+        /* CLI offline — leave blank */
+      }
+    };
+    probe();
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  // Compute resolved tz from mode. "device" returns "" so the formatter
+  // picks up the browser's own tz; the others return an IANA name.
+  const timeZone = (() => {
+    if (timeZoneMode === "cli") return cliTimeZone;
+    if (timeZoneMode === "manual") return timeZoneManual;
+    return "";
+  })();
 
   useEffect(() => {
     try {
@@ -1777,6 +1980,22 @@ export function I18nProvider({ children }: { children: React.ReactNode }) {
   // tore down SpeechRecognition mid-utterance) and (b) caused cascading
   // re-renders through every useT() / useI18n() consumer.
   const setLang = useCallback((l: Lang) => setLangState(l), []);
+  const setTimeZoneMode = useCallback((m: TimeZoneMode) => {
+    try {
+      localStorage.setItem(TZ_MODE_KEY, m);
+    } catch {
+      /* ignore */
+    }
+    setTimeZoneModeState(m);
+  }, []);
+  const setTimeZoneManual = useCallback((tz: string) => {
+    try {
+      if (tz) localStorage.setItem(TZ_MANUAL_KEY, tz);
+    } catch {
+      /* ignore */
+    }
+    setTimeZoneManualState(tz);
+  }, []);
   const t = useMemo(
     () => (key: string, params?: Record<string, string | number>): string => {
       const dict = ALL[lang];
@@ -1785,7 +2004,30 @@ export function I18nProvider({ children }: { children: React.ReactNode }) {
     },
     [lang]
   );
-  const value = useMemo(() => ({ lang, setLang, t }), [lang, setLang, t]);
+  const value = useMemo(
+    () => ({
+      lang,
+      setLang,
+      timeZone,
+      timeZoneMode,
+      setTimeZoneMode,
+      timeZoneManual,
+      setTimeZoneManual,
+      cliTimeZone,
+      t,
+    }),
+    [
+      lang,
+      setLang,
+      timeZone,
+      timeZoneMode,
+      setTimeZoneMode,
+      timeZoneManual,
+      setTimeZoneManual,
+      cliTimeZone,
+      t,
+    ]
+  );
 
   return <I18nContext.Provider value={value}>{children}</I18nContext.Provider>;
 }
@@ -1811,4 +2053,61 @@ export function useT() {
  */
 export function useLocaleTag(): string {
   return useI18n().lang === "en" ? "en-US" : "vi-VN";
+}
+
+/**
+ * IANA time-zone override (empty string = device default). Convenience hook
+ * for consumers that don't need the full I18n context. Use the return value
+ * as the `timeZone` option in `toLocaleString` / `Intl.DateTimeFormat`, or
+ * as the `timeZone` prop on FullCalendar. Empty string is a valid signal
+ * to those APIs to use the device — but they expect `undefined` to mean
+ * the same thing, so prefer the helper below when calling Intl directly.
+ */
+export function useTimeZone(): string {
+  return useI18n().timeZone;
+}
+
+/**
+ * Spread-friendly variant: returns `{ timeZone: "X" }` when an override is
+ * set, `{}` when not. Use like:
+ *   now.toLocaleTimeString(locale, { hour: "2-digit", ...tzOpt })
+ * The Intl APIs treat `{ timeZone: undefined }` as "use device" but
+ * TypeScript wants the key absent for cleaner typing.
+ */
+export function useTimeZoneOption(): { timeZone?: string } {
+  const tz = useI18n().timeZone;
+  return tz ? { timeZone: tz } : {};
+}
+
+/**
+ * Date helpers pre-bound with the user's chosen tz. Use this everywhere
+ * instead of importing `isToday` / `dayKey` / etc. directly from
+ * `@/lib/utils` — the bare imports stay system-tz, which only matches
+ * the user's chosen tz when they're in Auto mode. Components that want
+ * "today" to mean "today *for the user*" must funnel through this hook.
+ *
+ * Why a hook (vs. passing tz everywhere)? Most consumers already call
+ * 2-3 of these helpers and threading the tz string through each call
+ * site bloats every component. The hook captures it once at the top of
+ * the component; memoized so dep arrays stay stable.
+ */
+export function useDateFns() {
+  const tz = useI18n().timeZone;
+  return useMemo(
+    () => ({
+      tz,
+      dayKey: (d: Date) => utilsDayKey(d, tz),
+      isToday: (deadline?: string, now?: Date) => utilsIsToday(deadline, now, tz),
+      bucketByDate: (deadline?: string, now?: Date) =>
+        utilsBucketByDate(deadline, now, tz),
+      groupByBucket: (tasks: Parameters<typeof utilsGroupByBucket>[0]) =>
+        utilsGroupByBucket(tasks, new Date(), tz),
+      extractTimeLabel: (deadline?: string) => utilsExtractTimeLabel(deadline, tz),
+      formatDeadline: (iso?: string) => utilsFormatDeadline(iso, tz),
+      formatTimeAgoShort: (deadline: string, now?: Date) =>
+        utilsFormatTimeAgoShort(deadline, now, tz),
+      tzDateParts: (d: Date) => utilsTzDateParts(d, tz),
+    }),
+    [tz]
+  );
 }

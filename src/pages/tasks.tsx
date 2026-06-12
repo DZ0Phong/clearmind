@@ -34,12 +34,10 @@ import {
 import { QuickCapture } from "@/components/quick-capture";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { useT } from "@/lib/i18n";
+import { useT, useDateFns } from "@/lib/i18n";
 import { HomeworkDialog } from "@/components/homework-dialog";
 import {
-  formatDeadline,
   formatTimeAgoShort,
-  groupByBucket,
   BUCKET_ORDER,
   subjectColor,
   tagStats,
@@ -120,6 +118,7 @@ const TaskRow = memo(function TaskRow({
 }) {
   const { cycleStatus, removeTask, snoozeTask } = useTasks();
   const { openEdit } = useTaskCommands();
+  const { formatDeadline } = useDateFns();
   const { toast } = useToast();
   const t = useT();
 
@@ -340,6 +339,7 @@ export function TasksPage() {
   const { tasks, rollForwardOverdueRecurring, clearDuplicates } = useTasks();
   const { toast } = useToast();
   const t = useT();
+  const { groupByBucket } = useDateFns();
   // Force re-render every 30s so the Overdue / Today / This-week buckets
   // re-classify tasks crossing midnight or going overdue without a manual
   // refresh. groupByBucket reads `new Date()` inline on each render.
@@ -489,6 +489,7 @@ export function TasksPage() {
   const grouped = useMemo(() => {
     const g = groupByBucket(filtered);
     if (sortMode === "deadline") return g; // groupByBucket already sorts by deadline asc
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     const cmpPriority = (a: Task, b: Task) => {
       const ap = PRIORITY_RANK[a.priority] ?? 99;
       const bp = PRIORITY_RANK[b.priority] ?? 99;

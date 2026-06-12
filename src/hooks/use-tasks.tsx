@@ -61,7 +61,11 @@ interface TasksContextType {
   rollForwardOverdueRecurring: () => { moved: number; restore: () => void };
   /** Dedupe tasks sharing the same signature (title+dow+startTime+location+recurrence).
    *  Keeps the newest createdAt. Returns { removed, restore } for undo. */
-  clearDuplicates: () => { removed: number; restore: () => void };
+  clearDuplicates: () => {
+    removed: number;
+    removedNames: string[];
+    restore: () => void;
+  };
   notificationsEnabled: boolean;
   requestNotifications: () => Promise<boolean>;
 }
@@ -95,12 +99,18 @@ function nextInstanceAlreadyExists(
   const nextHh = nextD.getHours().toString().padStart(2, "0");
   const nextMm = nextD.getMinutes().toString().padStart(2, "0");
   const targetTitle = target.title.trim().toLowerCase();
+  // Location matters: two lectures of the same subject can legitimately
+  // share dow + time across different rooms (lab + theory). Without this
+  // check, the spawn-next-occurrence flow used to skip creating one of
+  // them under the assumption the other was "already" there.
+  const targetLoc = (target.location || "").trim().toLowerCase();
   return prev.some((t) => {
     if (t.id === target.id) return false;
     if (t.recurrence !== target.recurrence) return false;
     if (!t.deadline) return false;
     if (t.title.trim().toLowerCase() !== targetTitle) return false;
     if (t.deadline.slice(0, 10) !== nextYmd) return false;
+    if ((t.location || "").trim().toLowerCase() !== targetLoc) return false;
     const td = new Date(t.deadline);
     if (Number.isNaN(td.getTime())) return false;
     const hh = td.getHours().toString().padStart(2, "0");
@@ -587,40 +597,50 @@ export function TasksProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const clearDuplicates = useCallback(() => {
-    let snapshot: Task[] | null = null;
-    let removed = 0;
-    setTasks((prev) => {
-      snapshot = prev;
-      const sig = (t: Task): string | null => {
-        if (!t.recurrence || !t.deadline) return null;
-        const d = new Date(t.deadline);
-        if (Number.isNaN(d.getTime())) return null;
-        const dow = d.getDay();
-        const hh = d.getHours().toString().padStart(2, "0");
-        const mm = d.getMinutes().toString().padStart(2, "0");
-        const title = t.title.trim().toLowerCase();
-        const loc = (t.location || "").trim().toLowerCase();
-        return `${t.recurrence}|${dow}|${hh}:${mm}|${title}|${loc}`;
-      };
-      // Newest-first ordering so we keep the latest createdAt per signature.
-      const sorted = [...prev].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
-      const seen = new Set<string>();
-      const keepIds = new Set<string>();
-      for (const t of sorted) {
-        const k = sig(t);
-        if (k && seen.has(k)) continue;
-        if (k) seen.add(k);
-        keepIds.add(t.id);
-      }
-      const next = prev.filter((t) => keepIds.has(t.id));
-      removed = prev.length - next.length;
-      return next;
-    });
+    // Read snapshot via the ref so this works whether the caller is in an
+    // event handler (where setState updaters run sync) or in useEffect
+    // (where they're deferred). The previous form populated `snapshot`
+    // inside the setTasks updater and returned it from the outer scope —
+    // outside event handlers that closure was still null when `restore`
+    // got captured, so Undo silently no-op'd.
+    const snapshot = tasksRef.current;
+    const sig = (t: Task): string | null => {
+      if (!t.recurrence || !t.deadline) return null;
+      const d = new Date(t.deadline);
+      if (Number.isNaN(d.getTime())) return null;
+      const dow = d.getDay();
+      const hh = d.getHours().toString().padStart(2, "0");
+      const mm = d.getMinutes().toString().padStart(2, "0");
+      const title = t.title.trim().toLowerCase();
+      const loc = (t.location || "").trim().toLowerCase();
+      return `${t.recurrence}|${dow}|${hh}:${mm}|${title}|${loc}`;
+    };
+    // Newest-first ordering so we keep the latest createdAt per signature.
+    const sorted = [...snapshot].sort((a, b) =>
+      b.createdAt.localeCompare(a.createdAt)
+    );
+    const seen = new Set<string>();
+    const keepIds = new Set<string>();
+    for (const t of sorted) {
+      const k = sig(t);
+      if (k && seen.has(k)) continue;
+      if (k) seen.add(k);
+      keepIds.add(t.id);
+    }
+    const next = snapshot.filter((t) => keepIds.has(t.id));
+    const removed = snapshot.length - next.length;
+    // Surface the titles of the tasks we're about to remove so the
+    // caller can show users *what* was deduplicated. Without this the
+    // banner toast just said "Đã xoá 4 task" and users had no way to
+    // verify the cleanup matched their mental model.
+    const removedNames = snapshot
+      .filter((t) => !keepIds.has(t.id))
+      .map((t) => t.title);
+    if (removed > 0) setTasks(next);
     return {
       removed,
-      restore: () => {
-        if (snapshot) setTasks(snapshot);
-      },
+      removedNames,
+      restore: () => setTasks(snapshot),
     };
   }, []);
 
@@ -664,11 +684,21 @@ export function TasksProvider({ children }: { children: React.ReactNode }) {
           // Build a fresh object so we never mutate the caller's payload
           // — JSON.parse output may be retained by integration tests or
           // future ndjson stream readers.
+          //
+          // Force recurrence: null on import. Restoring from a backup that
+          // was taken before the switch to one-off-per-week imports used
+          // to drag every weekly task back, which then triggered the
+          // auto-spawn-on-complete flow + dumped a wall of repeating
+          // events back onto the calendar. User explicitly wants "tuần
+          // nào import tuần đó" — strip the recurrence so backups behave
+          // the same as fresh paste imports.
           const safe: Task = {
             ...incomingTask,
             id: incomingTask.id || crypto.randomUUID(),
             createdAt: incomingTask.createdAt || new Date().toISOString(),
             status: incomingTask.status || "todo",
+            recurrence: null,
+            recurrenceEndAt: null,
           };
           if (!byId.has(safe.id)) {
             byId.set(safe.id, safe);

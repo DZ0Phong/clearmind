@@ -10,7 +10,7 @@ import {
 } from "@/components/ui/card";
 import { useTasks, type Task } from "@/hooks/use-tasks";
 import { useTaskCommands } from "@/components/task-commands";
-import { useT, useI18n } from "@/lib/i18n";
+import { useT, useI18n, useDateFns } from "@/lib/i18n";
 import { Button } from "@/components/ui/button";
 import {
   Clock,
@@ -28,11 +28,8 @@ import {
   Zap,
 } from "lucide-react";
 import {
-  formatDeadline,
-  isToday,
   isPast,
   isRecurringClass,
-  extractTimeLabel,
   sortByTimeOfDay,
   subjectColor,
   cn,
@@ -46,6 +43,7 @@ export function Dashboard() {
   const [searchParams, setSearchParams] = useSearchParams();
   const t = useT();
   const { lang } = useI18n();
+  const { isToday, dayKey } = useDateFns();
 
   // Deep-link: tray "Quick Capture" item opens /dashboard?capture=1
   // → auto-open the create dialog, then strip the query so reload doesn't re-trigger.
@@ -144,9 +142,9 @@ export function Dashboard() {
       0
     );
 
-    // streak: consecutive days ending today with ≥1 done
-    const dayKey = (d: Date) =>
-      `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
+    // streak: consecutive days ending today with ≥1 done — use the
+    // tz-aware dayKey so streaks honor the user's chosen tz instead of
+    // breaking at the browser's midnight when the two differ.
     const done = new Set(
       tasks
         .filter((t) => t.status === "done" && t.completedAt)
@@ -481,6 +479,7 @@ function UpNextHero({
   onFocus: () => void;
 }) {
   const t = useT();
+  const { extractTimeLabel, formatDeadline } = useDateFns();
   const time = extractTimeLabel(task.deadline);
   const overdue = isPast(task.deadline);
   const color = subjectColor(task.title);
@@ -553,6 +552,7 @@ const AgendaRow = memo(function AgendaRow({
   onClick: () => void;
 }) {
   const t = useT();
+  const { extractTimeLabel } = useDateFns();
   const time = extractTimeLabel(task.deadline);
   const overdue = isPast(task.deadline);
   const color = subjectColor(task.title);

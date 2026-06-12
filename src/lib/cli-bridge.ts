@@ -107,7 +107,9 @@ export async function cliSetAutostart(enabled: boolean): Promise<boolean> {
   return !!j.enabled;
 }
 
-export async function cliHealth(): Promise<CliInfo & { dataFile: string; autostart: boolean }> {
+export async function cliHealth(): Promise<
+  CliInfo & { dataFile: string; autostart: boolean; tz?: string }
+> {
   return apiJson("/api/health");
 }
 

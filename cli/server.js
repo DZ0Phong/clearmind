@@ -193,6 +193,16 @@ function makeHandler({ distDir, dataDir, port, version }) {
     try {
       // ---- API ----
       if (p === "/api/health" && req.method === "GET") {
+        // Expose the host machine's IANA timezone so the SPA's "sync with
+        // CLI server" option can resolve to the actual home machine's tz
+        // even when the user is on a traveling laptop with a different
+        // browser tz. Best-effort — Node ≥18 has Intl in core, but cheap
+        // fallback to UTC if the runtime is unusual.
+        let tz = "UTC";
+        try {
+          const resolved = Intl.DateTimeFormat().resolvedOptions().timeZone;
+          if (resolved) tz = resolved;
+        } catch (_) { /* leave UTC */ }
         return sendJson(res, 200, {
           ok: true,
           port,
@@ -201,6 +211,7 @@ function makeHandler({ distDir, dataDir, port, version }) {
           dataFile: storage.getDataFilePath(dataDir),
           autostart: autostart.isEnabled(),
           platform: process.platform,
+          tz,
         });
       }
       if (p === "/api/tasks" && req.method === "GET") {

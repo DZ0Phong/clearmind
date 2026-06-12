@@ -48,12 +48,16 @@ import { useTaskCommands } from "@/components/task-commands";
 import { useTasks, type Task, type TaskType } from "@/hooks/use-tasks";
 import {
   cn,
-  extractTimeLabel,
-  formatDeadline,
   subjectColor,
   tagStats,
 } from "@/lib/utils";
-import { useT, useI18n, useLocaleTag } from "@/lib/i18n";
+import {
+  useT,
+  useI18n,
+  useLocaleTag,
+  useTimeZone,
+  useDateFns,
+} from "@/lib/i18n";
 
 /* ───── Types & constants ───────────────────────────────────────── */
 
@@ -107,6 +111,25 @@ function eventColor(task: Task): string {
   return TYPE_COLOR[task.type];
 }
 
+// Parse the trailing "Kết thúc: HH:MM" the importer appends to the task
+// description so FullCalendar can render the event as a duration block
+// instead of a 0-minute point in time-grid views. Returns "HH:MM" or null.
+function extractEndTime(description?: string): string | null {
+  if (!description) return null;
+  const m = description.match(/K[ếe]t th[úu]c:\s*(\d{2}):(\d{2})/);
+  return m ? `${m[1]}:${m[2]}` : null;
+}
+
+// Default cap for recurring events without explicit recurrenceEndAt —
+// six months ahead of today. Without a cap, FullCalendar will render
+// every Monday from June 2026 to the heat death of the universe; the
+// calendar view turns into a wall of "PRN222 15:20" forever.
+function renderHorizonIso(): string {
+  const d = new Date();
+  d.setMonth(d.getMonth() + 6);
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+}
+
 function loadStoredView(): ViewMode {
   if (typeof window === "undefined") return "week";
   const v = localStorage.getItem(VIEW_STORAGE_KEY);
@@ -155,6 +178,11 @@ export function CalendarView({ initialDate }: CalendarViewProps = {}) {
   // "X giờ" hour suffix, "8 – 14 thg 6" range); 'en-gb' for neutral
   // English (Mon-start week, 24h time, "8 – 14 Jun" range).
   const fcLocale = lang === "en" ? "en-gb" : "vi";
+  // IANA tz override or empty for device default. FullCalendar accepts
+  // "local" (= device) as a sentinel — when the user picks Auto we pass
+  // "local" explicitly so the prop value is stable (avoids re-mounting
+  // the grid when toggling Auto vs a specific zone).
+  const fcTimeZone = useTimeZone() || "local";
 
   const [view, setView] = useState<ViewMode>(loadStoredView);
   const [hiddenTypes, setHiddenTypes] = useState<Set<TaskType>>(new Set());
@@ -186,6 +214,13 @@ export function CalendarView({ initialDate }: CalendarViewProps = {}) {
     [tasks]
   );
 
+  // Month view skips recurring tasks on purpose. A weekly class otherwise
+  // turns into 4-5 identical rows across the month grid (PRN222 Mon 15:20,
+  // PRN222 Mon 15:20, ...) drowning out the one-off items that actually
+  // need attention (exams, homework deadlines, ad-hoc meetings). Week/Day/
+  // Agenda views still show the full schedule. No user-facing toggle —
+  // the previous opt-in pill was felt as clutter, so the default is just
+  // "show what changes" in month view.
   const filteredTasks = useMemo(
     () =>
       tasks.filter(
@@ -193,36 +228,147 @@ export function CalendarView({ initialDate }: CalendarViewProps = {}) {
           t.deadline &&
           !hiddenTypes.has(t.type) &&
           !(hideDone && t.status === "done") &&
+          !(view === "month" && t.recurrence) &&
           (!activeTag || (t.tags || []).includes(activeTag))
       ),
-    [tasks, hiddenTypes, hideDone, activeTag]
+    [tasks, hiddenTypes, hideDone, view, activeTag]
   );
 
   const fcEvents = useMemo(
     () =>
-      filteredTasks.map((t) => {
+      filteredTasks.flatMap((t) => {
         const color = eventColor(t);
         // Chip tint mạnh hơn (mix 24% với background) — không bị "chìm".
         // textColor = màu chủ đề (đọc rõ trên tint cùng tông).
         const bg = `color-mix(in srgb, ${color} 24%, var(--background))`;
-        return {
-          id: t.id,
-          title: t.title,
-          start: t.deadline,
-          allDay: t.deadline ? !t.deadline.includes("T") : true,
+        const isTimed = !!t.deadline && t.deadline.includes("T");
+        const baseExtended = {
+          type: t.type,
+          priority: t.priority,
+          status: t.status,
+          location: t.location,
+          description: t.description,
+          tags: t.tags,
+          recurrence: t.recurrence ?? null,
+        };
+        const baseStyle = {
           backgroundColor: bg,
           borderColor: color,
           textColor: color,
-          extendedProps: {
-            type: t.type,
-            priority: t.priority,
-            status: t.status,
-            location: t.location,
-            description: t.description,
-            tags: t.tags,
-            recurrence: t.recurrence ?? null,
-          },
         };
+
+        // Non-recurring (one-off) — render as single event at its deadline.
+        if (!t.recurrence) {
+          return [
+            {
+              id: t.id,
+              title: t.title,
+              start: t.deadline,
+              allDay: !isTimed,
+              ...baseStyle,
+              extendedProps: baseExtended,
+            },
+          ];
+        }
+
+        // Recurring — use FullCalendar's native daysOfWeek + startTime/
+        // endTime + startRecur/endRecur so every visible week renders the
+        // event automatically. Without this the recurring task only
+        // showed up at the stored `deadline` week, leaving every future
+        // week visually empty even though the data model said "weekly
+        // forever". `endRecur` is EXCLUSIVE in FullCalendar, so we add
+        // one day to the user-facing semesterEnd to include that day's
+        // occurrence.
+        if (!t.deadline) return [];
+        const start = new Date(t.deadline);
+        if (Number.isNaN(start.getTime())) return [];
+        const dow = start.getDay();
+        const hh = pad(start.getHours());
+        const mm = pad(start.getMinutes());
+        const startTime = isTimed ? `${hh}:${mm}:00` : undefined;
+        const endTimeStr = isTimed ? extractEndTime(t.description) : null;
+        const startRecur = `${start.getFullYear()}-${pad(start.getMonth() + 1)}-${pad(start.getDate())}`;
+        // endRecur cap. If task has `recurrenceEndAt` use it (+1 day, FC
+        // exclusive). Otherwise fall back to 6 months from today so old
+        // imports that skipped semester-end don't spawn occurrences into
+        // the next decade. Visual only — does not mutate task data.
+        let endRecur: string;
+        if (t.recurrenceEndAt) {
+          const end = new Date(t.recurrenceEndAt);
+          if (!Number.isNaN(end.getTime())) {
+            end.setDate(end.getDate() + 1);
+            endRecur = `${end.getFullYear()}-${pad(end.getMonth() + 1)}-${pad(
+              end.getDate()
+            )}`;
+          } else {
+            endRecur = renderHorizonIso();
+          }
+        } else {
+          endRecur = renderHorizonIso();
+        }
+        const daysOfWeek =
+          t.recurrence === "daily"
+            ? [0, 1, 2, 3, 4, 5, 6]
+            : t.recurrence === "weekday"
+              ? [1, 2, 3, 4, 5]
+              : t.recurrence === "weekly"
+                ? [dow]
+                : null;
+
+        if (daysOfWeek) {
+          return [
+            {
+              id: t.id,
+              title: t.title,
+              daysOfWeek,
+              startTime,
+              endTime: endTimeStr ? `${endTimeStr}:00` : undefined,
+              startRecur,
+              endRecur,
+              allDay: !isTimed,
+              ...baseStyle,
+              extendedProps: baseExtended,
+            },
+          ];
+        }
+
+        // Monthly — FullCalendar core has no native monthly recurrence.
+        // Generate occurrences manually within a ±12-month window from
+        // now (capped by recurrenceEndAt). Each occurrence is a separate
+        // event sharing the same task id so click handlers still find
+        // the underlying task. 12 months covers a full year on either
+        // side of today — enough for typical calendar navigation.
+        if (t.recurrence === "monthly") {
+          const out: Array<Record<string, unknown>> = [];
+          const cursor = new Date(start);
+          const horizonStart = new Date();
+          horizonStart.setMonth(horizonStart.getMonth() - 12);
+          const horizonEnd = new Date();
+          horizonEnd.setMonth(horizonEnd.getMonth() + 12);
+          const endCap = t.recurrenceEndAt
+            ? new Date(t.recurrenceEndAt)
+            : horizonEnd;
+          for (let i = 0; i < 48; i++) {
+            if (cursor > endCap) break;
+            if (cursor >= horizonStart) {
+              const ymd = `${cursor.getFullYear()}-${pad(
+                cursor.getMonth() + 1
+              )}-${pad(cursor.getDate())}`;
+              out.push({
+                id: `${t.id}::${ymd}`,
+                title: t.title,
+                start: isTimed ? `${ymd}T${hh}:${mm}` : ymd,
+                allDay: !isTimed,
+                ...baseStyle,
+                extendedProps: { ...baseExtended, taskId: t.id },
+              });
+            }
+            cursor.setMonth(cursor.getMonth() + 1);
+          }
+          return out;
+        }
+
+        return [];
       }),
     [filteredTasks]
   );
@@ -322,6 +468,7 @@ export function CalendarView({ initialDate }: CalendarViewProps = {}) {
                 initialDate={initialDate}
                 locales={[enGbLocale, viLocale]}
                 locale={fcLocale}
+                timeZone={fcTimeZone}
                 firstDay={1}
                 buttonText={{ today: t("calendar.today") }}
                 headerToolbar={{ left: "prev,next today", center: "title", right: "" }}
@@ -365,6 +512,7 @@ export function CalendarView({ initialDate }: CalendarViewProps = {}) {
             initialDate={initialDate}
             locales={[enGbLocale, viLocale]}
             locale={fcLocale}
+            timeZone={fcTimeZone}
             firstDay={1}
             buttonText={{ today: t("calendar.today") }}
             allDayText={t("common.allDay")}
@@ -847,6 +995,7 @@ function EventDetailDialog({
 }: EventDetailDialogProps) {
   const open = !!task;
   const t = useT();
+  const { extractTimeLabel, formatDeadline } = useDateFns();
   return (
     <Dialog open={open} onOpenChange={(b) => !b && onClose()}>
       <DialogContent className="sm:max-w-[460px] max-h-[92vh] flex flex-col gap-0 p-0">
@@ -1068,6 +1217,7 @@ const DayTaskRow = memo(function DayTaskRow({
   onClick: () => void;
 }) {
   const t = useT();
+  const { extractTimeLabel } = useDateFns();
   const time = extractTimeLabel(task.deadline);
   const col = subjectColor(task.title);
   return (
@@ -1345,6 +1495,7 @@ const AgendaItem = memo(function AgendaItem({
   onPick: () => void;
 }) {
   const t = useT();
+  const { extractTimeLabel } = useDateFns();
   const time = extractTimeLabel(task.deadline);
   const col = subjectColor(task.title);
   const isDone = task.status === "done";
@@ -1680,6 +1831,7 @@ function DayHeroCard({ date, isToday, stats }: DayHeroCardProps) {
 function NextUpCard({ task, onPick }: { task: Task; onPick: () => void }) {
   const t = useT();
   const now = useTickingNow();
+  const { extractTimeLabel } = useDateFns();
   const start = new Date(task.deadline!);
   const time = extractTimeLabel(task.deadline);
   return (

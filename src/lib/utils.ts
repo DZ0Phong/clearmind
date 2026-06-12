@@ -6,23 +6,106 @@ export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
 
-export const formatDeadline = (isoString?: string) => {
+/**
+ * Map legacy IANA aliases to their canonical names so the picker preview
+ * and the option list agree. Windows browsers commonly resolve a device
+ * to "Asia/Saigon" / "Asia/Calcutta" / "Europe/Kiev" — those are still
+ * valid IANA links but they're deprecated forms of the modern names
+ * ("Asia/Ho_Chi_Minh", "Asia/Kolkata", "Europe/Kyiv"). Normalising on
+ * read keeps user-facing copy consistent regardless of which form the
+ * device returns.
+ *
+ * Functionally identical zones — same UTC offset, same DST rules, same
+ * everything — just a name swap.
+ */
+const TZ_ALIASES: Record<string, string> = {
+  "Asia/Saigon": "Asia/Ho_Chi_Minh",
+  "Asia/Calcutta": "Asia/Kolkata",
+  "Europe/Kiev": "Europe/Kyiv",
+  "Asia/Rangoon": "Asia/Yangon",
+  "America/Buenos_Aires": "America/Argentina/Buenos_Aires",
+  "Asia/Katmandu": "Asia/Kathmandu",
+  "Pacific/Truk": "Pacific/Chuuk",
+  "Pacific/Ponape": "Pacific/Pohnpei",
+  "US/Pacific": "America/Los_Angeles",
+  "US/Eastern": "America/New_York",
+  "US/Central": "America/Chicago",
+  "US/Mountain": "America/Denver",
+  "US/Hawaii": "Pacific/Honolulu",
+};
+
+export function canonicalTimeZone(tz: string): string {
+  if (!tz) return tz;
+  return TZ_ALIASES[tz] ?? tz;
+}
+
+/**
+ * Extract calendar parts (year/month/day/hour/minute) of a Date in a
+ * specific IANA timezone. When `tz` is empty/undefined the browser's
+ * system tz is used (matches the historical `getHours/getMinutes/...`
+ * behaviour). All callers below funnel through this so flipping the
+ * picker in Settings (Múi giờ) cascades end-to-end.
+ *
+ * Uses `Intl.DateTimeFormat.formatToParts` — the only correct way to
+ * extract calendar fields in an arbitrary tz from a JS Date object.
+ */
+export function tzDateParts(
+  d: Date,
+  tz?: string
+): { year: string; month: string; day: string; hour: string; minute: string } {
+  try {
+    const fmt = new Intl.DateTimeFormat("en-US", {
+      timeZone: tz || undefined,
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+      hourCycle: "h23",
+    });
+    const parts = fmt.formatToParts(d);
+    const get = (type: string) =>
+      parts.find((p) => p.type === type)?.value ?? "00";
+    return {
+      year: get("year"),
+      // hourCycle h23 returns "00".."23". Intl returns "24" for midnight
+      // on some engines — coerce to "00" so dayKey rolls cleanly.
+      hour: get("hour") === "24" ? "00" : get("hour"),
+      month: get("month"),
+      day: get("day"),
+      minute: get("minute"),
+    };
+  } catch {
+    // tz invalid? Fall back to system tz via direct Date methods.
+    const pad = (n: number) => n.toString().padStart(2, "0");
+    return {
+      year: d.getFullYear().toString(),
+      month: pad(d.getMonth() + 1),
+      day: pad(d.getDate()),
+      hour: pad(d.getHours()),
+      minute: pad(d.getMinutes()),
+    };
+  }
+}
+
+export const formatDeadline = (isoString?: string, tz?: string): string => {
   if (!isoString) return "";
-  const currentYear = new Date().getFullYear();
+  const now = new Date();
+  const nowYearStr = tzDateParts(now, tz).year;
   if (!isoString.includes("T")) {
+    // Date-only — no tz applies; preserve the literal YYYY-MM-DD slicing.
     const [yearStr, month, day] = isoString.split("-");
-    const y = parseInt(yearStr, 10);
-    const ySuffix = y && y !== currentYear ? `/${(y % 100).toString().padStart(2, "0")}` : "";
+    const ySuffix =
+      yearStr && yearStr !== nowYearStr
+        ? `/${yearStr.slice(-2)}`
+        : "";
     return `${day}/${month}${ySuffix}`;
   }
-  const dateObj = new Date(isoString);
-  const hours = dateObj.getHours().toString().padStart(2, "0");
-  const minutes = dateObj.getMinutes().toString().padStart(2, "0");
-  const day = dateObj.getDate().toString().padStart(2, "0");
-  const month = (dateObj.getMonth() + 1).toString().padStart(2, "0");
-  const y = dateObj.getFullYear();
-  const ySuffix = y !== currentYear ? `/${(y % 100).toString().padStart(2, "0")}` : "";
-  return `${hours}:${minutes} ${day}/${month}${ySuffix}`;
+  const d = new Date(isoString);
+  if (Number.isNaN(d.getTime())) return "";
+  const p = tzDateParts(d, tz);
+  const ySuffix = p.year !== nowYearStr ? `/${p.year.slice(-2)}` : "";
+  return `${p.hour}:${p.minute} ${p.day}/${p.month}${ySuffix}`;
 };
 
 /* ----------------------------------------------------------------
@@ -41,31 +124,46 @@ export const BUCKET_ORDER: DateBucket[] = [
 
 // (BUCKET_LABEL removed — consume t(`bucket.${name}`) via useT() instead.)
 
+/** System-tz start-of-day. Kept for the NL deadline parser where the
+ * user is typing in their own present-tense ("hôm nay", "ngày mai") and
+ * the system tz is the right anchor. NOT used by the tz-aware bucketing
+ * below — that one compares YYYY-MM-DD keys instead. */
 function startOfDay(d: Date): Date {
   const x = new Date(d);
   x.setHours(0, 0, 0, 0);
   return x;
 }
-function endOfDay(d: Date): Date {
-  const x = new Date(d);
-  x.setHours(23, 59, 59, 999);
-  return x;
-}
 
-export function bucketByDate(deadline?: string, now: Date = new Date()): DateBucket {
+/**
+ * Date-bucketing in a specified tz. Compares YYYY-MM-DD strings instead
+ * of timestamp ranges — that's the only way to honor a chosen IANA tz
+ * without "yesterday in UTC" leaking into "today" rendering.
+ */
+export function bucketByDate(
+  deadline?: string,
+  now: Date = new Date(),
+  tz?: string
+): DateBucket {
   if (!deadline) return "none";
   const target = new Date(deadline);
   if (Number.isNaN(target.getTime())) return "none";
-  const today0 = startOfDay(now);
-  const today1 = endOfDay(now);
-  if (target < today0) return "overdue";
-  if (target <= today1) return "today";
-  const weekEnd = endOfDay(new Date(today0.getTime() + 6 * 86_400_000));
-  if (target <= weekEnd) return "this-week";
+  const todayKey = dayKey(now, tz);
+  const targetKey = dayKey(target, tz);
+  if (targetKey < todayKey) return "overdue";
+  if (targetKey === todayKey) return "today";
+  // "This-week" = today + next 6 days in the chosen tz.
+  const sixDaysLater = new Date(now);
+  sixDaysLater.setDate(sixDaysLater.getDate() + 6);
+  const weekEndKey = dayKey(sixDaysLater, tz);
+  if (targetKey <= weekEndKey) return "this-week";
   return "later";
 }
 
-export function groupByBucket(tasks: Task[]): Record<DateBucket, Task[]> {
+export function groupByBucket(
+  tasks: Task[],
+  now: Date = new Date(),
+  tz?: string
+): Record<DateBucket, Task[]> {
   const out: Record<DateBucket, Task[]> = {
     overdue: [],
     today: [],
@@ -73,7 +171,7 @@ export function groupByBucket(tasks: Task[]): Record<DateBucket, Task[]> {
     later: [],
     none: [],
   };
-  for (const t of tasks) out[bucketByDate(t.deadline)].push(t);
+  for (const t of tasks) out[bucketByDate(t.deadline, now, tz)].push(t);
   for (const k of BUCKET_ORDER) {
     out[k].sort((a, b) => {
       const ad = a.deadline ? new Date(a.deadline).getTime() : Number.POSITIVE_INFINITY;
@@ -92,9 +190,12 @@ export function groupByBucket(tasks: Task[]): Record<DateBucket, Task[]> {
 /** Pad a number to 2 chars with leading zero. */
 export const pad2 = (n: number) => n.toString().padStart(2, "0");
 
-/** YYYY-MM-DD local-time key. Used heavily by calendar grids + bucketing. */
-export function dayKey(d: Date): string {
-  return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
+/** YYYY-MM-DD key in the given tz (or system tz when omitted). Used
+ * heavily by calendar grids + bucketing — when the user picks a
+ * different tz in Settings the daily boundaries shift everywhere. */
+export function dayKey(d: Date, tz?: string): string {
+  const p = tzDateParts(d, tz);
+  return `${p.year}-${p.month}-${p.day}`;
 }
 
 /** Canonical FPT-style subject code regex. Single match, no g-flag — for
@@ -445,14 +546,15 @@ export function classifyTitle(input: string): Classification {
 /* ----------------------------------------------------------------
    "isToday" helper for dashboard
    ---------------------------------------------------------------- */
-export function isToday(deadline?: string, now: Date = new Date()): boolean {
+export function isToday(
+  deadline?: string,
+  now: Date = new Date(),
+  tz?: string
+): boolean {
   if (!deadline) return false;
   const d = new Date(deadline);
-  return (
-    d.getFullYear() === now.getFullYear() &&
-    d.getMonth() === now.getMonth() &&
-    d.getDate() === now.getDate()
-  );
+  if (Number.isNaN(d.getTime())) return false;
+  return dayKey(d, tz) === dayKey(now, tz);
 }
 
 export function isPast(deadline?: string, now: Date = new Date()): boolean {
@@ -470,17 +572,53 @@ const RECURRING_CLASS_OVERRIDE_TAGS = new Set([
   "homework",
   "exam",
 ]);
+// Tags the importer attaches to school-timetable rows. Any of these
+// identifies a "class meeting" — a regular lecture/lab session that the
+// user shouldn't see in the overdue badge once it's past, and that lives
+// in the Schedule tab instead of the personal To-do tab.
+const CLASS_MEETING_TAGS = new Set(["lich-hoc"]);
+
+/**
+ * Detect a class-meeting task — used to split the Tasks page into
+ * "Việc cần làm" vs "Lịch học", to exclude class slots from the overdue
+ * badge (they're not a deadline you missed, they're the timetable), and
+ * to drive the homework dialog's "next session" finder.
+ *
+ * Pre-2026-06-13 this checked `t.recurrence === "weekly"`. After the
+ * switch to one-off-per-week imports every class has `recurrence: null`,
+ * which made the check return `false` for everything — Schedule tab
+ * went empty, topbar over-counted overdues, today's-classes strip
+ * disappeared. Now we identify class meetings by the importer's
+ * `#lich-hoc` tag instead, which survives the recurrence flattening.
+ *
+ * Override tags (#bai-tap / #thi / #thi-fe / #homework / #exam) demote
+ * a row back to "personal task" — they describe work that came FROM a
+ * class but needs the user's attention as a deadline.
+ */
 export function isRecurringClass(t: Task): boolean {
-  if (!t.recurrence || t.type !== "academic") return false;
+  if (t.type !== "academic") return false;
   const tags = (t.tags || []).map((x) => x.toLowerCase());
   if (tags.some((tag) => RECURRING_CLASS_OVERRIDE_TAGS.has(tag))) return false;
-  return true;
+  if (tags.some((tag) => CLASS_MEETING_TAGS.has(tag))) return true;
+  // Legacy fallback: pre-migration tasks still carry recurrence === "weekly"
+  // and may not have a #lich-hoc tag. Keep them classified as classes so
+  // existing backups continue to read correctly until the user re-imports.
+  return t.recurrence === "weekly";
 }
 
-/** "30p" / "5h" / "2d" — short relative-past suffix, null if not past. */
+/** "30p" / "5h" / "2d" — short relative-past suffix, null if not past.
+ *
+ * The duration itself is timestamp-arithmetic and tz-agnostic, but we
+ * accept a `tz` parameter anyway (currently unused inside the body) so
+ * the React `useDateFns()` hook can pre-bind it alongside everything
+ * else — every consumer of this helper passes a value that flips with
+ * the user's tz choice, and accepting tz here lets the hook return a
+ * single stable shape rather than special-casing one duration function. */
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 export function formatTimeAgoShort(
   deadline: string,
-  now: Date = new Date()
+  now: Date = new Date(),
+  _tz?: string
 ): string | null {
   const d = new Date(deadline);
   if (Number.isNaN(d.getTime())) return null;
@@ -494,13 +632,14 @@ export function formatTimeAgoShort(
   return `${days}d`;
 }
 
-/** Extract HH:mm from a deadline ISO string, or null if it's date-only. */
-export function extractTimeLabel(deadline?: string): string | null {
+/** Extract HH:mm from a deadline ISO string in the given tz; null if
+ * it's date-only. */
+export function extractTimeLabel(deadline?: string, tz?: string): string | null {
   if (!deadline || !deadline.includes("T")) return null;
   const d = new Date(deadline);
   if (Number.isNaN(d.getTime())) return null;
-  const pad = (n: number) => n.toString().padStart(2, "0");
-  return `${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  const p = tzDateParts(d, tz);
+  return `${p.hour}:${p.minute}`;
 }
 
 /** Sort tasks ascending by deadline time-of-day; tasks without time go last. */

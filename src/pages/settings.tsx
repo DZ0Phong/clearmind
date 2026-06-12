@@ -9,6 +9,7 @@ import {
 import { ThemePicker } from "@/components/theme-picker";
 import { LanguagePicker } from "@/components/language-picker";
 import { AccentPicker } from "@/components/accent-picker";
+import { TimezonePicker } from "@/components/timezone-picker";
 import { useT, useLocaleTag } from "@/lib/i18n";
 import { Button } from "@/components/ui/button";
 import {
@@ -35,6 +36,8 @@ import { readErrorLog, clearErrorLog, type ErrorEntry } from "@/lib/error-log";
 import { useTasks } from "@/hooks/use-tasks";
 import { tagStats, cn } from "@/lib/utils";
 import { useToast } from "@/components/toast";
+import { useDialog } from "@/components/confirm-dialog";
+import { Switch } from "@/components/ui/switch";
 import { downloadICS } from "@/lib/ics";
 import {
   isCliMode,
@@ -63,6 +66,7 @@ export function SettingsPage() {
     requestNotifications,
   } = useTasks();
   const { toast } = useToast();
+  const { confirm } = useDialog();
   const t = useT();
   const fileRef = useRef<HTMLInputElement>(null);
   const [tab, setTab] = useState<Tab>("appearance");
@@ -131,8 +135,14 @@ export function SettingsPage() {
     }
   };
 
-  const handleClear = () => {
-    if (!confirm(t("settings.clearAll.confirm"))) return;
+  const handleClear = async () => {
+    const ok = await confirm({
+      title: t("settings.clearAll.confirmTitle"),
+      description: t("settings.clearAll.confirmBody"),
+      confirmLabel: t("settings.clearAll.confirmCta"),
+      variant: "destructive",
+    });
+    if (!ok) return;
     clearAll();
     toast({ title: t("settings.clearAll.toast"), variant: "destructive" });
   };
@@ -237,6 +247,12 @@ function AppearanceTab() {
           hint={t("settings.language.hint")}
         >
           <LanguagePicker />
+        </RowItem>
+        <RowItem
+          title={t("settings.tz.label")}
+          hint={t("settings.tz.hint")}
+        >
+          <TimezonePicker />
         </RowItem>
       </CardContent>
     </Card>
@@ -386,6 +402,7 @@ function DataTab({
               variant="destructive"
               onClick={onClear}
               className="gap-2 shrink-0"
+              data-testid="settings-clear-all"
             >
               <Trash2 className="h-4 w-4" /> {t("settings.clearAll.button")}
             </Button>
@@ -483,11 +500,18 @@ function RowItem({
 function TagsCard() {
   const { tasks, updateTask } = useTasks();
   const { toast } = useToast();
+  const { confirm, prompt } = useDialog();
   const t = useT();
   const stats = useMemo(() => tagStats(tasks), [tasks]);
 
-  const renameTag = (oldName: string) => {
-    const raw = prompt(t("settings.tagRenamePrompt", { old: oldName }), oldName);
+  const renameTag = async (oldName: string) => {
+    const raw = await prompt({
+      title: t("settings.tagRenameTitle", { old: oldName }),
+      description: t("settings.tagRenameDesc"),
+      defaultValue: oldName,
+      placeholder: t("settings.tagRenamePlaceholder"),
+      confirmLabel: t("settings.tagRenameCta"),
+    });
     const next = raw?.trim().toLowerCase();
     if (!next || next === oldName) return;
     for (const task of tasks) {
@@ -500,8 +524,13 @@ function TagsCard() {
     toast({ title: t("settings.tagRenamedToast", { old: oldName, new: next }) });
   };
 
-  const mergeTag = (oldName: string) => {
-    const raw = prompt(t("settings.tagMergePrompt", { old: oldName }));
+  const mergeTag = async (oldName: string) => {
+    const raw = await prompt({
+      title: t("settings.tagMergeTitle", { old: oldName }),
+      description: t("settings.tagMergeDesc"),
+      placeholder: t("settings.tagMergePlaceholder"),
+      confirmLabel: t("settings.tagMergeCta"),
+    });
     const target = raw?.trim().toLowerCase();
     if (!target || target === oldName) return;
     for (const task of tasks) {
@@ -514,9 +543,15 @@ function TagsCard() {
     toast({ title: t("settings.tagMergedToast", { old: oldName, new: target }) });
   };
 
-  const deleteTag = (name: string) => {
+  const deleteTag = async (name: string) => {
     const count = stats.find((s) => s.name === name)?.count ?? 0;
-    if (!confirm(t("settings.tagDeleteConfirm", { name, n: count }))) return;
+    const ok = await confirm({
+      title: t("settings.tagDeleteTitle", { name }),
+      description: t("settings.tagDeleteDesc", { name, n: count }),
+      confirmLabel: t("settings.tagDeleteCta"),
+      variant: "destructive",
+    });
+    if (!ok) return;
     for (const task of tasks) {
       if (!task.tags?.includes(name)) continue;
       const remain = task.tags.filter((x) => x !== name);
@@ -751,11 +786,12 @@ function CliStatusCard() {
   const { toast } = useToast();
   const { info, setInfo, busy, setBusy } = useCliState();
 
-  const toggleAutostart = async () => {
+  const toggleAutostart = async (nextWanted?: boolean) => {
     if (!info) return;
     setBusy(true);
     try {
-      const next = await cliSetAutostart(!info.autostart);
+      const target = nextWanted ?? !info.autostart;
+      const next = await cliSetAutostart(target);
       setInfo({ ...info, autostart: next });
       toast({
         title: next
@@ -805,15 +841,13 @@ function CliStatusCard() {
           hint={t("settings.cli.autostart.hint")}
           icon={Power}
         >
-          <Button
-            variant={info?.autostart ? "outline" : "default"}
-            onClick={toggleAutostart}
+          <Switch
+            checked={!!info?.autostart}
+            onCheckedChange={toggleAutostart}
             disabled={busy || !info}
-          >
-            {info?.autostart
-              ? t("settings.cli.autostart.on")
-              : t("settings.cli.autostart.off")}
-          </Button>
+            aria-label={t("settings.cli.autostart.title")}
+            data-testid="settings-autostart-switch"
+          />
         </RowItem>
 
         <RowItem
@@ -840,6 +874,7 @@ function CliBackupRecoverCard() {
   const t = useT();
   const localeTag = useLocaleTag();
   const { toast } = useToast();
+  const { confirm } = useDialog();
   const { info, history, busy, setBusy, refresh } = useCliState();
 
   const handleBackup = async () => {
@@ -865,7 +900,13 @@ function CliBackupRecoverCard() {
   };
 
   const handleRecover = async (version: number, count: number) => {
-    if (!confirm(t("settings.cli.recover.confirm", { n: version, count }))) return;
+    const ok = await confirm({
+      title: t("settings.cli.recover.confirmTitle", { n: version }),
+      description: t("settings.cli.recover.confirmBody", { n: version, count }),
+      confirmLabel: t("settings.cli.recover.confirmCta", { n: version }),
+      variant: "destructive",
+    });
+    if (!ok) return;
     setBusy(true);
     try {
       const r = await cliRecover(version);
