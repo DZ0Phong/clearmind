@@ -1,40 +1,43 @@
-/* Clearmind service worker — app-shell caching, stale-while-revalidate. */
-const VERSION = "clearmind-v1";
-const SHELL = ["/", "/index.html", "/favicon.svg", "/manifest.webmanifest"];
+/* Clearmind self-destruct service worker.
+ *
+ * Previous versions cached `/` and `/index.html` aggressively (cache-first
+ * with stale-while-revalidate). On a localhost-only app this gave zero
+ * offline value but caused a real bug: after the user restarted the CLI
+ * (which rebuilds dist/ on every release), the browser kept serving the
+ * cached OLD shell with stale JS-chunk references, so the user saw the
+ * pre-rebuild UI until they manually hit F5. Multiple users reported it.
+ *
+ * The fix is to remove service workers entirely. This file stays at the
+ * same path so that any browser that registered the old SW receives this
+ * replacement on next page load, then:
+ *   1) takes control immediately (claim)
+ *   2) wipes every cache it ever opened
+ *   3) unregisters itself
+ *   4) reloads every open Clearmind tab so the user gets a fresh shell
+ *
+ * `src/main.tsx` no longer calls navigator.serviceWorker.register, so
+ * fresh installs never see this file at all.
+ */
 
-self.addEventListener("install", (event) => {
-  event.waitUntil(
-    caches.open(VERSION).then((c) => c.addAll(SHELL)).catch(() => undefined)
-  );
+self.addEventListener("install", () => {
   self.skipWaiting();
 });
 
 self.addEventListener("activate", (event) => {
-  event.waitUntil(
-    caches.keys().then((keys) =>
-      Promise.all(keys.filter((k) => k !== VERSION).map((k) => caches.delete(k)))
-    )
-  );
-  self.clients.claim();
+  event.waitUntil((async () => {
+    try {
+      await self.clients.claim();
+      const keys = await caches.keys();
+      await Promise.all(keys.map((k) => caches.delete(k)));
+      await self.registration.unregister();
+      const clients = await self.clients.matchAll({ type: "window" });
+      for (const c of clients) {
+        try { c.navigate(c.url); } catch (_) { /* ignore navigation errors */ }
+      }
+    } catch (_) {
+      /* best-effort cleanup; nothing we can do if the cache API is gone */
+    }
+  })());
 });
 
-self.addEventListener("fetch", (event) => {
-  const req = event.request;
-  if (req.method !== "GET") return;
-  const url = new URL(req.url);
-  // Same-origin only — never intercept third-party requests (CDN fonts, etc.)
-  if (url.origin !== self.location.origin) return;
-
-  event.respondWith(
-    caches.open(VERSION).then(async (cache) => {
-      const cached = await cache.match(req);
-      const network = fetch(req)
-        .then((res) => {
-          if (res && res.ok && res.type === "basic") cache.put(req, res.clone());
-          return res;
-        })
-        .catch(() => cached);
-      return cached || network;
-    })
-  );
-});
+// Don't intercept fetches anymore — let the network handle everything.

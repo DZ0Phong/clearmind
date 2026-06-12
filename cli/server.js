@@ -120,7 +120,13 @@ function serveIndex(distDir, ctx, res) {
   }
   let html = fs.readFileSync(file, "utf8");
   html = injectMarker(html, ctx);
-  send(res, 200, html, { "Content-Type": "text/html; charset=utf-8" });
+  send(res, 200, html, {
+    "Content-Type": "text/html; charset=utf-8",
+    // CLI rebuilds dist/ on every release → must never serve stale HTML
+    // through a browser HTTP cache. Bundles have hashed filenames so any
+    // referenced JS chunk will 404 unless the user reads the fresh HTML.
+    "Cache-Control": "no-store, must-revalidate",
+  });
 }
 
 function serveStatic(distDir, ctx, req, res, parsed) {
@@ -137,11 +143,21 @@ function serveStatic(distDir, ctx, req, res, parsed) {
   const buf = fs.readFileSync(file);
   // index.html needs the marker too if user navigates there directly.
   if (ext === ".html") {
-    return send(res, 200, injectMarker(buf.toString("utf8"), ctx), { "Content-Type": type });
+    return send(res, 200, injectMarker(buf.toString("utf8"), ctx), {
+      "Content-Type": type,
+      // no-store: ngăn browser cache HTML cũ qua CLI restart (root cause của
+      // bug "load lại bản cũ" — SW cũ + browser HTTP cache giữ shell stale).
+      "Cache-Control": "no-store, must-revalidate",
+    });
   }
+  // sw.js cần fetch fresh mỗi lần để browser detect được self-destruct
+  // version mới ngay khi user F5. Mọi asset khác có hash filename → cache OK.
+  const isSw = path.basename(file).toLowerCase() === "sw.js";
   send(res, 200, buf, {
     "Content-Type": type,
-    "Cache-Control": ext === ".html" ? "no-cache" : "public, max-age=3600",
+    "Cache-Control": isSw
+      ? "no-store, must-revalidate"
+      : "public, max-age=3600",
   });
 }
 
