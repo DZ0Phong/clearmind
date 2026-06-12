@@ -137,7 +137,11 @@ function writeTasks(dataDir, tasks) {
   if (!Array.isArray(tasks)) throw new Error("tasks must be an array");
   ensureDir(dataDir);
   const file = path.join(dataDir, DATA_FILE);
-  const tmp = file + ".tmp-" + process.pid;
+  // Per-call random suffix so two concurrent PUTs from the same Node
+  // process can't stomp each other's tmp file mid-rename. Previously
+  // `tmp-<pid>` collided across overlapping requests.
+  const tmp = file + ".tmp-" + process.pid + "-" + Date.now().toString(36) +
+    "-" + Math.random().toString(36).slice(2, 8);
   const payload = JSON.stringify(
     { version: 2, exportedAt: new Date().toISOString(), tasks },
     null,

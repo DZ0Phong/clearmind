@@ -70,28 +70,51 @@ function sendJson(res, status, obj) {
   send(res, status, obj, { "Content-Type": "application/json; charset=utf-8" });
 }
 
-function readBody(req, limit = 8 * 1024 * 1024) {
+// 2 MB limit — current Clearmind data files are <100 KB; 2 MB leaves
+// generous headroom for unusual imports. The previous 8 MB was a DoS
+// surface (slow-loris attacker could open many connections each
+// allocating up to 8 MB before timeout).
+function readBody(req, limit = 2 * 1024 * 1024) {
   return new Promise((resolve, reject) => {
     let len = 0;
     const chunks = [];
+    // 30s socket-level timeout so a stuck/slow client can't park a
+    // connection forever. The default Node.js HTTP server has no idle
+    // body timeout — we add one explicitly.
+    const timer = setTimeout(() => {
+      reject(new Error("request body timeout"));
+      try { req.destroy(); } catch (_) {}
+    }, 30_000);
+    const done = (err, value) => {
+      clearTimeout(timer);
+      if (err) reject(err);
+      else resolve(value);
+    };
     req.on("data", (c) => {
       len += c.length;
       if (len > limit) {
-        reject(new Error("payload too large"));
-        req.destroy();
+        done(new Error("payload too large"));
+        try { req.destroy(); } catch (_) {}
         return;
       }
       chunks.push(c);
     });
-    req.on("end", () => resolve(Buffer.concat(chunks).toString("utf8")));
-    req.on("error", reject);
+    req.on("end", () => done(null, Buffer.concat(chunks).toString("utf8")));
+    req.on("error", (e) => done(e));
   });
 }
 
 function safeJoin(root, rel) {
   const target = path.normalize(path.join(root, rel));
-  // Block escape via `..` — `target` must stay inside root.
-  if (!target.startsWith(path.normalize(root))) return null;
+  const rootN = path.normalize(root);
+  // Block escape via `..` — `target` must stay inside root. The naive
+  // `startsWith(rootN)` was a real path-traversal hole: with rootN=
+  // `C:\dist` it accepted `C:\dist-evil\..` after normalization because
+  // the string prefix matched. We compute the relative path and reject
+  // any result that starts with `..` or is absolute (different drive).
+  if (target === rootN) return target;
+  const rel2 = path.relative(rootN, target);
+  if (!rel2 || rel2.startsWith("..") || path.isAbsolute(rel2)) return null;
   return target;
 }
 
@@ -195,8 +218,29 @@ function makeHandler({ distDir, dataDir, port, version }) {
         });
         res.write(`event: snapshot\ndata: ${JSON.stringify({ tasks: storage.readTasks(dataDir), mtimeMs: getMtime(dataDir) })}\n\n`);
         sseClients.add(res);
-        const hb = setInterval(() => { try { res.write(":hb\n\n"); } catch (_) {} }, 15000);
-        req.on("close", () => { clearInterval(hb); sseClients.delete(res); });
+        // TCP keepalive — without it half-open sockets (Wi-Fi roam, NAT
+        // table eviction) take many minutes to be detected as dead.
+        if (res.socket && typeof res.socket.setKeepAlive === "function") {
+          try { res.socket.setKeepAlive(true, 30_000); } catch (_) {}
+        }
+        const hb = setInterval(() => {
+          if (res.writableEnded || res.destroyed) {
+            clearInterval(hb);
+            sseClients.delete(res);
+            return;
+          }
+          try { res.write(":hb\n\n"); } catch (_) {
+            clearInterval(hb);
+            sseClients.delete(res);
+          }
+        }, 15000);
+        const cleanup = () => {
+          clearInterval(hb);
+          sseClients.delete(res);
+        };
+        req.on("close", cleanup);
+        res.on("close", cleanup);
+        res.on("error", cleanup);
         return;
       }
       if (p === "/api/tasks" && req.method === "PUT") {
@@ -225,11 +269,18 @@ function makeHandler({ distDir, dataDir, port, version }) {
         try { parsedBody = JSON.parse(body); } catch (e) {
           return sendJson(res, 400, { ok: false, error: "Invalid JSON" });
         }
-        const tasks = Array.isArray(parsedBody) ? parsedBody : parsedBody && parsedBody.tasks;
-        if (!Array.isArray(tasks)) return sendJson(res, 400, { ok: false, error: "Expect {tasks:[]}" });
+        const rawTasks = Array.isArray(parsedBody) ? parsedBody : parsedBody && parsedBody.tasks;
+        if (!Array.isArray(rawTasks)) return sendJson(res, 400, { ok: false, error: "Expect {tasks:[]}" });
+        // Sanitize input — /api/migrate previously trusted raw objects
+        // while /api/tasks PUT enforced sanitizeTasksArray. That trust
+        // gap let a buggy SPA write arbitrary fields to disk via migrate.
+        const { tasks, dropped } = storage.sanitizeTasksArray(rawTasks);
+        if (dropped > 0) {
+          console.warn(`[clearmind] POST /api/migrate: dropped ${dropped} malformed task(s).`);
+        }
         const r = storage.mergeTasks(dataDir, tasks);
         sseBroadcast("tasks-updated", { tasks: storage.readTasks(dataDir), mtimeMs: getMtime(dataDir) });
-        return sendJson(res, 200, { ok: true, ...r });
+        return sendJson(res, 200, { ok: true, dropped, ...r });
       }
       if (p === "/api/backup" && req.method === "POST") {
         return sendJson(res, 200, storage.makeBackup(dataDir));
@@ -308,9 +359,12 @@ function makeHandler({ distDir, dataDir, port, version }) {
           return sendJson(res, 400, { ok: false, error: `Unknown action: ${action}` });
         }
         storage.writeTasks(dataDir, tasks);
-        notifications.scheduleAll(tasks);
+        // Re-read AFTER write so the SSE payload reflects what's on disk
+        // (sanitized + post-rotation). Matches the /api/migrate pattern.
+        const persisted = storage.readTasks(dataDir);
+        notifications.scheduleAll(persisted);
         const mtimeMs = getMtime(dataDir);
-        sseBroadcast("tasks-updated", { tasks, mtimeMs });
+        sseBroadcast("tasks-updated", { tasks: persisted, mtimeMs });
         console.log(`[clearmind] notif-action ${action} on ${id} → ${applied}`);
         // Reply với auto-close HTML phòng case user bấm URL từ browser
         // (vd scheme chưa register, Windows fallback). Khi gọi từ

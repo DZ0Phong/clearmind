@@ -117,11 +117,20 @@ function fireWindowsToast({ title, message, icon, taskId }) {
   );
   let stderr = "";
   proc.stderr.on("data", (chunk) => { stderr += chunk.toString(); });
+  // Guard timer — if PowerShell hangs (AV scan, locked profile, slow
+  // WinRT init), kill it after 15s so we don't accumulate orphan
+  // children. Cleared on normal close.
+  const killer = setTimeout(() => {
+    try { proc.kill(); } catch (_) {}
+    console.warn("[clearmind] toast.ps1 killed after 15s timeout");
+  }, 15_000);
   proc.on("error", (e) => {
+    clearTimeout(killer);
     console.warn("[clearmind] PowerShell toast spawn error:", e && e.message);
     fireFallback({ title, message, icon });
   });
   proc.on("close", (code) => {
+    clearTimeout(killer);
     if (code !== 0) {
       console.warn(`[clearmind] toast.ps1 exit=${code}${stderr ? " · " + stderr.trim().slice(0, 200) : ""}`);
       fireFallback({ title, message, icon });
