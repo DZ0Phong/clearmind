@@ -239,6 +239,57 @@ function makeHandler({ distDir, dataDir, port, version }) {
         notifications.fireTest();
         return sendJson(res, 200, { ok: true });
       }
+      // Action endpoint cho toast buttons. Được gọi bởi url-handler.js
+      // (qua clearmind:// URL scheme) khi user click "Hoãn 10p" / "Hoãn 1h"
+      // / "Xong" trên toast. Cũng cho phép GET để fallback (browser mở trực
+      // tiếp URL HTTP nếu scheme chưa register kịp).
+      if (p === "/api/notification-action" &&
+          (req.method === "POST" || req.method === "GET")) {
+        const action = parsed.searchParams.get("action") || "";
+        const id = parsed.searchParams.get("id") || "";
+        if (!id || !action) {
+          return sendJson(res, 400, { ok: false, error: "Missing action/id" });
+        }
+        const tasks = storage.readTasks(dataDir);
+        const target = tasks.find((t) => t.id === id);
+        if (!target) {
+          return sendJson(res, 404, { ok: false, error: "Task không tìm thấy" });
+        }
+        let applied = "";
+        if ((action === "snooze-10" || action === "snooze-60") && target.deadline) {
+          const minutes = action === "snooze-10" ? 10 : 60;
+          target.deadline = new Date(
+            new Date(target.deadline).getTime() + minutes * 60_000
+          ).toISOString();
+          applied = `snoozed ${minutes}m`;
+        } else if (action === "done") {
+          target.status = "done";
+          target.completedAt = new Date().toISOString();
+          applied = "done";
+        } else {
+          return sendJson(res, 400, { ok: false, error: `Unknown action: ${action}` });
+        }
+        storage.writeTasks(dataDir, tasks);
+        notifications.scheduleAll(tasks);
+        const mtimeMs = getMtime(dataDir);
+        sseBroadcast("tasks-updated", { tasks, mtimeMs });
+        console.log(`[clearmind] notif-action ${action} on ${id} → ${applied}`);
+        // Reply với auto-close HTML phòng case user bấm URL từ browser
+        // (vd scheme chưa register, Windows fallback). Khi gọi từ
+        // url-handler.js qua POST, response body bị bỏ qua.
+        if (req.method === "GET") {
+          return send(
+            res,
+            200,
+            `<!doctype html><meta charset="utf-8"><title>Clearmind</title>` +
+              `<style>body{font:14px system-ui;color:#666;padding:1.5em;text-align:center}</style>` +
+              `<script>setTimeout(()=>window.close(),300)</script>` +
+              `<body>✓ ${applied}. Bạn có thể đóng tab này.</body>`,
+            { "Content-Type": "text/html; charset=utf-8" }
+          );
+        }
+        return sendJson(res, 200, { ok: true, applied });
+      }
       if (p === "/api/open-data-dir" && req.method === "POST") {
         openFolder(dataDir);
         return sendJson(res, 200, { ok: true });
@@ -323,6 +374,9 @@ async function start({ distDir, dataDir, port, version, maxAttempts = 20 }) {
     try {
       const server = await tryListen(tryPort);
       server.on("request", makeHandler({ distDir, dataDir, port: tryPort, version }));
+      // Notifications cần biết port để toast action button đặt URL đúng
+      // (clearmind://… handler bridge sang http://127.0.0.1:<port>).
+      if (notifications.setPort) notifications.setPort(tryPort);
       // Schedule native notifications from whatever's already on disk —
       // covers the autostart case where the user never opens the browser
       // but still expects deadline pings.

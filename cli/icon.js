@@ -6,6 +6,10 @@ const zlib = require("node:zlib");
 
 const ASSETS_DIR = path.join(__dirname, "assets");
 const PNG_FILE = path.join(ASSETS_DIR, "icon.png");
+// Larger PNG for Windows toast notifications. ToastImageAndText02 (the old
+// template) crops to a small circle; ToastGeneric appLogoOverride can show
+// the full icon up to 256×256 pixels. The crisp big version lives here.
+const PNG_LARGE_FILE = path.join(ASSETS_DIR, "icon-256.png");
 const ICO_FILE = path.join(ASSETS_DIR, "icon.ico");
 
 // Indigo brand color from public/favicon.svg gradient mid-stop.
@@ -171,6 +175,9 @@ function ensureIcons({ force = false } = {}) {
   if (force || !fs.existsSync(PNG_FILE)) {
     fs.writeFileSync(PNG_FILE, drawIcon(32));
   }
+  if (force || !fs.existsSync(PNG_LARGE_FILE)) {
+    fs.writeFileSync(PNG_LARGE_FILE, drawIcon(256));
+  }
   if (force || !fs.existsSync(ICO_FILE)) {
     fs.writeFileSync(ICO_FILE, buildIco([
       { size: 16, png: drawIcon(16) },
@@ -187,4 +194,12 @@ function readIconBase64() {
   return fs.readFileSync(PNG_FILE).toString("base64");
 }
 
-module.exports = { ensureIcons, readIconBase64, drawIcon, buildIco, ICO_FILE, PNG_FILE };
+module.exports = {
+  ensureIcons,
+  readIconBase64,
+  drawIcon,
+  buildIco,
+  ICO_FILE,
+  PNG_FILE,
+  PNG_LARGE_FILE,
+};

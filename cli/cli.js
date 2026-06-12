@@ -107,6 +107,11 @@ async function checkExisting(dataDir) {
 async function runForeground(opts, dataDir) {
   storage.ensureDir(dataDir);
 
+  // Generate icon assets up-front so toast notifications + tray both find
+  // them. tray.js does this on its own require(), but with --no-tray
+  // (autostart of toast-only mode) we'd otherwise miss the 256px PNG.
+  try { require("./icon").ensureIcons(); } catch (_) {}
+
   // Acquire single-instance lock so a second `clearmind --tray` boot-launch
   // can't race against a manually-started one.
   const acq = await singleInstance.acquire(dataDir, opts.port);
@@ -114,6 +119,19 @@ async function runForeground(opts, dataDir) {
     console.log(`[clearmind] Đã có instance chạy ở port ${acq.existingPort}. Mở dashboard.`);
     if (!opts.noBrowser) openBrowser(`http://localhost:${acq.existingPort}/dashboard`);
     return;
+  }
+
+  // Register the `clearmind://` URL scheme so toast notification action
+  // buttons can call our local handler silently (no browser flash). Self-
+  // heals on every start in case Node or CLI install path changed.
+  try {
+    const { registerUrlScheme } = require("./url-scheme");
+    const r = registerUrlScheme();
+    if (!r.ok && r.reason !== "non-win32") {
+      console.warn("[clearmind] URL scheme register skipped:", r.reason);
+    }
+  } catch (e) {
+    console.warn("[clearmind] URL scheme register failed:", e && e.message);
   }
 
   let { server: httpServer, port: actualPort } = await server.start({

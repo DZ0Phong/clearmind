@@ -23,10 +23,19 @@ try {
   notifier = require("node-notifier");
 } catch (_) { /* optional */ }
 
+// Small PNG (32×32) for non-Windows fallback (terminal-notifier / notify-send
+// render it inline at standard size).
 const ICON_PATH = path.join(__dirname, "assets", "icon.png");
+// Large PNG (256×256) used as appLogoOverride on Windows ToastGeneric. The
+// circle-crop default of older templates sliced the square logo; the new
+// template requests hint-crop='none' and a 256px source so the indigo
+// rounded-square + star renders crisp at any DPI.
+const ICON_LARGE_PATH = path.join(__dirname, "assets", "icon-256.png");
 const PS_SCRIPT = path.join(__dirname, "toast.ps1");
 
 const timers = new Map(); // taskId → { handle, fireAt, title }
+let portRef = null;
+function setPort(p) { portRef = p; }
 
 // Read user language preference từ %APPDATA%\Clearmind\clearmind.lang
 // (SPA ghi qua PUT /api/locale). Default "vi" để khớp legacy behavior.
@@ -60,7 +69,7 @@ function clearAll() {
   timers.clear();
 }
 
-function fireWindowsToast({ title, message, icon }) {
+function fireWindowsToast({ title, message, icon, taskId }) {
   if (!fs.existsSync(PS_SCRIPT)) {
     console.warn("[clearmind] toast.ps1 not found at", PS_SCRIPT);
     fireFallback({ title, message, icon });
@@ -80,6 +89,8 @@ function fireWindowsToast({ title, message, icon }) {
         CM_TITLE: String(title || ""),
         CM_MESSAGE: String(message || ""),
         CM_ICON: icon ? String(icon) : "",
+        CM_TASK_ID: taskId ? String(taskId) : "",
+        CM_PORT: portRef ? String(portRef) : "",
       },
       windowsHide: true,
       stdio: ["ignore", "ignore", "pipe"],
@@ -123,7 +134,12 @@ function fire(task) {
   const title = "Clearmind · " + (task.title || (lang === "en" ? "Reminder" : "Nhắc nhở"));
   const message = task.description || I18N[lang].reminderDefault;
   if (process.platform === "win32") {
-    fireWindowsToast({ title, message, icon: ICON_PATH });
+    fireWindowsToast({
+      title,
+      message,
+      icon: ICON_LARGE_PATH,
+      taskId: task.id,
+    });
   } else {
     fireFallback({ title, message, icon: ICON_PATH });
   }
@@ -171,4 +187,4 @@ function scheduleAll(tasks) {
   console.log(`[clearmind] Scheduled ${scheduled} native notification(s) in next 25h.`);
 }
 
-module.exports = { scheduleAll, clearAll, fire, fireTest, scheduledList, setDataDir };
+module.exports = { scheduleAll, clearAll, fire, fireTest, scheduledList, setDataDir, setPort };
