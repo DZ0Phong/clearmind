@@ -1,0 +1,27 @@
+{
+  "name": "Clearmind — Your External Brain",
+  "short_name": "Clearmind",
+  "description": "Personal task and calendar app with Vietnamese natural-language input, voice capture, Pomodoro focus, and weekly review.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#0b0e12",
+  "theme_color": "#863bff",
+  "orientation": "any",
+  "icons": [
+    {
+      "src": "/favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    },
+    {
+      "src": "/favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "maskable"
+    }
+  ],
+  "categories": ["productivity", "utilities"],
+  "lang": "vi"
+}

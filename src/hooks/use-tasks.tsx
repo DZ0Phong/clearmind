@@ -1,0 +1,589 @@
+/* eslint-disable react-refresh/only-export-components */
+import React, {
+  useState,
+  useEffect,
+  useCallback,
+  useRef,
+  createContext,
+  useContext,
+} from "react";
+import { isCliMode, cliFetchTasks, cliPutTasks, cliMigrate } from "@/lib/cli-bridge";
+
+export type TaskType = "academic" | "personal" | "work" | "other";
+export type TaskPriority = "high" | "medium" | "low";
+export type TaskStatus = "todo" | "in-progress" | "done";
+export type RecurrenceRule = "daily" | "weekday" | "weekly" | "monthly";
+export type ReminderPref = "at-time" | "5m" | "15m" | "1h" | "1d";
+
+export interface Task {
+  id: string;
+  title: string;
+  description?: string;
+  type: TaskType;
+  priority: TaskPriority;
+  status: TaskStatus;
+  deadline?: string;
+  location?: string;
+  tags?: string[];
+  parentId?: string | null;
+  recurrence?: RecurrenceRule | null;
+  /** Optional end-date (ISO) for recurrence — e.g. end of semester. Stops spawning when next > end. */
+  recurrenceEndAt?: string | null;
+  notify?: ReminderPref | null;
+  pomodoroMinutes?: number;
+  createdAt: string;
+  completedAt?: string;
+}
+
+export interface ExportShape {
+  version: 2;
+  exportedAt: string;
+  tasks: Task[];
+}
+
+interface TasksContextType {
+  tasks: Task[];
+  addTask: (
+    task: Omit<Task, "id" | "createdAt" | "status"> & { status?: TaskStatus }
+  ) => string;
+  updateTaskStatus: (id: string, status: TaskStatus) => void;
+  cycleStatus: (id: string) => void;
+  updateTask: (id: string, updates: Partial<Omit<Task, "id">>) => void;
+  removeTask: (id: string) => { restore: () => void };
+  snoozeTask: (id: string, deltaMs: number) => void;
+  clearAll: () => void;
+  exportJson: () => string;
+  importJson: (raw: string) => { ok: boolean; added: number; error?: string };
+  incrementPomodoro: (id: string, minutes: number) => void;
+  /** Roll any overdue recurring weekly task to its next future occurrence.
+   *  Returns { moved, restore } for an undoable toast. */
+  rollForwardOverdueRecurring: () => { moved: number; restore: () => void };
+  /** Dedupe tasks sharing the same signature (title+dow+startTime+location+recurrence).
+   *  Keeps the newest createdAt. Returns { removed, restore } for undo. */
+  clearDuplicates: () => { removed: number; restore: () => void };
+  notificationsEnabled: boolean;
+  requestNotifications: () => Promise<boolean>;
+}
+
+const TasksContext = createContext<TasksContextType | undefined>(undefined);
+
+const STORAGE_KEY = "clearmind_tasks";
+
+function nextRecurrence(deadline: string, rule: RecurrenceRule): string {
+  const d = new Date(deadline);
+  if (rule === "daily") d.setDate(d.getDate() + 1);
+  else if (rule === "weekday") {
+    do d.setDate(d.getDate() + 1);
+    while (d.getDay() === 0 || d.getDay() === 6);
+  } else if (rule === "weekly") d.setDate(d.getDate() + 7);
+  else if (rule === "monthly") d.setMonth(d.getMonth() + 1);
+  return deadline.includes("T") ? d.toISOString() : d.toISOString().slice(0, 10);
+}
+
+// Detect whether a future-week instance of this recurring task already
+// exists. Prevents the complete-flow from spawning a duplicate when the
+// user has already imported next week's schedule manually.
+function nextInstanceAlreadyExists(
+  prev: Task[],
+  target: Task,
+  nextDeadline: string
+): boolean {
+  const nextD = new Date(nextDeadline);
+  if (Number.isNaN(nextD.getTime())) return false;
+  const nextYmd = nextDeadline.slice(0, 10);
+  const nextHh = nextD.getHours().toString().padStart(2, "0");
+  const nextMm = nextD.getMinutes().toString().padStart(2, "0");
+  const targetTitle = target.title.trim().toLowerCase();
+  return prev.some((t) => {
+    if (t.id === target.id) return false;
+    if (t.recurrence !== target.recurrence) return false;
+    if (!t.deadline) return false;
+    if (t.title.trim().toLowerCase() !== targetTitle) return false;
+    if (t.deadline.slice(0, 10) !== nextYmd) return false;
+    const td = new Date(t.deadline);
+    if (Number.isNaN(td.getTime())) return false;
+    const hh = td.getHours().toString().padStart(2, "0");
+    const mm = td.getMinutes().toString().padStart(2, "0");
+    return hh === nextHh && mm === nextMm;
+  });
+}
+
+function reminderOffsetMs(pref: ReminderPref): number {
+  switch (pref) {
+    case "at-time":
+      return 0;
+    case "5m":
+      return 5 * 60_000;
+    case "15m":
+      return 15 * 60_000;
+    case "1h":
+      return 60 * 60_000;
+    case "1d":
+      return 24 * 60 * 60_000;
+  }
+}
+
+type LoadState = "loading" | "loaded" | "error";
+
+export function TasksProvider({ children }: { children: React.ReactNode }) {
+  const [tasks, setTasks] = useState<Task[]>([]);
+  // CRITICAL: this is the guard against the data-wipe bug. We MUST NOT save
+  // anything to the server until the initial fetch has SUCCEEDED. If it
+  // failed (network blip, server slow to start), `loadState` stays "error"
+  // and saves are blocked — the on-disk file remains intact.
+  const [loadState, setLoadState] = useState<LoadState>("loading");
+  const [notificationsEnabled, setNotificationsEnabled] = useState(
+    typeof Notification !== "undefined" && Notification.permission === "granted"
+  );
+  const timersRef = useRef<Map<string, number>>(new Map());
+  const tasksRef = useRef<Task[]>([]);
+  tasksRef.current = tasks;
+  // Last serialized snapshot we know is on disk. We skip PUTs when current
+  // tasks already match this — prevents a no-op flush after initial load
+  // from overwriting the file with a possibly-different shape.
+  const lastSyncedRef = useRef<string | null>(null);
+  const cli = isCliMode();
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      if (cli) {
+        try {
+          let serverTasks = await cliFetchTasks();
+          // First-run migration — only meaningful if origin's localStorage
+          // happens to hold legacy data AND the server is empty.
+          const local = localStorage.getItem(STORAGE_KEY);
+          if (local) {
+            try {
+              const parsed = JSON.parse(local);
+              const localTasks: Task[] = Array.isArray(parsed) ? parsed : [];
+              if (localTasks.length && serverTasks.length === 0) {
+                await cliMigrate(localTasks);
+                const after = await cliFetchTasks();
+                if (after.length >= localTasks.length) {
+                  localStorage.setItem(STORAGE_KEY + "_legacy", local);
+                  localStorage.removeItem(STORAGE_KEY);
+                  serverTasks = after;
+                } else {
+                  console.warn(
+                    "[clearmind] Migration didn't reach the server — keeping localStorage intact."
+                  );
+                }
+              }
+            } catch (e) {
+              console.warn("[clearmind] localStorage parse failed — leaving it untouched:", e);
+            }
+          }
+          if (!cancelled) {
+            setTasks(serverTasks);
+            lastSyncedRef.current = JSON.stringify(serverTasks);
+            setLoadState("loaded");
+          }
+        } catch (e) {
+          console.error("[clearmind] CLI initial fetch FAILED — saves disabled to prevent data loss:", e);
+          if (!cancelled) setLoadState("error");
+        }
+      } else {
+        const saved = localStorage.getItem(STORAGE_KEY);
+        if (saved) {
+          try {
+            const parsed = JSON.parse(saved);
+            if (Array.isArray(parsed) && !cancelled) setTasks(parsed);
+          } catch (e) {
+            console.error("Failed to parse tasks", e);
+          }
+        }
+        if (!cancelled) {
+          lastSyncedRef.current = saved ?? "[]";
+          setLoadState("loaded");
+        }
+      }
+    })();
+
+    return () => { cancelled = true; };
+  }, [cli]);
+
+  // Persist on change. Only fires when the initial load succeeded AND the
+  // current snapshot actually differs from what we last persisted.
+  useEffect(() => {
+    if (loadState !== "loaded") return;
+    const serialized = JSON.stringify(tasks);
+    if (serialized === lastSyncedRef.current) return; // no-op — nothing to save
+
+    if (!cli) {
+      localStorage.setItem(STORAGE_KEY, serialized);
+      lastSyncedRef.current = serialized;
+      return;
+    }
+    const handle = window.setTimeout(async () => {
+      try {
+        await cliPutTasks(tasks);
+        lastSyncedRef.current = serialized;
+      } catch (e) {
+        console.warn("[clearmind] PUT /api/tasks failed:", e);
+      }
+    }, 400);
+    return () => window.clearTimeout(handle);
+  }, [tasks, loadState, cli]);
+
+  // Flush pending edits on page unload — but ONLY if dirty AND loaded.
+  // `keepalive: true` lets the request finish after the document is gone.
+  useEffect(() => {
+    if (!cli) return;
+    const handler = () => {
+      if (loadState !== "loaded") return;
+      const serialized = JSON.stringify(tasksRef.current);
+      if (serialized === lastSyncedRef.current) return;
+      try {
+        fetch("/api/tasks", {
+          method: "PUT",
+          body: JSON.stringify({ tasks: tasksRef.current }),
+          headers: { "Content-Type": "application/json" },
+          keepalive: true,
+        });
+      } catch (_) { /* best-effort */ }
+    };
+    window.addEventListener("beforeunload", handler);
+    return () => window.removeEventListener("beforeunload", handler);
+  }, [cli, loadState]);
+
+  // Schedule local Notifications for tasks with notify + future deadline within 24h.
+  // In CLI mode the Node server fires native OS toasts instead — running both
+  // would double-fire, so we skip the browser side entirely.
+  useEffect(() => {
+    if (cli) return;
+    if (!notificationsEnabled) return;
+    const timers = timersRef.current;
+    timers.forEach((id) => window.clearTimeout(id));
+    timers.clear();
+
+    const now = Date.now();
+    for (const t of tasks) {
+      if (!t.notify || !t.deadline || t.status === "done") continue;
+      const target = new Date(t.deadline).getTime() - reminderOffsetMs(t.notify);
+      const delay = target - now;
+      if (delay > 0 && delay < 24 * 60 * 60_000) {
+        const handle = window.setTimeout(() => {
+          try {
+            new Notification("Clearmind · " + t.title, {
+              body: t.description || "Deadline đang tới.",
+              tag: "clearmind-" + t.id,
+            });
+          } catch (e) {
+            console.warn("Notification failed", e);
+          }
+        }, delay);
+        timers.set(t.id, handle);
+      }
+    }
+    return () => {
+      timers.forEach((id) => window.clearTimeout(id));
+      timers.clear();
+    };
+  }, [tasks, notificationsEnabled, cli]);
+
+  const addTask: TasksContextType["addTask"] = useCallback((t) => {
+    const id = crypto.randomUUID();
+    setTasks((prev) => [
+      {
+        status: "todo",
+        ...t,
+        id,
+        createdAt: new Date().toISOString(),
+      } as Task,
+      ...prev,
+    ]);
+    return id;
+  }, []);
+
+  const updateTaskStatus = useCallback((id: string, status: TaskStatus) => {
+    setTasks((prev) => {
+      const target = prev.find((t) => t.id === id);
+      if (!target) return prev;
+      const justCompleted = status === "done" && target.status !== "done";
+      const next = prev.map((t) =>
+        t.id === id
+          ? {
+              ...t,
+              status,
+              completedAt: justCompleted
+                ? new Date().toISOString()
+                : t.completedAt,
+            }
+          : t
+      );
+      // recurrence: spawn a new occurrence (unless past recurrenceEndAt
+      // OR the next instance was already created — e.g. via a fresh import)
+      if (justCompleted && target.recurrence && target.deadline) {
+        const nextDeadline = nextRecurrence(target.deadline, target.recurrence);
+        const stopBy = target.recurrenceEndAt
+          ? new Date(target.recurrenceEndAt).getTime()
+          : Number.POSITIVE_INFINITY;
+        if (
+          new Date(nextDeadline).getTime() <= stopBy &&
+          !nextInstanceAlreadyExists(prev, target, nextDeadline)
+        ) {
+          const spawn: Task = {
+            ...target,
+            id: crypto.randomUUID(),
+            status: "todo",
+            deadline: nextDeadline,
+            createdAt: new Date().toISOString(),
+            completedAt: undefined,
+            pomodoroMinutes: 0,
+          };
+          return [spawn, ...next];
+        }
+      }
+      return next;
+    });
+  }, []);
+
+  const cycleStatus = useCallback((id: string) => {
+    setTasks((prev) => {
+      const target = prev.find((t) => t.id === id);
+      if (!target) return prev;
+      const order: TaskStatus[] = ["todo", "in-progress", "done"];
+      const next = order[(order.indexOf(target.status) + 1) % order.length];
+      const justCompleted = next === "done" && target.status !== "done";
+      const updated = prev.map((t) =>
+        t.id === id
+          ? {
+              ...t,
+              status: next,
+              completedAt: justCompleted
+                ? new Date().toISOString()
+                : t.completedAt,
+            }
+          : t
+      );
+      if (justCompleted && target.recurrence && target.deadline) {
+        const nextDeadline = nextRecurrence(target.deadline, target.recurrence);
+        const stopBy = target.recurrenceEndAt
+          ? new Date(target.recurrenceEndAt).getTime()
+          : Number.POSITIVE_INFINITY;
+        if (
+          new Date(nextDeadline).getTime() <= stopBy &&
+          !nextInstanceAlreadyExists(prev, target, nextDeadline)
+        ) {
+          const spawn: Task = {
+            ...target,
+            id: crypto.randomUUID(),
+            status: "todo",
+            deadline: nextDeadline,
+            createdAt: new Date().toISOString(),
+            completedAt: undefined,
+            pomodoroMinutes: 0,
+          };
+          return [spawn, ...updated];
+        }
+      }
+      return updated;
+    });
+  }, []);
+
+  const updateTask = useCallback(
+    (id: string, updates: Partial<Omit<Task, "id">>) => {
+      setTasks((prev) => prev.map((t) => (t.id === id ? { ...t, ...updates } : t)));
+    },
+    []
+  );
+
+  const removeTask = useCallback((id: string) => {
+    let snapshot: Task[] | null = null;
+    setTasks((prev) => {
+      snapshot = prev;
+      return prev.filter((t) => t.id !== id);
+    });
+    return {
+      restore: () => {
+        if (snapshot) setTasks(snapshot);
+      },
+    };
+  }, []);
+
+  const snoozeTask = useCallback((id: string, deltaMs: number) => {
+    setTasks((prev) =>
+      prev.map((t) => {
+        if (t.id !== id) return t;
+        const base = t.deadline ? new Date(t.deadline) : new Date();
+        const shifted = new Date(base.getTime() + deltaMs);
+        const hadTime = !t.deadline || t.deadline.includes("T");
+        return {
+          ...t,
+          deadline: hadTime
+            ? shifted.toISOString()
+            : `${shifted.getFullYear()}-${(shifted.getMonth() + 1)
+                .toString()
+                .padStart(2, "0")}-${shifted.getDate().toString().padStart(2, "0")}`,
+        };
+      })
+    );
+  }, []);
+
+  const clearAll = useCallback(() => setTasks([]), []);
+
+  const rollForwardOverdueRecurring = useCallback(() => {
+    let snapshot: Task[] | null = null;
+    let moved = 0;
+    setTasks((prev) => {
+      snapshot = prev;
+      const now = Date.now();
+      return prev.map((t) => {
+        if (!t.recurrence || !t.deadline || t.status === "done") return t;
+        let next = t.deadline;
+        let target = new Date(next).getTime();
+        if (target >= now) return t;
+        let safety = 200; // bound the loop
+        while (target < now && safety-- > 0) {
+          next = nextRecurrence(next, t.recurrence);
+          target = new Date(next).getTime();
+        }
+        if (t.recurrenceEndAt && target > new Date(t.recurrenceEndAt).getTime()) {
+          // Past semester end — leave it for the user to delete manually.
+          return t;
+        }
+        moved++;
+        return { ...t, deadline: next };
+      });
+    });
+    return {
+      moved,
+      restore: () => {
+        if (snapshot) setTasks(snapshot);
+      },
+    };
+  }, []);
+
+  const clearDuplicates = useCallback(() => {
+    let snapshot: Task[] | null = null;
+    let removed = 0;
+    setTasks((prev) => {
+      snapshot = prev;
+      const sig = (t: Task): string | null => {
+        if (!t.recurrence || !t.deadline) return null;
+        const d = new Date(t.deadline);
+        if (Number.isNaN(d.getTime())) return null;
+        const dow = d.getDay();
+        const hh = d.getHours().toString().padStart(2, "0");
+        const mm = d.getMinutes().toString().padStart(2, "0");
+        const title = t.title.trim().toLowerCase();
+        const loc = (t.location || "").trim().toLowerCase();
+        return `${t.recurrence}|${dow}|${hh}:${mm}|${title}|${loc}`;
+      };
+      // Newest-first ordering so we keep the latest createdAt per signature.
+      const sorted = [...prev].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+      const seen = new Set<string>();
+      const keepIds = new Set<string>();
+      for (const t of sorted) {
+        const k = sig(t);
+        if (k && seen.has(k)) continue;
+        if (k) seen.add(k);
+        keepIds.add(t.id);
+      }
+      const next = prev.filter((t) => keepIds.has(t.id));
+      removed = prev.length - next.length;
+      return next;
+    });
+    return {
+      removed,
+      restore: () => {
+        if (snapshot) setTasks(snapshot);
+      },
+    };
+  }, []);
+
+  const exportJson = useCallback(() => {
+    const payload: ExportShape = {
+      version: 2,
+      exportedAt: new Date().toISOString(),
+      tasks,
+    };
+    return JSON.stringify(payload, null, 2);
+  }, [tasks]);
+
+  const importJson = useCallback<TasksContextType["importJson"]>((raw) => {
+    try {
+      const parsed = JSON.parse(raw);
+      const incoming: Task[] = Array.isArray(parsed)
+        ? parsed
+        : Array.isArray(parsed?.tasks)
+        ? parsed.tasks
+        : [];
+      if (!incoming.length)
+        return { ok: false, added: 0, error: "Không thấy task nào trong file." };
+
+      let added = 0;
+      setTasks((prev) => {
+        const byId = new Map(prev.map((t) => [t.id, t]));
+        for (const t of incoming) {
+          if (!t.id) t.id = crypto.randomUUID();
+          if (!t.createdAt) t.createdAt = new Date().toISOString();
+          if (!t.status) t.status = "todo";
+          if (!byId.has(t.id)) {
+            byId.set(t.id, t);
+            added++;
+          }
+        }
+        return Array.from(byId.values());
+      });
+      return { ok: true, added };
+    } catch (e) {
+      return { ok: false, added: 0, error: (e as Error).message };
+    }
+  }, []);
+
+  const incrementPomodoro = useCallback((id: string, minutes: number) => {
+    setTasks((prev) =>
+      prev.map((t) =>
+        t.id === id
+          ? { ...t, pomodoroMinutes: (t.pomodoroMinutes || 0) + minutes }
+          : t
+      )
+    );
+  }, []);
+
+  const requestNotifications = useCallback(async () => {
+    if (typeof Notification === "undefined") return false;
+    if (Notification.permission === "granted") {
+      setNotificationsEnabled(true);
+      return true;
+    }
+    if (Notification.permission === "denied") return false;
+    const res = await Notification.requestPermission();
+    const ok = res === "granted";
+    setNotificationsEnabled(ok);
+    return ok;
+  }, []);
+
+  return (
+    <TasksContext.Provider
+      value={{
+        tasks,
+        addTask,
+        updateTaskStatus,
+        cycleStatus,
+        updateTask,
+        removeTask,
+        snoozeTask,
+        clearAll,
+        exportJson,
+        importJson,
+        incrementPomodoro,
+        rollForwardOverdueRecurring,
+        clearDuplicates,
+        notificationsEnabled,
+        requestNotifications,
+      }}
+    >
+      {children}
+    </TasksContext.Provider>
+  );
+}
+
+export function useTasks() {
+  const context = useContext(TasksContext);
+  if (context === undefined)
+    throw new Error("useTasks must be used within a TasksProvider");
+  return context;
+}

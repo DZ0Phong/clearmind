@@ -1,0 +1,304 @@
+"use strict";
+
+const http = require("node:http");
+const fs = require("node:fs");
+const path = require("node:path");
+
+const storage = require("./storage");
+const autostart = require("./autostart");
+const notifications = require("./notifications");
+const { openFolder } = require("./open-browser");
+
+const MIME = {
+  ".html": "text/html; charset=utf-8",
+  ".js":   "application/javascript; charset=utf-8",
+  ".mjs":  "application/javascript; charset=utf-8",
+  ".css":  "text/css; charset=utf-8",
+  ".json": "application/json; charset=utf-8",
+  ".svg":  "image/svg+xml",
+  ".png":  "image/png",
+  ".jpg":  "image/jpeg",
+  ".jpeg": "image/jpeg",
+  ".gif":  "image/gif",
+  ".ico":  "image/x-icon",
+  ".webmanifest": "application/manifest+json",
+  ".woff":  "font/woff",
+  ".woff2": "font/woff2",
+  ".ttf":   "font/ttf",
+  ".map":   "application/json",
+  ".txt":   "text/plain; charset=utf-8",
+};
+
+function send(res, status, body, headers = {}) {
+  const buf = Buffer.isBuffer(body) ? body : Buffer.from(typeof body === "string" ? body : JSON.stringify(body));
+  res.writeHead(status, { "Content-Length": buf.length, ...headers });
+  res.end(buf);
+}
+
+function sendJson(res, status, obj) {
+  send(res, status, obj, { "Content-Type": "application/json; charset=utf-8" });
+}
+
+function readBody(req, limit = 8 * 1024 * 1024) {
+  return new Promise((resolve, reject) => {
+    let len = 0;
+    const chunks = [];
+    req.on("data", (c) => {
+      len += c.length;
+      if (len > limit) {
+        reject(new Error("payload too large"));
+        req.destroy();
+        return;
+      }
+      chunks.push(c);
+    });
+    req.on("end", () => resolve(Buffer.concat(chunks).toString("utf8")));
+    req.on("error", reject);
+  });
+}
+
+function safeJoin(root, rel) {
+  const target = path.normalize(path.join(root, rel));
+  // Block escape via `..` — `target` must stay inside root.
+  if (!target.startsWith(path.normalize(root))) return null;
+  return target;
+}
+
+function injectMarker(html, ctx) {
+  const tag = `<script>window.__CLEARMIND_CLI__=${JSON.stringify({
+    port: ctx.port,
+    version: ctx.version,
+    dataDir: ctx.dataDir,
+    platform: process.platform,
+  })};</script>`;
+  if (html.includes("</head>")) return html.replace("</head>", `${tag}</head>`);
+  return tag + html;
+}
+
+function serveIndex(distDir, ctx, res) {
+  const file = path.join(distDir, "index.html");
+  if (!fs.existsSync(file)) {
+    return send(res, 503, "Clearmind chưa build. Chạy `npm run build` ở thư mục gốc trước.", {
+      "Content-Type": "text/plain; charset=utf-8",
+    });
+  }
+  let html = fs.readFileSync(file, "utf8");
+  html = injectMarker(html, ctx);
+  send(res, 200, html, { "Content-Type": "text/html; charset=utf-8" });
+}
+
+function serveStatic(distDir, ctx, req, res, parsed) {
+  // Map URL path to file. Strip leading `/` then safe-join.
+  const rel = decodeURIComponent(parsed.pathname.replace(/^\/+/, ""));
+  if (!rel) return serveIndex(distDir, ctx, res);
+  const file = safeJoin(distDir, rel);
+  if (!file || !fs.existsSync(file) || fs.statSync(file).isDirectory()) {
+    // SPA fallback — let the React router handle unknown paths.
+    return serveIndex(distDir, ctx, res);
+  }
+  const ext = path.extname(file).toLowerCase();
+  const type = MIME[ext] || "application/octet-stream";
+  const buf = fs.readFileSync(file);
+  // index.html needs the marker too if user navigates there directly.
+  if (ext === ".html") {
+    return send(res, 200, injectMarker(buf.toString("utf8"), ctx), { "Content-Type": type });
+  }
+  send(res, 200, buf, {
+    "Content-Type": type,
+    "Cache-Control": ext === ".html" ? "no-cache" : "public, max-age=3600",
+  });
+}
+
+function makeHandler({ distDir, dataDir, port, version }) {
+  const ctx = { distDir, dataDir, port, version };
+  return async function handler(req, res) {
+    // WHATWG URL: req.url is relative, supply a dummy base.
+    const parsed = new URL(req.url, "http://127.0.0.1");
+    const p = parsed.pathname;
+    try {
+      // ---- API ----
+      if (p === "/api/health" && req.method === "GET") {
+        return sendJson(res, 200, {
+          ok: true,
+          port,
+          version,
+          dataDir,
+          dataFile: storage.getDataFilePath(dataDir),
+          autostart: autostart.isEnabled(),
+          platform: process.platform,
+        });
+      }
+      if (p === "/api/tasks" && req.method === "GET") {
+        return sendJson(res, 200, { tasks: storage.readTasks(dataDir) });
+      }
+      if (p === "/api/tasks" && req.method === "PUT") {
+        const body = await readBody(req);
+        let parsedBody;
+        try { parsedBody = JSON.parse(body); } catch (e) {
+          return sendJson(res, 400, { ok: false, error: "Invalid JSON" });
+        }
+        const rawTasks = Array.isArray(parsedBody) ? parsedBody : parsedBody && parsedBody.tasks;
+        if (!Array.isArray(rawTasks)) return sendJson(res, 400, { ok: false, error: "Expect {tasks:[]}" });
+        // Validate + sanitize. Bad entries are dropped silently from disk
+        // but reported back so the client can surface a warning.
+        const { tasks, dropped } = storage.sanitizeTasksArray(rawTasks);
+        if (dropped > 0) {
+          console.warn(`[clearmind] PUT /api/tasks: dropped ${dropped} malformed task(s).`);
+        }
+        storage.writeTasks(dataDir, tasks);
+        notifications.scheduleAll(tasks);
+        return sendJson(res, 200, { ok: true, count: tasks.length, dropped });
+      }
+      if (p === "/api/migrate" && req.method === "POST") {
+        const body = await readBody(req);
+        let parsedBody;
+        try { parsedBody = JSON.parse(body); } catch (e) {
+          return sendJson(res, 400, { ok: false, error: "Invalid JSON" });
+        }
+        const tasks = Array.isArray(parsedBody) ? parsedBody : parsedBody && parsedBody.tasks;
+        if (!Array.isArray(tasks)) return sendJson(res, 400, { ok: false, error: "Expect {tasks:[]}" });
+        const r = storage.mergeTasks(dataDir, tasks);
+        return sendJson(res, 200, { ok: true, ...r });
+      }
+      if (p === "/api/backup" && req.method === "POST") {
+        return sendJson(res, 200, storage.makeBackup(dataDir));
+      }
+      if (p === "/api/previous-info" && req.method === "GET") {
+        return sendJson(res, 200, storage.getPreviousInfo(dataDir));
+      }
+      if (p === "/api/history-info" && req.method === "GET") {
+        return sendJson(res, 200, { history: storage.getHistoryInfo(dataDir) });
+      }
+      if (p === "/api/recover" && req.method === "POST") {
+        // Optional ?version=N (1-based). Defaults to 1 = most recent.
+        const versionParam = parsed.searchParams.get("version");
+        const version = versionParam ? parseInt(versionParam, 10) : 1;
+        const r = storage.recover(dataDir, version);
+        return sendJson(res, r.ok ? 200 : 404, r);
+      }
+      if (p === "/api/scheduled-notifications" && req.method === "GET") {
+        return sendJson(res, 200, { scheduled: notifications.scheduledList() });
+      }
+      if (p === "/api/test-notification" && req.method === "POST") {
+        notifications.fireTest();
+        return sendJson(res, 200, { ok: true });
+      }
+      if (p === "/api/open-data-dir" && req.method === "POST") {
+        openFolder(dataDir);
+        return sendJson(res, 200, { ok: true });
+      }
+      if (p === "/api/autostart" && req.method === "GET") {
+        return sendJson(res, 200, { enabled: autostart.isEnabled() });
+      }
+      if (p === "/api/autostart" && req.method === "PUT") {
+        const body = await readBody(req);
+        let parsedBody;
+        try { parsedBody = JSON.parse(body); } catch (e) {
+          return sendJson(res, 400, { ok: false, error: "Invalid JSON" });
+        }
+        const want = !!parsedBody.enabled;
+        if (want) autostart.enable(process.execPath, path.resolve(__dirname, "cli.js"));
+        else autostart.disable();
+        return sendJson(res, 200, { ok: true, enabled: autostart.isEnabled() });
+      }
+      // ---- Static ----
+      if (req.method !== "GET" && req.method !== "HEAD") {
+        return sendJson(res, 405, { ok: false, error: "Method Not Allowed" });
+      }
+      return serveStatic(distDir, ctx, req, res, parsed);
+    } catch (e) {
+      console.error("[clearmind] server error:", e);
+      sendJson(res, 500, { ok: false, error: (e && e.message) || "Server error" });
+    }
+  };
+}
+
+function tryListen(port) {
+  return new Promise((resolve, reject) => {
+    const server = http.createServer();
+    const onErr = (e) => {
+      server.off("listening", onOk);
+      server.close();
+      reject(e);
+    };
+    const onOk = () => {
+      server.off("error", onErr);
+      resolve(server);
+    };
+    server.once("error", onErr);
+    server.once("listening", onOk);
+    server.listen(port, "127.0.0.1");
+  });
+}
+
+async function start({ distDir, dataDir, port, version, maxAttempts = 20 }) {
+  const startPort = port;
+  let lastErr = null;
+  for (let i = 0; i < maxAttempts; i++) {
+    const tryPort = startPort + i;
+    try {
+      const server = await tryListen(tryPort);
+      server.on("request", makeHandler({ distDir, dataDir, port: tryPort, version }));
+      // Schedule native notifications from whatever's already on disk —
+      // covers the autostart case where the user never opens the browser
+      // but still expects deadline pings.
+      try { notifications.scheduleAll(storage.readTasks(dataDir)); } catch (_) {}
+      startDailyBackup(dataDir);
+      startPeriodicReschedule(dataDir);
+      return { server, port: tryPort };
+    } catch (e) {
+      lastErr = e;
+      if (!e || e.code !== "EADDRINUSE") throw e;
+      // else: try next port
+    }
+  }
+  throw lastErr || new Error(`Không tìm được port trống từ ${startPort}.`);
+}
+
+/**
+ * Rolling 24h auto-backup. On startup, if the last backup is older than
+ * 12h we snapshot immediately so a user who only opens Clearmind once in
+ * a while still gets safety nets. Then every 24h on the dot.
+ */
+let backupInterval = null;
+function startDailyBackup(dataDir) {
+  if (backupInterval) clearInterval(backupInterval); // re-arming on restart
+  const TWELVE_HOURS = 12 * 60 * 60_000;
+  const DAY = 24 * 60 * 60_000;
+  try {
+    const last = storage.lastBackupAt(dataDir);
+    if (Date.now() - last > TWELVE_HOURS) {
+      const r = storage.makeBackup(dataDir);
+      if (r.ok) console.log("[clearmind] Auto-backup on startup:", path.basename(r.path));
+    }
+  } catch (e) {
+    console.warn("[clearmind] Auto-backup (startup) failed:", e && e.message);
+  }
+  backupInterval = setInterval(() => {
+    try {
+      const r = storage.makeBackup(dataDir);
+      if (r.ok) console.log("[clearmind] Daily backup:", path.basename(r.path));
+    } catch (e) {
+      console.warn("[clearmind] Daily backup failed:", e && e.message);
+    }
+  }, DAY);
+  if (backupInterval.unref) backupInterval.unref();
+}
+
+/**
+ * Re-evaluate notifications every hour. The /api/tasks PUT handler is the
+ * primary scheduling trigger, but if the user leaves the browser closed
+ * for days, no PUT happens — and tasks whose deadlines slide into the
+ * 25h window won't get scheduled. This interval covers that case.
+ */
+let rescheduleInterval = null;
+function startPeriodicReschedule(dataDir) {
+  if (rescheduleInterval) clearInterval(rescheduleInterval);
+  const HOUR = 60 * 60_000;
+  rescheduleInterval = setInterval(() => {
+    try { notifications.scheduleAll(storage.readTasks(dataDir)); } catch (_) {}
+  }, HOUR);
+  if (rescheduleInterval.unref) rescheduleInterval.unref();
+}
+
+module.exports = { start };
