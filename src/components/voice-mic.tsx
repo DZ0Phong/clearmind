@@ -443,15 +443,12 @@ export function VoiceMic({ onText, lang, className, title }: Props) {
       : Mic;
 
   // SINGLE-CONTAINER compound control. Previous iterations had two
-  // separate buttons (one shadcn <Button>, one raw <button>) trying to
-  // stay the same height — tailwind-merge collisions + per-button border
-  // accounting kept making the picker visibly shorter than the mic.
-  //
-  // Now: one parent <div> sets the height (h-8), shape (rounded-md), and
-  // border (border). Both children are raw <button> with `flex-1` (or
-  // explicit fixed width for mic) + items-stretch — they fill the
-  // container's height EXACTLY. No height arithmetic per child = no
-  // mismatch ever.
+  // separate buttons trying to stay the same height — tailwind-merge
+  // collisions + per-button border accounting kept making the picker
+  // visibly shorter than the mic. Now: one inner <div> owns h-9 + border
+  // + overflow-hidden (clip rounded corners across child hover); outer
+  // <div> owns positioning so the absolute dropdown + error toast can
+  // escape the overflow-hidden clip.
   const compoundIdle =
     "border-input bg-background hover:[&>button:hover]:bg-accent dark:border-input dark:bg-input/30";
   const compoundActive = "border-primary bg-primary text-primary-foreground";
@@ -459,69 +456,72 @@ export function VoiceMic({ onText, lang, className, title }: Props) {
   return (
     <div
       id="voice-variant-picker-root"
-      className={cn(
-        // h-9 matches shadcn Input default — the only consumer (task-
-        // dialog) places this compound next to a title Input, so they
-        // should be the same height. Square 36×36 mic + content-sized
-        // picker form the segmented control.
-        "relative inline-flex items-stretch h-9 rounded-md border overflow-hidden",
-        "transition-colors shadow-xs",
-        isRecording || isBusy ? compoundActive : compoundIdle,
-        isPulsing && !isBusy &&
-          "animate-pulse ring-2 ring-destructive/40 ring-offset-2 ring-offset-background",
-        className
-      )}
+      className={cn("relative inline-block", className)}
     >
-      {/* MIC half — square 36×36 to match h-9 wrapper. */}
-      <button
-        type="button"
-        onClick={onMicClick}
-        disabled={engine === "whisper" && whisperState === "transcribing"}
-        title={errMsg ?? tooltip}
-        aria-label={tooltip}
+      <div
         className={cn(
-          "w-9 inline-flex items-center justify-center outline-none",
-          "transition-colors focus-visible:ring-[3px] focus-visible:ring-ring/50",
-          "disabled:opacity-50 disabled:pointer-events-none",
-          !(isRecording || isBusy) && "hover:bg-accent hover:text-accent-foreground"
+          // h-9 matches shadcn Input default — task-dialog places this
+          // next to a title Input. overflow-hidden clips child hover bg
+          // at the rounded corners. Dropdown + error live OUTSIDE this
+          // box so they aren't clipped.
+          "inline-flex items-stretch h-9 rounded-md border overflow-hidden",
+          "transition-colors shadow-xs",
+          isRecording || isBusy ? compoundActive : compoundIdle,
+          isPulsing && !isBusy &&
+            "animate-pulse ring-2 ring-destructive/40 ring-offset-2 ring-offset-background"
         )}
       >
-        <MicIcon className={cn("h-4 w-4", isBusy && "animate-spin")} />
-      </button>
+        {/* MIC half — square 36×36 to match h-9 wrapper. */}
+        <button
+          type="button"
+          onClick={onMicClick}
+          disabled={engine === "whisper" && whisperState === "transcribing"}
+          title={errMsg ?? tooltip}
+          aria-label={tooltip}
+          className={cn(
+            "w-9 inline-flex items-center justify-center outline-none",
+            "transition-colors focus-visible:ring-[3px] focus-visible:ring-ring/50",
+            "disabled:opacity-50 disabled:pointer-events-none",
+            !(isRecording || isBusy) && "hover:bg-accent hover:text-accent-foreground"
+          )}
+        >
+          <MicIcon className={cn("h-4 w-4", isBusy && "animate-spin")} />
+        </button>
 
-      {!lang && (
-        <>
-          {/* Divider — 1px line that visually links the two halves. */}
-          <span
-            aria-hidden
-            className={cn(
-              "w-px self-stretch",
-              isRecording || isBusy ? "bg-primary-foreground/30" : "bg-border"
-            )}
-          />
-          {/* PICKER half — content-sized. */}
-          <button
-            type="button"
-            onClick={() => setPickerOpen((v) => !v)}
-            title={t("voice.variantPicker.tooltip")}
-            aria-label={t("voice.variantPicker.tooltip")}
-            className={cn(
-              "inline-flex items-center justify-center gap-1.5 px-2.5",
-              "text-xs font-bold tabular-nums outline-none transition-colors",
-              "focus-visible:ring-[3px] focus-visible:ring-ring/50",
-              !(isRecording || isBusy) && "hover:bg-accent hover:text-accent-foreground"
-            )}
-          >
-            {engine === "whisper" ? (
-              <Brain className="h-3.5 w-3.5 shrink-0 opacity-80" />
-            ) : (
-              <Zap className="h-3.5 w-3.5 shrink-0 opacity-80" />
-            )}
-            <span className="leading-none">{variant.short}</span>
-            <ChevronDown className="h-3.5 w-3.5 opacity-60 shrink-0" />
-          </button>
-        </>
-      )}
+        {!lang && (
+          <>
+            {/* Divider — 1px line that visually links the two halves. */}
+            <span
+              aria-hidden
+              className={cn(
+                "w-px self-stretch",
+                isRecording || isBusy ? "bg-primary-foreground/30" : "bg-border"
+              )}
+            />
+            {/* PICKER half — content-sized. */}
+            <button
+              type="button"
+              onClick={() => setPickerOpen((v) => !v)}
+              title={t("voice.variantPicker.tooltip")}
+              aria-label={t("voice.variantPicker.tooltip")}
+              className={cn(
+                "inline-flex items-center justify-center gap-1.5 px-2.5",
+                "text-xs font-bold tabular-nums outline-none transition-colors",
+                "focus-visible:ring-[3px] focus-visible:ring-ring/50",
+                !(isRecording || isBusy) && "hover:bg-accent hover:text-accent-foreground"
+              )}
+            >
+              {engine === "whisper" ? (
+                <Brain className="h-3.5 w-3.5 shrink-0 opacity-80" />
+              ) : (
+                <Zap className="h-3.5 w-3.5 shrink-0 opacity-80" />
+              )}
+              <span className="leading-none">{variant.short}</span>
+              <ChevronDown className="h-3.5 w-3.5 opacity-60 shrink-0" />
+            </button>
+          </>
+        )}
+      </div>
       {pickerOpen && (
         <div className="absolute top-full mt-1.5 right-0 z-50 w-64 rounded-xl border bg-popover shadow-xl p-1.5 animate-in fade-in-0 zoom-in-95">
           <p className="text-[10px] uppercase tracking-wider font-semibold text-muted-foreground px-2 py-1">
