@@ -286,7 +286,7 @@ const TaskRow = memo(function TaskRow({
           <>
             <Button
               variant="ghost"
-              size="icon"
+              size="icon-sm"
               onClick={handleSnooze(DAY_MS, t("tasks.snoozeDayLabel"))}
               className="text-muted-foreground hover:text-primary opacity-0 group-hover:opacity-100 transition-opacity"
               title={t("tasks.snoozeDay")}
@@ -296,7 +296,7 @@ const TaskRow = memo(function TaskRow({
             </Button>
             <Button
               variant="ghost"
-              size="icon"
+              size="icon-sm"
               onClick={handleSnooze(7 * DAY_MS, t("tasks.snoozeWeekLabel"))}
               className="text-muted-foreground hover:text-primary opacity-0 group-hover:opacity-100 transition-opacity"
               title={t("tasks.snoozeWeek")}
@@ -309,7 +309,7 @@ const TaskRow = memo(function TaskRow({
         {onHomework && task.type === "academic" && (
           <Button
             variant="ghost"
-            size="icon"
+            size="icon-sm"
             onClick={(e) => {
               e.stopPropagation();
               onHomework();
@@ -323,7 +323,7 @@ const TaskRow = memo(function TaskRow({
         )}
         <Button
           variant="ghost"
-          size="icon"
+          size="icon-sm"
           onClick={handleDelete}
           className="text-muted-foreground hover:text-destructive"
           title={t("tasks.row.deleteTooltip")}
@@ -662,7 +662,7 @@ export function TasksPage() {
           variant="outline"
           size="sm"
           onClick={handleClearDuplicates}
-          className="h-8 gap-1.5"
+          className="gap-1.5"
           title={t("tasks.clearDuplicates")}
         >
           <Wand2 className="h-3.5 w-3.5" />

@@ -11,8 +11,12 @@ export function LanguageToggle() {
       title={t("tooltip.languageToggle")}
       aria-label={t("tooltip.languageToggle")}
       className={cn(
-        "inline-flex items-center h-9 px-2.5 rounded-md text-xs font-semibold tracking-wide",
+        // h-8 to share the topbar baseline with sibling controls (mode-toggle,
+        // size='sm' Buttons, CLI badge). Previously h-9 made this chip a
+        // visibly taller "island" in the action row.
+        "inline-flex items-center h-8 px-2.5 rounded-md text-xs font-semibold tracking-wide",
         "border border-input bg-background hover:bg-accent text-foreground transition-colors",
+        "outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50",
         "tabular-nums"
       )}
     >

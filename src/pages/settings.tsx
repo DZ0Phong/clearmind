@@ -555,25 +555,23 @@ function TagsCard() {
                 <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                   <Button
                     variant="ghost"
-                    size="sm"
+                    size="xs"
                     onClick={() => renameTag(s.name)}
-                    className="h-7 text-xs"
                   >
                     {t("settings.tagRename")}
                   </Button>
                   <Button
                     variant="ghost"
-                    size="sm"
+                    size="xs"
                     onClick={() => mergeTag(s.name)}
-                    className="h-7 text-xs"
                   >
                     {t("settings.tagMerge")}
                   </Button>
                   <Button
                     variant="ghost"
-                    size="sm"
+                    size="xs"
                     onClick={() => deleteTag(s.name)}
-                    className="h-7 text-xs text-destructive hover:text-destructive"
+                    className="text-destructive hover:text-destructive"
                   >
                     {t("settings.tagDelete")}
                   </Button>

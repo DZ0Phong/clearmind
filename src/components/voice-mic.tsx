@@ -395,7 +395,7 @@ export function VoiceMic({ onText, lang, className, title }: Props) {
     return (
       <Button
         type="button"
-        size="icon-sm"
+        size="icon"
         variant="outline"
         onClick={() => pickEngine("whisper")}
         title={t("voice.unsupported")}
@@ -460,7 +460,11 @@ export function VoiceMic({ onText, lang, className, title }: Props) {
     <div
       id="voice-variant-picker-root"
       className={cn(
-        "relative inline-flex items-stretch h-8 rounded-md border overflow-hidden",
+        // h-9 matches shadcn Input default — the only consumer (task-
+        // dialog) places this compound next to a title Input, so they
+        // should be the same height. Square 36×36 mic + content-sized
+        // picker form the segmented control.
+        "relative inline-flex items-stretch h-9 rounded-md border overflow-hidden",
         "transition-colors shadow-xs",
         isRecording || isBusy ? compoundActive : compoundIdle,
         isPulsing && !isBusy &&
@@ -468,7 +472,7 @@ export function VoiceMic({ onText, lang, className, title }: Props) {
         className
       )}
     >
-      {/* MIC half — fixed 32px wide square. */}
+      {/* MIC half — square 36×36 to match h-9 wrapper. */}
       <button
         type="button"
         onClick={onMicClick}
@@ -476,7 +480,7 @@ export function VoiceMic({ onText, lang, className, title }: Props) {
         title={errMsg ?? tooltip}
         aria-label={tooltip}
         className={cn(
-          "w-8 inline-flex items-center justify-center outline-none",
+          "w-9 inline-flex items-center justify-center outline-none",
           "transition-colors focus-visible:ring-[3px] focus-visible:ring-ring/50",
           "disabled:opacity-50 disabled:pointer-events-none",
           !(isRecording || isBusy) && "hover:bg-accent hover:text-accent-foreground"

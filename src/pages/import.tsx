@@ -582,7 +582,11 @@ export function ImportPage() {
             key={id}
             onClick={() => setTab(id)}
             className={cn(
-              "flex items-center gap-2 px-4 py-1.5 rounded-md text-sm font-medium transition-all",
+              // Match Settings tab strip exactly: cm-press feedback, px-3.5
+              // (was px-4), and outline focus-ring so keyboard + click feel
+              // consistent across the app.
+              "cm-press flex items-center gap-2 px-3.5 py-1.5 rounded-md text-sm font-medium transition-all whitespace-nowrap",
+              "outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50",
               tab === id
                 ? "bg-card text-foreground shadow-sm"
                 : "text-muted-foreground hover:text-foreground"

@@ -297,7 +297,7 @@ export function TaskDialog(props: Mode) {
                   placeholder={t("dialog.placeholder.title")}
                   value={title}
                   onChange={(e) => setTitle(e.target.value)}
-                  className="flex-1 h-10"
+                  className="flex-1"
                 />
                 <VoiceMic
                   onText={(text, isFinal) => {
@@ -308,7 +308,6 @@ export function TaskDialog(props: Mode) {
                     if (!clean) return;
                     setTitle((prev) => (prev ? prev + " " + clean : clean));
                   }}
-                  className="h-10 w-10"
                 />
               </div>
               {/* Classifier + NL parse preview — pill reflects ACTUAL state

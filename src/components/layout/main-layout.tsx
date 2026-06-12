@@ -82,7 +82,7 @@ function TopBar() {
 
       <button
         onClick={openPalette}
-        className="hidden sm:flex flex-1 lg:flex-initial lg:w-[380px] items-center gap-2 px-3 py-1.5 rounded-md border bg-muted/40 hover:bg-muted/60 hover:border-input text-sm text-muted-foreground transition-colors ml-auto lg:mx-auto"
+        className="hidden sm:flex flex-1 lg:flex-initial lg:w-[380px] items-center gap-2 h-8 px-3 rounded-md border bg-muted/40 hover:bg-muted/60 hover:border-input text-sm text-muted-foreground transition-colors ml-auto lg:mx-auto outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50"
       >
         <Search className="h-4 w-4 shrink-0" />
         <span className="flex-1 text-left truncate">{t("topbar.searchPlaceholder")}</span>
@@ -105,7 +105,7 @@ function TopBar() {
           <Link
             to="/tasks"
             title={t("topbar.overdue", { n: overdueCount })}
-            className="cm-press cm-late-pulse hidden md:inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-destructive/10 text-destructive text-xs font-semibold hover:bg-destructive/15 transition-colors"
+            className="cm-press cm-late-pulse hidden md:inline-flex items-center gap-1.5 h-8 px-3 rounded-full bg-destructive/10 text-destructive text-xs font-semibold hover:bg-destructive/15 transition-colors"
           >
             <AlertCircle className="h-3.5 w-3.5" />
             {t("topbar.overdue", { n: overdueCount })}

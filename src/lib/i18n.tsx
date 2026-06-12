@@ -468,6 +468,7 @@ const VI: Dict = {
   "focus.toastSummary": "+{n}p{title} · nghỉ {b}p",
   "focus.alarmRinging": "Chuông đang reo",
   "focus.alarmDismiss": "Dừng chuông",
+  "focus.clearTaskAria": "Bỏ chọn task",
 
   // Settings — labels used in cards
   "settings.notifTitle": "Thông báo",
@@ -1290,6 +1291,7 @@ const EN: Dict = {
   "focus.toastSummary": "+{n}m{title} · break {b}m",
   "focus.alarmRinging": "Alarm is ringing",
   "focus.alarmDismiss": "Stop alarm",
+  "focus.clearTaskAria": "Clear task selection",
 
   // Settings — labels used in cards
   "settings.notifTitle": "Notifications",

@@ -535,8 +535,8 @@ export function FocusPage() {
             </button>
             <button
               onClick={() => setTaskId(null)}
-              className="text-muted-foreground hover:text-destructive transition-colors shrink-0"
-              aria-label="Bỏ chọn task"
+              className="inline-flex items-center justify-center h-4 w-4 rounded text-muted-foreground hover:text-destructive transition-colors shrink-0 outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
+              aria-label={t("focus.clearTaskAria")}
             >
               <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"><path d="M3 3l6 6m0-6l-6 6"/></svg>
             </button>
@@ -877,13 +877,16 @@ function Stepper({
         {label}
       </span>
       <div className="flex items-center justify-between gap-1 px-1 py-1 rounded-md border bg-background/50">
-        <button
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon-xs"
           onClick={dec}
-          className="cm-press h-6 w-6 rounded inline-flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-muted"
+          className="cm-press text-muted-foreground hover:text-foreground"
           aria-label={t("dtp.decreaseAria", { label })}
         >
-          <Minus className="h-3 w-3" />
-        </button>
+          <Minus />
+        </Button>
         <span className="text-sm font-semibold tabular-nums">
           {value}
           {unit && (
@@ -892,13 +895,16 @@ function Stepper({
             </span>
           )}
         </span>
-        <button
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon-xs"
           onClick={inc}
-          className="cm-press h-6 w-6 rounded inline-flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-muted"
+          className="cm-press text-muted-foreground hover:text-foreground"
           aria-label={t("dtp.increaseAria", { label })}
         >
-          <Plus className="h-3 w-3" />
-        </button>
+          <Plus />
+        </Button>
       </div>
     </div>
   );

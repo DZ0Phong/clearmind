@@ -1190,7 +1190,6 @@ function AgendaView({
             variant="outline"
             size="sm"
             onClick={() => setOffset(0)}
-            className="h-8"
           >
             {t("calendar.today")}
           </Button>
