@@ -9,7 +9,7 @@ import {
 import { ThemePicker } from "@/components/theme-picker";
 import { LanguagePicker } from "@/components/language-picker";
 import { AccentPicker } from "@/components/accent-picker";
-import { useT } from "@/lib/i18n";
+import { useT, useLocaleTag } from "@/lib/i18n";
 import { Button } from "@/components/ui/button";
 import {
   Settings,
@@ -590,6 +590,7 @@ function TagsCard() {
 function ErrorLogCard() {
   const { toast } = useToast();
   const t = useT();
+  const localeTag = useLocaleTag();
   const [entries, setEntries] = useState<ErrorEntry[]>(() => readErrorLog());
 
   const refresh = () => setEntries(readErrorLog());
@@ -662,7 +663,7 @@ function ErrorLogCard() {
                         {e.source}
                       </span>
                       <span className="text-muted-foreground tabular-nums">
-                        {new Date(e.at).toLocaleString()}
+                        {new Date(e.at).toLocaleString(localeTag)}
                       </span>
                       <span className="text-muted-foreground truncate">
                         · {e.url}
@@ -839,6 +840,7 @@ function CliStatusCard() {
 
 function CliBackupRecoverCard() {
   const t = useT();
+  const localeTag = useLocaleTag();
   const { toast } = useToast();
   const { info, history, busy, setBusy, refresh } = useCliState();
 
@@ -949,7 +951,7 @@ function CliBackupRecoverCard() {
                         ? t("settings.cli.recover.slotMeta", {
                             n: slot.count ?? 0,
                             time: slot.mtime
-                              ? new Date(slot.mtime).toLocaleString()
+                              ? new Date(slot.mtime).toLocaleString(localeTag)
                               : "—",
                           })
                         : t("settings.cli.recover.slotEmpty")}
@@ -979,6 +981,7 @@ function CliBackupRecoverCard() {
 
 function CliNativeNotifCard() {
   const t = useT();
+  const localeTag = useLocaleTag();
   const { toast } = useToast();
   const { info, scheduled, busy } = useCliState();
 
@@ -1032,7 +1035,7 @@ function CliNativeNotifCard() {
               >
                 <span className="truncate flex-1">{s.title}</span>
                 <span className="text-muted-foreground tabular-nums shrink-0">
-                  {new Date(s.fireAt).toLocaleString(undefined, {
+                  {new Date(s.fireAt).toLocaleString(localeTag, {
                     day: "2-digit",
                     month: "2-digit",
                     hour: "2-digit",

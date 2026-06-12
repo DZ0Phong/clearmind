@@ -10,7 +10,7 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import { useT } from "@/lib/i18n";
+import { useT, useLocaleTag } from "@/lib/i18n";
 
 interface Props {
   value: string;
@@ -152,6 +152,7 @@ export function DateTimePicker({
   dateOnly = false,
 }: Props) {
   const t = useT();
+  const localeTag = useLocaleTag();
   const DOW_LABELS = [
     t("review.dow.mon"),
     t("review.dow.tue"),
@@ -387,7 +388,7 @@ export function DateTimePicker({
               <ChevronLeft className="h-4 w-4" />
             </button>
             <p className="text-sm font-semibold capitalize">
-              {viewMonth.toLocaleDateString(undefined, {
+              {viewMonth.toLocaleDateString(localeTag, {
                 month: "long",
                 year: "numeric",
               })}

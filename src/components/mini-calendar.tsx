@@ -3,7 +3,7 @@ import { ChevronLeft, ChevronRight } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { useTasks } from "@/hooks/use-tasks";
 import { cn } from "@/lib/utils";
-import { useT } from "@/lib/i18n";
+import { useT, useLocaleTag } from "@/lib/i18n";
 
 function pad(n: number) {
   return n.toString().padStart(2, "0");
@@ -17,6 +17,7 @@ export function MiniCalendar() {
   const navigate = useNavigate();
   const { tasks } = useTasks();
   const t = useT();
+  const localeTag = useLocaleTag();
   // Mon-first week ordering matches the rest of the app (Vietnamese & most
   // European calendars start on Monday). The shifted index keeps Sunday at
   // the end so the heatmap visually matches the FullCalendar week view.
@@ -77,7 +78,7 @@ export function MiniCalendar() {
       {/* Header */}
       <div className="flex items-center justify-between mb-1.5">
         <p className="text-xs font-semibold capitalize text-foreground/80">
-          {viewMonth.toLocaleDateString(undefined, {
+          {viewMonth.toLocaleDateString(localeTag, {
             month: "long",
             year: "numeric",
           })}

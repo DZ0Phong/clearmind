@@ -23,7 +23,7 @@ import {
   Minus,
 } from "lucide-react";
 import { cn, formatDeadline, isPast, isRecurringClass } from "@/lib/utils";
-import { useT } from "@/lib/i18n";
+import { useT, useLocaleTag } from "@/lib/i18n";
 
 type T = ReturnType<typeof useT>;
 
@@ -311,6 +311,7 @@ function DeltaChip({ value, suffix }: { value: number; suffix?: string }) {
 export function ReviewPage() {
   const { tasks } = useTasks();
   const t = useT();
+  const localeTag = useLocaleTag();
   const DOW_LABELS = [
     t("review.dow.mon"),
     t("review.dow.tue"),
@@ -543,7 +544,7 @@ export function ReviewPage() {
                           "h-3 w-3 rounded-[2px] transition-colors",
                           intensityClass(cell.count, stats.heatmapMax)
                         )}
-                        title={`${cell.date.toLocaleDateString()} · ${cell.count}`}
+                        title={`${cell.date.toLocaleDateString(localeTag)} · ${cell.count}`}
                       />
                     ))}
                   </div>
@@ -707,7 +708,7 @@ export function ReviewPage() {
                         <p className="text-sm truncate">{task.title}</p>
                       </div>
                       <span className="text-xs text-muted-foreground shrink-0 tabular-nums">
-                        {new Date(task.completedAt!).toLocaleString(undefined, {
+                        {new Date(task.completedAt!).toLocaleString(localeTag, {
                           day: "2-digit",
                           month: "2-digit",
                           hour: "2-digit",

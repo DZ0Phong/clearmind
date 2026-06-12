@@ -1679,3 +1679,15 @@ export function useI18n(): I18nContextValue {
 export function useT() {
   return useI18n().t;
 }
+
+/**
+ * BCP-47 locale tag matching the app's selected language, for use with
+ * `toLocaleDateString` / `toLocaleTimeString` / `Intl.*`. Important:
+ * passing `undefined` to these APIs reads `navigator.language` (the OS),
+ * which can differ from the user's choice inside Clearmind. Always pass
+ * this tag instead to keep date formatting in lockstep with the app
+ * language toggle.
+ */
+export function useLocaleTag(): string {
+  return useI18n().lang === "en" ? "en-US" : "vi-VN";
+}

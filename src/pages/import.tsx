@@ -20,7 +20,6 @@ import {
   parseTimetableText,
   detectKind,
   computeFirstOccurrenceISO,
-  DOW_LABEL_VI,
   type ParsedClass,
 } from "@/lib/schedule-parser";
 import {
@@ -164,11 +163,26 @@ function diffParsedAgainst(c: ParsedClass, existing: Task): FieldChange[] {
   return out;
 }
 
+// Translated weekday names — replaces DOW_LABEL_VI which was VN-only.
+// Index matches Date.getDay(): 0 = Sunday … 6 = Saturday. We pass through
+// the existing short keys (review.dow.*) since import preview rows are
+// dense and read better with compact labels.
+const DOW_I18N_KEYS = [
+  "review.dow.sun",
+  "review.dow.mon",
+  "review.dow.tue",
+  "review.dow.wed",
+  "review.dow.thu",
+  "review.dow.fri",
+  "review.dow.sat",
+];
+
 export function ImportPage() {
   const { addTask, updateTask, removeTask, tasks } = useTasks();
   const { toast } = useToast();
   const navigate = useNavigate();
   const t = useT();
+  const dowLabel = (dow: number) => t(DOW_I18N_KEYS[dow] ?? "review.dow.sun");
   const [tab, setTab] = useState<Tab>("paste");
   const [raw, setRaw] = useState("");
   const [parsed, setParsed] = useState<ParsedClass[]>([]);
@@ -949,7 +963,7 @@ export function ImportPage() {
                           title={displacedExisting
                             .map((task) => {
                               const d = task.deadline ? new Date(task.deadline) : null;
-                              const dow = d ? DOW_LABEL_VI[d.getDay()] : "";
+                              const dow = d ? dowLabel(d.getDay()) : "";
                               const hh = d ? d.getHours().toString().padStart(2, "0") : "";
                               const mm = d ? d.getMinutes().toString().padStart(2, "0") : "";
                               return `${task.title} · ${dow} ${hh}:${mm}`;
@@ -1011,7 +1025,7 @@ export function ImportPage() {
                         <ul className="mt-2 space-y-1 max-h-40 overflow-y-auto pr-1">
                           {affectedExisting.map((task) => {
                             const d = task.deadline ? new Date(task.deadline) : null;
-                            const dow = d ? DOW_LABEL_VI[d.getDay()] : "";
+                            const dow = d ? dowLabel(d.getDay()) : "";
                             const hh = d ? d.getHours().toString().padStart(2, "0") : "—";
                             const mm = d ? d.getMinutes().toString().padStart(2, "0") : "—";
                             const dateStr = d
@@ -1255,7 +1269,7 @@ function PreviewList({
           <div key={key}>
             <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-2 flex items-center gap-2 flex-wrap">
               <CalendarRange className="h-3 w-3" />
-              <span>{DOW_LABEL_VI[dow]}</span>
+              <span>{t(DOW_I18N_KEYS[dow] ?? "review.dow.sun")}</span>
               <span className="text-muted-foreground/70 font-normal normal-case tabular-nums">
                 · {fmtFullDate(dateForHeader)}
               </span>

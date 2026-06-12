@@ -5,6 +5,13 @@ import FullCalendar from "@fullcalendar/react";
 import dayGridPlugin from "@fullcalendar/daygrid";
 import timeGridPlugin from "@fullcalendar/timegrid";
 import interactionPlugin from "@fullcalendar/interaction";
+// FullCalendar has its own locale system (day names, month titles, "hour"
+// suffix, week range formatting). Without the locale prop it falls back to
+// en-US-ish defaults; with locale="vi" we get Vietnamese formatting. Import
+// both so we can swap by language toggle. en-gb is closer to "neutral
+// English" than the implicit en-US default (Mon-start week, 24h time).
+import enGbLocale from "@fullcalendar/core/locales/en-gb";
+import viLocale from "@fullcalendar/core/locales/vi";
 import {
   AlertCircle,
   AlignLeft,
@@ -46,7 +53,7 @@ import {
   subjectColor,
   tagStats,
 } from "@/lib/utils";
-import { useT } from "@/lib/i18n";
+import { useT, useI18n, useLocaleTag } from "@/lib/i18n";
 
 /* ───── Types & constants ───────────────────────────────────────── */
 
@@ -143,6 +150,11 @@ export function CalendarView({ initialDate }: CalendarViewProps = {}) {
   const { openEdit, openCreate } = useTaskCommands();
   const navigate = useNavigate();
   const t = useT();
+  const { lang } = useI18n();
+  // FullCalendar locale: 'vi' for Vietnamese (day names, month titles,
+  // "X giờ" hour suffix, "8 – 14 thg 6" range); 'en-gb' for neutral
+  // English (Mon-start week, 24h time, "8 – 14 Jun" range).
+  const fcLocale = lang === "en" ? "en-gb" : "vi";
 
   const [view, setView] = useState<ViewMode>(loadStoredView);
   const [hiddenTypes, setHiddenTypes] = useState<Set<TaskType>>(new Set());
@@ -304,11 +316,12 @@ export function CalendarView({ initialDate }: CalendarViewProps = {}) {
           <div className="h-full grid lg:grid-cols-[minmax(0,1fr)_320px] gap-4 min-h-0">
             <div className="min-h-0 lg:order-1 order-2">
               <FullCalendar
-                key="day"
+                key={`day-${fcLocale}`}
                 plugins={[dayGridPlugin, timeGridPlugin, interactionPlugin]}
                 initialView="timeGridDay"
                 initialDate={initialDate}
-                locale="vi"
+                locales={[enGbLocale, viLocale]}
+                locale={fcLocale}
                 firstDay={1}
                 buttonText={{ today: t("calendar.today") }}
                 headerToolbar={{ left: "prev,next today", center: "title", right: "" }}
@@ -346,11 +359,12 @@ export function CalendarView({ initialDate }: CalendarViewProps = {}) {
           </div>
         ) : (
           <FullCalendar
-            key={view}
+            key={`${view}-${fcLocale}`}
             plugins={[dayGridPlugin, timeGridPlugin, interactionPlugin]}
             initialView={FC_VIEW[view as Exclude<ViewMode, "agenda">]}
             initialDate={initialDate}
-            locale="vi"
+            locales={[enGbLocale, viLocale]}
+            locale={fcLocale}
             firstDay={1}
             buttonText={{ today: t("calendar.today") }}
             allDayText={t("common.allDay")}
@@ -977,6 +991,7 @@ function DayOverviewDialog({
   onCreate,
 }: DayOverviewDialogProps) {
   const t = useT();
+  const localeTag = useLocaleTag();
   const sorted = useMemo(
     () =>
       [...tasks].sort((a, b) => {
@@ -993,7 +1008,7 @@ function DayOverviewDialog({
         <DialogHeader className="px-6 pt-6 pb-3 shrink-0">
           <DialogTitle className="capitalize">
             {date &&
-              new Date(date).toLocaleDateString(undefined, {
+              new Date(date).toLocaleDateString(localeTag, {
                 weekday: "long",
                 day: "2-digit",
                 month: "long",
@@ -1117,6 +1132,7 @@ function AgendaView({
   onCreate,
 }: AgendaViewProps) {
   const t = useT();
+  const localeTag = useLocaleTag();
   // Window of 14 days, paged by ±14 from the anchor week's Monday.
   const [offset, setOffset] = useState(0);
 
@@ -1182,9 +1198,9 @@ function AgendaView({
           </Button>
         </div>
         <p className="text-sm font-semibold text-foreground/80">
-          {start.toLocaleDateString(undefined, { day: "2-digit", month: "short" })}{" "}
+          {start.toLocaleDateString(localeTag, { day: "2-digit", month: "short" })}{" "}
           —{" "}
-          {days[13]?.date.toLocaleDateString(undefined, {
+          {days[13]?.date.toLocaleDateString(localeTag, {
             day: "2-digit",
             month: "short",
             year: "numeric",
@@ -1232,6 +1248,7 @@ function AgendaDayGroup({
   onPickEvent,
 }: AgendaDayGroupProps) {
   const t = useT();
+  const localeTag = useLocaleTag();
   const isWeekend = date.getDay() === 0 || date.getDay() === 6;
   return (
     <div
@@ -1264,11 +1281,11 @@ function AgendaDayGroup({
                 isToday ? "text-primary" : "text-muted-foreground"
               )}
             >
-              {date.toLocaleDateString(undefined, { weekday: "long" })}
+              {date.toLocaleDateString(localeTag, { weekday: "long" })}
               {isToday && t("calendar.todayBadge")}
             </p>
             <p className="text-[11px] text-muted-foreground">
-              {date.toLocaleDateString(undefined, {
+              {date.toLocaleDateString(localeTag, {
                 day: "2-digit",
                 month: "long",
               })}
@@ -1594,8 +1611,9 @@ interface DayHeroCardProps {
 
 function DayHeroCard({ date, isToday, stats }: DayHeroCardProps) {
   const t = useT();
-  const weekday = date.toLocaleDateString(undefined, { weekday: "long" });
-  const main = date.toLocaleDateString(undefined, {
+  const localeTag = useLocaleTag();
+  const weekday = date.toLocaleDateString(localeTag, { weekday: "long" });
+  const main = date.toLocaleDateString(localeTag, {
     day: "numeric",
     month: "long",
   });

@@ -624,8 +624,21 @@ export function TasksProvider({ children }: { children: React.ReactNode }) {
         : Array.isArray(parsed?.tasks)
         ? parsed.tasks
         : [];
-      if (!incoming.length)
-        return { ok: false, added: 0, error: "Không thấy task nào trong file." };
+      if (!incoming.length) {
+        const lang =
+          typeof localStorage !== "undefined" &&
+          localStorage.getItem("clearmind_lang") === "en"
+            ? "en"
+            : "vi";
+        return {
+          ok: false,
+          added: 0,
+          error:
+            lang === "en"
+              ? "No tasks found in file."
+              : "Không thấy task nào trong file.",
+        };
+      }
 
       let added = 0;
       setTasks((prev) => {
