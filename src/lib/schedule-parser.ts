@@ -24,6 +24,12 @@ export interface ParsedClass {
    * skipped from import by default.
    */
   attended?: boolean;
+  /**
+   * One-off event (sports match, single meeting, calendar invite) — NOT a
+   * recurring weekly class. When true, the import creates a non-recurring
+   * task with the exact deadline `startDate + startTime`.
+   */
+  oneOff?: boolean;
   /** Source line for debugging/preview. */
   raw?: string;
 }
@@ -638,6 +644,8 @@ export function parseICS(ics: string): ParsedClass[] {
       notes: description?.replace(/\\n/g, "\n").replace(/\\,/g, ",") || undefined,
       startDate: formatIcsDateOnly(start),
       endDate,
+      // No RRULE = one-off event (Google Calendar invite, single meeting…)
+      oneOff: !rrule || undefined,
       raw: summary,
     });
   }
@@ -674,7 +682,12 @@ function dedupeClasses(items: ParsedClass[]): ParsedClass[] {
   const seen = new Set<string>();
   const out: ParsedClass[] = [];
   for (const c of items) {
-    const k = `${c.dayOfWeek}|${c.startTime}|${c.subject.toLowerCase()}|${(c.location || "").toLowerCase()}`;
+    // One-off events: dedupe by exact date+time+title (different days are
+    // different events even if same slot signature). Weekly classes: dedupe
+    // by recurring slot signature (date doesn't matter — it's the SAME class).
+    const k = c.oneOff
+      ? `e|${c.startDate || ""}|${c.startTime}|${c.subject.toLowerCase()}|${(c.location || "").toLowerCase()}`
+      : `w|${c.dayOfWeek}|${c.startTime}|${c.subject.toLowerCase()}|${(c.location || "").toLowerCase()}`;
     if (seen.has(k)) continue;
     seen.add(k);
     out.push(c);
@@ -687,10 +700,10 @@ export function computeFirstOccurrenceISO(
   from: Date = new Date()
 ): string {
   let dateStr = c.startDate;
-  // Sanity-check: if startDate is more than a week in the past, the page was
-  // likely scraped from an old term (FAP keeps prior semesters viewable).
-  // Fall back to the next upcoming weekday so the task lands in the future.
-  if (dateStr) {
+  // One-off events trust their explicit date unconditionally — a sports
+  // fixture last week is real history, not "scraped from an old term".
+  // Recurring classes need the stale-date guard below.
+  if (!c.oneOff && dateStr) {
     const parsed = new Date(`${dateStr}T00:00:00`);
     const oneWeekAgo = new Date(from);
     oneWeekAgo.setDate(oneWeekAgo.getDate() - 7);
@@ -712,15 +725,133 @@ export const DOW_LABEL_VI: Record<number, string> = {
   6: "Thứ 7",
 };
 
+// ---- Event-list parser (one-off events) -----------------------------------
+// Universal format: one line = one event with date + time + title (+ optional
+// location). Covers WC fixtures, Google Calendar copy-paste, conference
+// agendas, anything that ISN'T a recurring weekly grid.
+//   30/06/2026 21:00 Vietnam vs Thailand · Mỹ Đình
+//   01/07 23:30 Brazil vs Argentina @ Maracana
+//   02-07 15:00 — Pháp vs Bồ Đào Nha (Sân Wembley)
+//   Mon 30 Jun 21:00 Final match, Lusail Stadium
+const EVENT_LINE_RES: RegExp[] = [
+  // 1. Numeric date prefix: "30/06[/26] 21:00 Title [· @ - location]"
+  /^[\s•·*\-]*(\d{1,2})[\/\-](\d{1,2})(?:[\/\-](\d{2,4}))?[\s,]+(\d{1,2})[:h](\d{2})(?:\s*[-–—~]\s*\d{1,2}[:h]\d{2})?[\s\-–—:·@,]+(.+?)$/i,
+  // 2. ISO-style: "2026-06-30 21:00 Title"
+  /^[\s•·*\-]*(\d{4})-(\d{1,2})-(\d{1,2})[\sT,]+(\d{1,2})[:h](\d{2})(?:\s*[-–—~]\s*\d{1,2}[:h]\d{2})?[\s\-–—:·@,]+(.+?)$/i,
+];
+
+// Split title from inline location markers "· @ - in at ở tại".
+const TITLE_LOCATION_SPLIT =
+  /^(.+?)\s*(?:\s[·@|]\s|\s[\-–—]\s|\s(?:at|in|tại|ở)\s|\s\(|\s\[)\s*(.+?)(?:[\)\]])?\s*$/i;
+
+export function parseEventList(text: string): ParsedClass[] {
+  if (!text || !text.trim()) return [];
+  const out: ParsedClass[] = [];
+  const now = new Date();
+  const currentYear = now.getFullYear();
+  const lines = text.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+
+  for (const line of lines) {
+    let matched: { y: number; m: number; d: number; hh: number; mm: number; tail: string } | null = null;
+
+    // Try numeric DD/MM first
+    const m1 = line.match(EVENT_LINE_RES[0]);
+    if (m1) {
+      const d = parseInt(m1[1], 10);
+      const m = parseInt(m1[2], 10);
+      const yRaw = m1[3]
+        ? parseInt(m1[3].length === 2 ? "20" + m1[3] : m1[3], 10)
+        : currentYear;
+      const hh = parseInt(m1[4], 10);
+      const mm = parseInt(m1[5], 10);
+      if (d >= 1 && d <= 31 && m >= 1 && m <= 12 && hh < 24 && mm < 60) {
+        matched = { y: yRaw, m, d, hh, mm, tail: m1[6] };
+      }
+    }
+    if (!matched) {
+      const m2 = line.match(EVENT_LINE_RES[1]);
+      if (m2) {
+        const y = parseInt(m2[1], 10);
+        const m = parseInt(m2[2], 10);
+        const d = parseInt(m2[3], 10);
+        const hh = parseInt(m2[4], 10);
+        const mm = parseInt(m2[5], 10);
+        if (m >= 1 && m <= 12 && d >= 1 && d <= 31 && hh < 24 && mm < 60) {
+          matched = { y, m, d, hh, mm, tail: m2[6] };
+        }
+      }
+    }
+    if (!matched) continue;
+
+    let { y, m, d, hh, mm, tail } = matched;
+    // No-year ambiguity: if the resolved date is more than a month in the
+    // past relative to today, bump the year (likely "next year's WC fixture").
+    if (!line.match(/\b\d{4}\b/)) {
+      const candidate = new Date(y, m - 1, d);
+      const monthAgo = new Date(now);
+      monthAgo.setMonth(monthAgo.getMonth() - 1);
+      if (candidate < monthAgo) y += 1;
+    }
+
+    // Split tail into title + location
+    let title = tail.trim();
+    let location: string | undefined;
+    const split = title.match(TITLE_LOCATION_SPLIT);
+    if (split) {
+      title = split[1].trim();
+      location = split[2].trim() || undefined;
+    }
+    title = title.replace(/^[\s,\-–—:·@()]+|[\s,\-–—:·@()]+$/g, "");
+    if (title.length < 2) continue;
+
+    const date = new Date(y, m - 1, d);
+    out.push({
+      id: makeId(),
+      subject: title,
+      dayOfWeek: date.getDay(),
+      startTime: `${pad2(hh)}:${pad2(mm)}`,
+      startDate: `${y}-${pad2(m)}-${pad2(d)}`,
+      location,
+      oneOff: true,
+      raw: line,
+    });
+  }
+  return out;
+}
+
+/**
+ * Heuristic: looks like an event-list (one-off events) if most non-empty
+ * lines start with a date+time pattern AND there's no day-of-week header
+ * structure (which would mark it as a timetable).
+ */
+function looksLikeEventList(text: string): boolean {
+  const lines = text.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+  if (lines.length < 2) return false;
+  let hits = 0;
+  let dayHeaders = 0;
+  for (const line of lines) {
+    if (EVENT_LINE_RES.some((re) => re.test(line))) hits++;
+    if (detectDay(line) !== null && !TIME_RANGE_RE.test(line) && !TIME_SINGLE_RE.test(line)) {
+      dayHeaders++;
+    }
+  }
+  // ≥50% of lines look like events AND no dominant day-headers (which would
+  // indicate a weekly timetable structure).
+  return hits / lines.length >= 0.5 && dayHeaders < hits;
+}
+
 /**
  * Detect what kind of input the user pasted; helps route to right parser.
  */
-export function detectKind(input: string): "ics" | "html" | "text" {
+export function detectKind(
+  input: string
+): "ics" | "html" | "event-list" | "text" {
   const trimmed = input.trim();
   if (trimmed.startsWith("BEGIN:VCALENDAR") || /BEGIN:VEVENT/.test(trimmed))
     return "ics";
   if (/<table[\s\S]*<\/table>/i.test(trimmed) || /<tr[\s>]/i.test(trimmed))
     return "html";
+  if (looksLikeEventList(trimmed)) return "event-list";
   return "text";
 }
 
@@ -728,5 +859,6 @@ export function parseAny(input: string): ParsedClass[] {
   const kind = detectKind(input);
   if (kind === "ics") return parseICS(input);
   if (kind === "html") return parseTimetableHTML(input);
+  if (kind === "event-list") return parseEventList(input);
   return parseTimetableText(input);
 }

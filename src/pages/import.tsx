@@ -67,46 +67,73 @@ function extractSubjectCode(title: string): string | null {
 }
 
 // Slot signature for a weekly class = subject-code (or title) + dow + time.
-// Identifies the RECURRING SCHEDULE (Thu 12:50 PRU213), not a specific
-// week. Used by displaced-slot detection ("school moved PRU213 to Tue").
+// Identifies the RECURRING SCHEDULE (Thu 12:50 PRU213), regardless of week.
+// One weekly task in the store = one slot, no matter how many weeks it spans.
 function classSignature(title: string, dow: number, startTime: string): string {
   const code = extractSubjectCode(title);
   const key = code ? code.toLowerCase() : title.trim().toLowerCase();
-  return `${dow}|${startTime}|${key}`;
+  return `w|${dow}|${startTime}|${key}`;
 }
 
-// Per-occurrence signature: slot signature PLUS the deadline date. This is
-// what dedup uses to decide "đã có / mới / đã đổi" — two parsed classes
-// for the same subject on DIFFERENT weeks are not duplicates of each
-// other. The old per-slot dedup wrongly skipped next week's import when a
-// past instance still lived in the data at last week's date.
-function classOccurrenceSignature(
-  title: string,
-  dow: number,
-  startTime: string,
-  dateYmd: string
-): string {
-  return `${classSignature(title, dow, startTime)}|${dateYmd}`;
+// One-off event signature = date + time + title-key. Two events at the same
+// time on different days are different. Two events same time, same day, same
+// title = duplicate (e.g. user re-pastes same WC fixture list).
+function eventSignature(title: string, dateYmd: string, startTime: string): string {
+  const code = extractSubjectCode(title);
+  const key = code ? code.toLowerCase() : title.trim().toLowerCase();
+  return `e|${dateYmd}|${startTime}|${key}`;
 }
 
-function taskOccurrenceSignature(t: {
+/**
+ * Slot signature for an existing weekly task. Returns null if:
+ *   - task is not weekly-recurring
+ *   - task's recurrenceEndAt has already passed (old semester — treat as
+ *     "no longer covering this slot" so a fresh import creates new tasks
+ *     for the new term)
+ */
+function taskSlotSignature(t: {
   title: string;
   deadline?: string;
   recurrence?: string | null;
+  recurrenceEndAt?: string | null;
 }): string | null {
   if (t.recurrence !== "weekly" || !t.deadline) return null;
+  if (t.recurrenceEndAt) {
+    const endAt = new Date(t.recurrenceEndAt).getTime();
+    if (!Number.isNaN(endAt) && endAt < Date.now()) return null;
+  }
   const d = new Date(t.deadline);
   if (Number.isNaN(d.getTime())) return null;
   const dow = d.getDay();
   const hh = d.getHours().toString().padStart(2, "0");
   const mm = d.getMinutes().toString().padStart(2, "0");
-  const ymd = t.deadline.slice(0, 10);
-  return classOccurrenceSignature(t.title, dow, `${hh}:${mm}`, ymd);
+  return classSignature(t.title, dow, `${hh}:${mm}`);
 }
 
-function parsedOccurrenceSignature(c: ParsedClass): string {
+/**
+ * Per-event signature for non-recurring tasks. Used by the one-off event
+ * importer (sports fixtures, single meetings) to detect "đã có".
+ */
+function taskEventSignature(t: {
+  title: string;
+  deadline?: string;
+  recurrence?: string | null;
+}): string | null {
+  if (t.recurrence || !t.deadline) return null;
+  const d = new Date(t.deadline);
+  if (Number.isNaN(d.getTime())) return null;
+  const hh = d.getHours().toString().padStart(2, "0");
+  const mm = d.getMinutes().toString().padStart(2, "0");
+  return eventSignature(t.title, t.deadline.slice(0, 10), `${hh}:${mm}`);
+}
+
+function parsedSlotSignature(c: ParsedClass): string {
+  return classSignature(c.subject, c.dayOfWeek, c.startTime);
+}
+
+function parsedEventSignature(c: ParsedClass): string {
   const iso = computeFirstOccurrenceISO(c);
-  return classOccurrenceSignature(c.subject, c.dayOfWeek, c.startTime, iso.slice(0, 10));
+  return eventSignature(c.subject, iso.slice(0, 10), c.startTime);
 }
 
 type RowKind = "new" | "exact" | "changed";
@@ -263,13 +290,27 @@ export function ImportPage() {
   };
 
   // ---- Per-row classification (new / exact / changed) -------------------
-  // Index existing weekly tasks by per-OCCURRENCE signature (slot + date).
-  // Skipping is only correct when the same week's instance already exists;
-  // a stale instance from a prior week shouldn't block this week's import.
-  const existingByOccurrence = useMemo(() => {
+  // Two indexes:
+  //   1. existingBySlot — weekly recurring tasks keyed by SLOT (subject-code
+  //      + dow + time). A weekly task owns its slot indefinitely; re-importing
+  //      the same school timetable should always find it and skip, not create
+  //      a second copy at last-week's date (the original duplicate bug).
+  //   2. existingByEvent — non-recurring tasks keyed by exact (date, time,
+  //      title). Used for one-off events (WC fixtures, single calendar
+  //      invites) so the user doesn't double-import them.
+  const existingBySlot = useMemo(() => {
     const m = new Map<string, Task>();
     for (const t of tasks) {
-      const sig = taskOccurrenceSignature(t);
+      const sig = taskSlotSignature(t);
+      if (sig) m.set(sig, t);
+    }
+    return m;
+  }, [tasks]);
+
+  const existingByEvent = useMemo(() => {
+    const m = new Map<string, Task>();
+    for (const t of tasks) {
+      const sig = taskEventSignature(t);
       if (sig) m.set(sig, t);
     }
     return m;
@@ -278,8 +319,10 @@ export function ImportPage() {
   const rowMetas = useMemo(() => {
     const out: Record<string, RowMeta> = {};
     for (const c of parsed) {
-      const sig = parsedOccurrenceSignature(c);
-      const existing = existingByOccurrence.get(sig);
+      const sig = c.oneOff ? parsedEventSignature(c) : parsedSlotSignature(c);
+      const existing = c.oneOff
+        ? existingByEvent.get(sig)
+        : existingBySlot.get(sig);
       if (!existing) {
         out[c.id] = { kind: "new" };
         continue;
@@ -290,16 +333,17 @@ export function ImportPage() {
         : { kind: "changed", existingId: existing.id, changes };
     }
     return out;
-  }, [parsed, existingByOccurrence]);
+  }, [parsed, existingBySlot, existingByEvent]);
 
-  // All existing weekly tasks whose subject appears in the new import — i.e.
-  // every recurring task that COULD potentially be affected. Used for two
-  // purposes: (a) displaced detection (slot changed) and (b) the explicit
-  // "xoá lịch cũ rồi import lại" wipe mode.
+  // All existing weekly tasks whose subject appears in the recurring portion
+  // of the import. Used for (a) displaced-slot detection and (b) the explicit
+  // wipe mode. One-off events don't participate — they're per-event, not
+  // per-slot, so "affected" doesn't apply.
   const affectedExisting = useMemo(() => {
-    if (!parsed.length) return [] as Task[];
+    const recurringParsed = parsed.filter((c) => !c.oneOff);
+    if (!recurringParsed.length) return [] as Task[];
     const importSubjects = new Set<string>();
-    for (const c of parsed) {
+    for (const c of recurringParsed) {
       const code = extractSubjectCode(c.subject);
       if (code) importSubjects.add(code.toLowerCase());
     }
@@ -317,6 +361,7 @@ export function ImportPage() {
     if (!affectedExisting.length) return [] as Task[];
     const importSigs = new Set<string>();
     for (const c of parsed) {
+      if (c.oneOff) continue;
       const code = extractSubjectCode(c.subject);
       if (!code) continue;
       importSigs.add(`${code.toLowerCase()}|${c.dayOfWeek}|${c.startTime}`);
@@ -415,22 +460,39 @@ export function ImportPage() {
       const desc = [c.endTime ? `Kết thúc: ${c.endTime}` : null, c.notes]
         .filter(Boolean)
         .join("\n");
-      addTask({
-        title: c.subject,
-        description: desc || undefined,
-        type: "academic",
-        priority: "medium",
-        location: c.location,
-        deadline: new Date(firstOcc).toISOString(),
-        recurrence: "weekly",
-        recurrenceEndAt:
-          semesterEndIso ??
-          (c.endDate
-            ? new Date(c.endDate + "T23:59:59").toISOString()
-            : null),
-        tags: ["lich-hoc"],
-        notify: "15m",
-      });
+      if (c.oneOff) {
+        // One-off event (sports match, calendar invite…) — no recurrence,
+        // type default "other", neutral priority. User tags it via the
+        // import-source toggle below if they want a custom default.
+        addTask({
+          title: c.subject,
+          description: desc || undefined,
+          type: "other",
+          priority: "medium",
+          location: c.location,
+          deadline: new Date(firstOcc).toISOString(),
+          recurrence: null,
+          tags: ["su-kien"],
+          notify: "15m",
+        });
+      } else {
+        addTask({
+          title: c.subject,
+          description: desc || undefined,
+          type: "academic",
+          priority: "medium",
+          location: c.location,
+          deadline: new Date(firstOcc).toISOString(),
+          recurrence: "weekly",
+          recurrenceEndAt:
+            semesterEndIso ??
+            (c.endDate
+              ? new Date(c.endDate + "T23:59:59").toISOString()
+              : null),
+          tags: ["lich-hoc"],
+          notify: "15m",
+        });
+      }
       added++;
       actuallyAdded.push(c);
     }
@@ -476,14 +538,24 @@ export function ImportPage() {
   ];
 
   const inputKind = raw ? detectKind(raw) : null;
+  const inputKindLabel =
+    inputKind === "ics"
+      ? "ICS Calendar"
+      : inputKind === "html"
+      ? "HTML"
+      : inputKind === "event-list"
+      ? "Sự kiện"
+      : inputKind === "text"
+      ? "Text"
+      : null;
 
   return (
     <div className="h-full flex flex-col gap-6">
       <div className="shrink-0">
-        <h2 className="text-3xl font-bold tracking-tight">Import lịch học</h2>
+        <h2 className="text-3xl font-bold tracking-tight">Import lịch</h2>
         <p className="text-muted-foreground mt-1">
-          Đẩy timetable từ web trường vào Clearmind. Dữ liệu sẽ tạo task lặp lại
-          hàng tuần.
+          Lịch học hàng tuần, lịch trận đấu, calendar invite (ICS) — paste,
+          bookmark hoặc kéo file vào, Clearmind tự nhận format.
         </p>
       </div>
 
@@ -532,9 +604,9 @@ export function ImportPage() {
                 />
                 <div className="flex items-center justify-between gap-2 text-xs">
                   <div className="flex items-center gap-2 text-muted-foreground">
-                    {inputKind && (
-                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-secondary capitalize">
-                        <Info className="h-3 w-3" /> {inputKind}
+                    {inputKindLabel && (
+                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-secondary">
+                        <Info className="h-3 w-3" /> {inputKindLabel}
                       </span>
                     )}
                     <button
@@ -980,25 +1052,28 @@ export function ImportPage() {
                     </div>
                   )}
 
-                  {/* Semester end picker */}
-                  <div className="flex items-center gap-3 p-3 rounded-lg border bg-muted/30">
-                    <CalendarRange className="h-4 w-4 text-muted-foreground shrink-0" />
-                    <div className="flex-1 min-w-0">
-                      <p className="text-xs font-semibold">
-                        Học kỳ kết thúc ngày
-                      </p>
-                      <p className="text-[11px] text-muted-foreground">
-                        Sau ngày này không sinh phiên mới nữa.
-                      </p>
+                  {/* Semester end picker — only meaningful for weekly recurring
+                      classes. Hidden when the import is entirely one-off events. */}
+                  {parsed.some((c) => !c.oneOff) && (
+                    <div className="flex items-center gap-3 p-3 rounded-lg border bg-muted/30">
+                      <CalendarRange className="h-4 w-4 text-muted-foreground shrink-0" />
+                      <div className="flex-1 min-w-0">
+                        <p className="text-xs font-semibold">
+                          Học kỳ kết thúc ngày
+                        </p>
+                        <p className="text-[11px] text-muted-foreground">
+                          Sau ngày này không sinh phiên mới nữa.
+                        </p>
+                      </div>
+                      <DateTimePicker
+                        value={semesterEnd}
+                        onChange={setSemesterEnd}
+                        dateOnly
+                        placeholder="Chọn ngày kết thúc"
+                        className="w-[180px]"
+                      />
                     </div>
-                    <DateTimePicker
-                      value={semesterEnd}
-                      onChange={setSemesterEnd}
-                      dateOnly
-                      placeholder="Chọn ngày kết thúc"
-                      className="w-[180px]"
-                    />
-                  </div>
+                  )}
 
                   {/* Grouped preview */}
                   <PreviewList
@@ -1124,18 +1199,44 @@ function PreviewList({
   skipChangedIds: Set<string>;
   onToggleSkip: (id: string) => void;
 }) {
+  // Group strategy depends on event shape:
+  //  - All recurring (timetable): group by dayOfWeek — one row per slot.
+  //  - Any one-off (event-list, ICS invites): group by exact startDate so two
+  //    Mondays in different weeks don't collapse into one group.
+  const hasOneOff = items.some((c) => c.oneOff);
   const grouped = useMemo(() => {
-    const byDay: Record<number, ParsedClass[]> = {};
+    const map = new Map<string, ParsedClass[]>();
     for (const c of items) {
-      (byDay[c.dayOfWeek] ??= []).push(c);
+      const key = hasOneOff
+        ? c.startDate ?? `dow-${c.dayOfWeek}`
+        : `dow-${c.dayOfWeek}`;
+      const arr = map.get(key) ?? [];
+      arr.push(c);
+      map.set(key, arr);
     }
-    for (const k of Object.keys(byDay)) {
-      byDay[+k].sort((a, b) => a.startTime.localeCompare(b.startTime));
+    for (const arr of map.values()) {
+      arr.sort((a, b) => a.startTime.localeCompare(b.startTime));
     }
-    return byDay;
-  }, [items]);
+    return map;
+  }, [items, hasOneOff]);
 
-  const orderedDays = [1, 2, 3, 4, 5, 6, 0];
+  const orderedKeys = useMemo(() => {
+    if (hasOneOff) {
+      // Sort by date ascending; fallback dow-X entries go last.
+      return Array.from(grouped.keys()).sort((a, b) => {
+        const aIsDate = !a.startsWith("dow-");
+        const bIsDate = !b.startsWith("dow-");
+        if (aIsDate && bIsDate) return a.localeCompare(b);
+        if (aIsDate) return -1;
+        if (bIsDate) return 1;
+        return a.localeCompare(b);
+      });
+    }
+    const orderedDays = [1, 2, 3, 4, 5, 6, 0];
+    return orderedDays
+      .map((d) => `dow-${d}`)
+      .filter((k) => grouped.get(k)?.length);
+  }, [grouped, hasOneOff]);
 
   const updateItem = (id: string, patch: Partial<ParsedClass>) => {
     setItems(items.map((c) => (c.id === id ? { ...c, ...patch } : c)));
@@ -1145,40 +1246,46 @@ function PreviewList({
 
   return (
     <div className="space-y-4">
-      {orderedDays
-        .filter((d) => grouped[d]?.length)
-        .map((d) => {
-          const nextDate = previewDateForDay(grouped[d], d);
-          const attendedCount = grouped[d].filter((c) => c.attended).length;
-          return (
-            <div key={d}>
-              <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-2 flex items-center gap-2 flex-wrap">
-                <CalendarRange className="h-3 w-3" />
-                <span>{DOW_LABEL_VI[d]}</span>
-                <span className="text-muted-foreground/70 font-normal normal-case tabular-nums">
-                  · {fmtFullDate(nextDate)}
-                </span>
-                <span className="text-muted-foreground/70 font-normal">
-                  ({grouped[d].length}
-                  {attendedCount > 0 ? `, ${attendedCount} đã điểm danh` : ""})
-                </span>
-              </p>
-              <div className="space-y-2">
-                {grouped[d].map((c) => (
-                  <PreviewRow
-                    key={c.id}
-                    item={c}
-                    meta={rowMetas[c.id]}
-                    skipped={skipChangedIds.has(c.id)}
-                    onToggleSkip={() => onToggleSkip(c.id)}
-                    onChange={(patch) => updateItem(c.id, patch)}
-                    onRemove={() => removeItem(c.id)}
-                  />
-                ))}
-              </div>
+      {orderedKeys.map((key) => {
+        const group = grouped.get(key);
+        if (!group?.length) return null;
+        const isDateKey = !key.startsWith("dow-");
+        const dow = isDateKey
+          ? new Date(`${key}T00:00:00`).getDay()
+          : parseInt(key.slice(4), 10);
+        const dateForHeader = isDateKey
+          ? new Date(`${key}T00:00:00`)
+          : previewDateForDay(group, dow);
+        const attendedCount = group.filter((c) => c.attended).length;
+        return (
+          <div key={key}>
+            <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-2 flex items-center gap-2 flex-wrap">
+              <CalendarRange className="h-3 w-3" />
+              <span>{DOW_LABEL_VI[dow]}</span>
+              <span className="text-muted-foreground/70 font-normal normal-case tabular-nums">
+                · {fmtFullDate(dateForHeader)}
+              </span>
+              <span className="text-muted-foreground/70 font-normal">
+                ({group.length}
+                {attendedCount > 0 ? `, ${attendedCount} đã điểm danh` : ""})
+              </span>
+            </p>
+            <div className="space-y-2">
+              {group.map((c) => (
+                <PreviewRow
+                  key={c.id}
+                  item={c}
+                  meta={rowMetas[c.id]}
+                  skipped={skipChangedIds.has(c.id)}
+                  onToggleSkip={() => onToggleSkip(c.id)}
+                  onChange={(patch) => updateItem(c.id, patch)}
+                  onRemove={() => removeItem(c.id)}
+                />
+              ))}
             </div>
-          );
-        })}
+          </div>
+        );
+      })}
     </div>
   );
 }
