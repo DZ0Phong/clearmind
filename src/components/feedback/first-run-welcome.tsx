@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 import { Link } from "react-router-dom";
 import { Bell, Power, Upload, Check, X } from "lucide-react";
 import { Logo } from "@/components/logo";
@@ -80,13 +81,19 @@ export function FirstRunWelcome() {
 
   if (!open) return null;
 
-  return (
+  // Portal to body so the backdrop reaches the real viewport edge
+  // regardless of any ancestor stacking context (was being clipped by
+  // <main>'s former z-10 — even after that fix, portaling is the
+  // future-proof guarantee). z-[110] sits between modals (z-50/100)
+  // and toasts (z-[120]) so confirmation toasts fired by the welcome's
+  // CTAs remain visible above the welcome.
+  return createPortal(
     <div
       role="dialog"
       aria-modal="true"
       aria-labelledby="welcome-title"
       data-testid="first-run-welcome"
-      className="fixed inset-0 z-[100] bg-black/40 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-200"
+      className="fixed inset-0 z-[110] bg-black/40 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-200"
     >
       <div className="w-full max-w-md bg-card rounded-2xl border shadow-2xl p-6 animate-in zoom-in-95 duration-200">
         <div className="flex items-start justify-between gap-3 mb-4">
@@ -181,7 +188,8 @@ export function FirstRunWelcome() {
           </Button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
 

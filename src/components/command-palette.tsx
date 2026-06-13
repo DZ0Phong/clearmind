@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { useNavigate } from "react-router-dom";
 import {
   Calendar,
@@ -151,7 +152,11 @@ export function CommandPalette({ open, onOpenChange, onCreate, onPickTask }: Pro
 
   if (!open) return null;
 
-  return (
+  // Portal to document.body so the palette escapes <main>'s stacking
+  // context. Without this, fixed + z-[90] is still capped at z-10 vs
+  // the MobileTabBar sibling (z-30) and the palette renders BEHIND the
+  // tab bar on mobile.
+  return createPortal(
     <div
       className="fixed inset-0 z-[90] bg-black/40 backdrop-blur-sm flex items-start justify-center pt-[15vh] px-4"
       onClick={() => onOpenChange(false)}
@@ -269,6 +274,7 @@ export function CommandPalette({ open, onOpenChange, onCreate, onPickTask }: Pro
           )}
         </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }

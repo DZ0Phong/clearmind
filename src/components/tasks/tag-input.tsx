@@ -116,7 +116,7 @@ export function TagInput({
       </div>
 
       {showSuggestions && (
-        <div className="absolute z-20 left-0 right-0 top-full mt-1 rounded-lg border bg-popover shadow-md overflow-hidden">
+        <div className="absolute z-20 left-0 right-0 top-full mt-1 rounded-lg border bg-popover shadow-md overflow-hidden max-h-[40vh] overflow-y-auto">
           <p className="text-[10px] uppercase tracking-wider text-muted-foreground px-3 pt-2 pb-1">
             {t("tag.input.usedHeader")}
           </p>

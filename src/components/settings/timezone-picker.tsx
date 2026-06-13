@@ -162,7 +162,14 @@ export function TimezonePicker() {
   useLayoutEffect(() => {
     if (!open || !rootRef.current) return;
     const rect = rootRef.current.getBoundingClientRect();
-    const spaceBelow = window.innerHeight - rect.bottom;
+    // Reserve room for the mobile bottom-tab bar so the picker flips
+    // upward instead of opening behind the 56px nav.
+    // --mobile-tabbar-h = 0 at md+ so desktop layout is unaffected.
+    const rootStyle = getComputedStyle(document.documentElement);
+    const tabBarRem = parseFloat(rootStyle.getPropertyValue("--mobile-tabbar-h") || "0");
+    const fontSize = parseFloat(rootStyle.fontSize) || 16;
+    const tabBarPx = Number.isFinite(tabBarRem) ? tabBarRem * fontSize : 0;
+    const spaceBelow = window.innerHeight - rect.bottom - tabBarPx;
     // ~330 covers the popover height (max 260 list + 40 search + 30 chrome).
     setPlacement(spaceBelow < 330 ? "top" : "bottom");
   }, [open]);

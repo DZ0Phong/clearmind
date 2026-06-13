@@ -585,7 +585,7 @@ export function ImportPage() {
                   onChange={(e) => setRaw(e.target.value)}
                   onPaste={handlePaste}
                   placeholder={SAMPLE_TEXT}
-                  className="flex-1 min-h-[260px] rounded-md border border-input bg-background px-3 py-2 text-xs font-mono leading-relaxed shadow-xs resize-none outline-none transition-[color,box-shadow] placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50"
+                  className="flex-1 min-h-[260px] rounded-md border border-input bg-background px-3 py-2 text-[16px] md:text-xs font-mono leading-relaxed shadow-xs resize-none outline-none transition-[color,box-shadow] placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50"
                 />
                 <div className="flex items-center justify-between gap-2 text-xs">
                   <div className="flex items-center gap-2 text-muted-foreground">

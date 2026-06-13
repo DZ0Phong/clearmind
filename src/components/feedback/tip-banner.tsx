@@ -124,10 +124,10 @@ export function TipBanner() {
     <div
       data-testid="tip-banner"
       className={cn(
-        // Pin to topbar's effective height (3.5rem visible + safe-area-inset-top
-         // for notched / PWA standalone iOS). Matches the `style.height` calc
-         // in main-layout.tsx's <header> exactly — change one, change both.
-        "sticky top-[calc(3.5rem+env(safe-area-inset-top,0px))] z-[15] shrink-0",
+        // Pin to topbar's effective height. Reads --topbar-h (defined in
+        // index.css) so banner and topbar share one source of truth and
+        // can't drift on orientation change.
+        "sticky top-[calc(var(--topbar-h)+env(safe-area-inset-top,0px))] z-[15] shrink-0",
         // Accent-tinted frosted surface — differentiates from the topbar
         // (which uses `bg-background/60`) and follows the user's accent
         // pick because the tint comes from `--primary`. Strong backdrop

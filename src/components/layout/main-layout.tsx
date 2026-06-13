@@ -35,7 +35,16 @@ export function MainLayout({ children }: { children: ReactNode }) {
       }}
     >
       <Sidebar />
-      <main className="flex-1 flex flex-col relative z-10 min-w-0 overflow-y-auto">
+      {/* No `z-10` here — `position:relative` + `z-10` formed a stacking
+          context that capped every descendant popover (DateTimePicker,
+          TimezonePicker, VoiceMic engine dropdown, Focus task picker,
+          TagInput suggestions, FullCalendar `.fc-popover`) at z-10
+          against the MobileTabBar sibling (z-30). Result on mobile: any
+          popover near the bottom edge got painted UNDER the tab bar.
+          Sidebar sits to the LEFT of main (no horizontal overlap), so
+          z-10 served no layering purpose. Dropping it lets each popover
+          stack on its own merit again. */}
+      <main className="flex-1 flex flex-col relative min-w-0 overflow-y-auto">
         <TopBar />
         <TipBanner />
         <DuplicateBanner />

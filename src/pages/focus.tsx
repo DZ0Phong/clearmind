@@ -546,7 +546,7 @@ export function FocusPage() {
           </button>
         )}
         {showTaskPicker && (
-          <div className="absolute z-20 top-full mt-2 left-0 w-full max-w-md rounded-xl border bg-card shadow-lg p-2 max-h-[55vh] overflow-y-auto">
+          <div className="absolute z-20 top-full mt-2 left-0 w-full max-w-md rounded-xl border bg-card shadow-lg p-2 max-h-[min(55vh,calc(100dvh-var(--mobile-tabbar-h)-var(--safe-bottom)-8rem))] overflow-y-auto">
             <div className="flex items-center justify-between px-2 pb-2">
               <p className="text-[11px] uppercase tracking-wider font-semibold text-muted-foreground">
                 {t("focus.pickTask")}

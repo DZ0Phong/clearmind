@@ -634,7 +634,7 @@ export function VoiceMic({ onText, lang, className, title }: Props) {
       {errMsg && (
         <span
           role="alert"
-          className="absolute top-full mt-1 right-0 z-50 text-[10px] font-medium text-destructive bg-destructive/10 border border-destructive/30 rounded px-1.5 py-0.5 max-w-[260px] whitespace-normal break-words"
+          className="absolute bottom-full mb-1 right-0 z-50 text-[10px] font-medium text-destructive bg-destructive/10 border border-destructive/30 rounded px-1.5 py-0.5 max-w-[260px] whitespace-normal break-words"
         >
           {errMsg}
         </span>

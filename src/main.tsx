@@ -14,6 +14,23 @@ installGlobalErrorHandlers();
 // strip clearly has overflow.
 installGlobalWheelNormaliser();
 
+// iOS Safari does NOT shrink the layout viewport / dvh when the soft
+// keyboard opens — it slides OVER the layout, obscuring the bottom of
+// centered dialogs. Mirror window.visualViewport.height into a CSS var
+// so chrome that needs to anchor to the *visible* region can read it.
+// (cm-sheet-mobile dialogs already pin to bottom: 0 so they slide up
+// with the visual viewport automatically; this is for any future
+// surface that needs explicit visual-viewport awareness.)
+if (typeof window !== "undefined" && window.visualViewport) {
+  const vv = window.visualViewport;
+  const sync = () => {
+    document.documentElement.style.setProperty("--visual-vh", `${vv.height}px`);
+  };
+  sync();
+  vv.addEventListener("resize", sync);
+  vv.addEventListener("scroll", sync);
+}
+
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
     <App />

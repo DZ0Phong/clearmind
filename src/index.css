@@ -960,12 +960,30 @@ input[type="number"] {
    hint. Desktop UX unchanged. Keeps the Radix Dialog primitive
    — no migration to vaul required. */
 @media (max-width: 767px) {
+  /* Hide the bottom-tab bar while a bottom-sheet dialog is open — the
+     sheet IS the surface, and on some Android WebViews the tab bar can
+     remain tappable through the dialog overlay because the bar's own
+     backdrop-filter creates a separate compositor layer that pointer-
+     events can leak through. Belt-and-braces fix. */
+  body:has([data-slot="dialog-content"].cm-sheet-mobile[data-state="open"]) .cm-mobile-tabbar {
+    display: none;
+  }
   [data-slot="dialog-content"].cm-sheet-mobile {
     top: auto;
     bottom: 0;
     left: 0;
     right: 0;
+    /* Tailwind 4 splits transform into individual properties — Radix's
+       `translate-x-[-50%] translate-y-[-50%]` writes the `translate`
+       property directly, NOT `transform`. Setting `transform: none`
+       alone leaves the translate in place and pushes the sheet up off
+       the viewport (was causing the dialog to render with negative
+       top, fully outside screen). Reset both, plus `rotate`/`scale`
+       for completeness in case other utilities land later. */
     transform: none;
+    translate: none;
+    rotate: none;
+    scale: none;
     width: 100%;
     max-width: 100%;
     max-height: 92dvh;
@@ -1009,7 +1027,13 @@ input[type="number"] {
    desktop tracks waste viewport space and look out of place.
    Pointer-coarse gates to touch input only. */
 @media (pointer: coarse) {
-  *::-webkit-scrollbar { width: 0; height: 0; }
-  * { scrollbar-width: none; }
+  /* Hide scrollbars on the OUTER page only — iOS Safari overlays its own
+     thin scrollbar on the body. Nested overflow-y-auto containers (dialog
+     bodies, popover lists, tz picker list) keep their scrollbar because
+     iOS does NOT auto-overlay inside non-root scrollers — without a
+     visible affordance users think bottom rows are missing. */
+  html::-webkit-scrollbar,
+  body::-webkit-scrollbar { width: 0; height: 0; }
+  html, body { scrollbar-width: none; }
 }
 

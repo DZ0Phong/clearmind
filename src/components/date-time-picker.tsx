@@ -210,9 +210,17 @@ export function DateTimePicker({
     const POPOVER_W = 300;
     const POPOVER_H = dateOnly ? 320 : 420;
     const MARGIN = 12;
+    // Subtract the mobile tab-bar height so the picker flips upward when
+    // opening down would underlap the 56px bottom nav. --mobile-tabbar-h
+    // resolves to 0 at md+ so desktop behaviour is unchanged.
+    const rootStyle = getComputedStyle(document.documentElement);
+    const tabBarRem = parseFloat(rootStyle.getPropertyValue("--mobile-tabbar-h") || "0");
+    const fontSize = parseFloat(rootStyle.fontSize) || 16;
+    const tabBarPx = Number.isFinite(tabBarRem) ? tabBarRem * fontSize : 0;
+    const effectiveBottom = window.innerHeight - tabBarPx;
     const rect = triggerRef.current.getBoundingClientRect();
     setAlignRight(rect.left + POPOVER_W > window.innerWidth - MARGIN);
-    setOpenUpward(rect.bottom + POPOVER_H > window.innerHeight - MARGIN);
+    setOpenUpward(rect.bottom + POPOVER_H > effectiveBottom - MARGIN);
   }, [open, dateOnly]);
 
   function commit(d: Date | null, h: number, m: number) {
