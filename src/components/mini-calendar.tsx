@@ -158,7 +158,11 @@ export function MiniCalendar() {
       </div>
 
       {/* Grid */}
-      <div className="grid grid-cols-7 gap-0.5">
+      <div
+        role="grid"
+        aria-label={viewMonth.toLocaleDateString(localeTag, { month: "long", year: "numeric" })}
+        className="grid grid-cols-7 gap-0.5"
+      >
         {DOW.map((d) => (
           <div
             key={d}
@@ -185,6 +189,7 @@ export function MiniCalendar() {
                 navigate("/calendar?date=" + encodeURIComponent(k))
               }
               title={tip}
+              aria-label={`${d.toLocaleDateString(localeTag, { weekday: "long", day: "numeric", month: "long" })}${tip ? ", " + tip : ""}`}
               className={cn(
                 "h-7 w-full rounded-md text-[11px] font-medium transition-colors flex flex-col items-center justify-center relative tabular-nums",
                 isToday && "bg-primary text-primary-foreground",

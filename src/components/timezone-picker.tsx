@@ -254,13 +254,19 @@ export function TimezonePicker() {
               <button
                 type="button"
                 onClick={() => setOpen((v) => !v)}
+                aria-expanded={open}
                 className={cn(
                   "ml-1 inline-flex items-center gap-0.5 text-foreground hover:text-primary",
                   "transition-colors"
                 )}
               >
                 {t("settings.tz.change")}
-                <ChevronDown className="h-3 w-3" />
+                <ChevronDown
+                  className={cn(
+                    "h-3 w-3 transition-transform duration-200",
+                    open && "rotate-180"
+                  )}
+                />
               </button>
             )}
           </>

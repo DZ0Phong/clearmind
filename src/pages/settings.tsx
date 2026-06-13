@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import {
   Card,
   CardContent,
@@ -69,8 +70,32 @@ export function SettingsPage() {
   const { confirm } = useDialog();
   const t = useT();
   const fileRef = useRef<HTMLInputElement>(null);
-  const [tab, setTab] = useState<Tab>("appearance");
+  // Read `?tab=` from the URL on mount so deep-links (e.g. the CLI status
+  // badge in TopBar → /settings?tab=system) land on the right tab instead
+  // of the default Appearance tab. Falls back to "appearance" for any
+  // missing/unknown value.
+  const [searchParams, setSearchParams] = useSearchParams();
+  const initialTab: Tab = (() => {
+    const q = searchParams.get("tab");
+    return q === "notifications" || q === "data" || q === "system" || q === "advanced"
+      ? q
+      : "appearance";
+  })();
+  const [tab, setTab] = useState<Tab>(initialTab);
   const cli = isCliMode();
+
+  // Keep the URL in sync when the user clicks a tab so the chosen tab is
+  // shareable / refreshable. Replace, not push, to avoid polluting browser
+  // history with every tab click.
+  useEffect(() => {
+    const current = searchParams.get("tab");
+    if (current === tab) return;
+    if (tab === "appearance" && !current) return;
+    const next = new URLSearchParams(searchParams);
+    if (tab === "appearance") next.delete("tab");
+    else next.set("tab", tab);
+    setSearchParams(next, { replace: true });
+  }, [tab, searchParams, setSearchParams]);
 
   // -- Toast-emitting handlers ------------------------------------------
   const handleExport = () => {
@@ -164,51 +189,65 @@ export function SettingsPage() {
       </div>
 
       {/* Tab strip — pill nav, scrolls on narrow screens */}
-      <div className="shrink-0 flex items-center gap-1 p-1 rounded-lg bg-muted/50 w-fit max-w-full overflow-x-auto">
-        {tabs.filter((x) => x.show).map(({ id, label, icon: Icon }) => (
-          <button
-            key={id}
-            onClick={() => setTab(id)}
-            className={cn(
-              "cm-press inline-flex items-center gap-2 px-3 py-1.5 rounded-md text-sm font-medium transition-all whitespace-nowrap",
-              tab === id
-                ? "bg-card text-foreground shadow-sm"
-                : "text-muted-foreground hover:text-foreground"
-            )}
-          >
-            <Icon className="h-3.5 w-3.5" />
-            {label}
-          </button>
-        ))}
+      <div
+        className="cm-seg-track shrink-0 w-fit max-w-full overflow-x-auto"
+        role="tablist"
+        aria-label={t("settings.title")}
+      >
+        {tabs.filter((x) => x.show).map(({ id, label, icon: Icon }) => {
+          const active = tab === id;
+          return (
+            <button
+              key={id}
+              type="button"
+              role="tab"
+              aria-selected={active}
+              data-active={active}
+              onClick={() => setTab(id)}
+              className="cm-seg-item cm-press"
+            >
+              <Icon className="h-3.5 w-3.5" />
+              {label}
+            </button>
+          );
+        })}
       </div>
 
-      <div className="flex-1 overflow-y-auto max-w-3xl">
-        <div className="grid gap-6">
-          {tab === "appearance" && <AppearanceTab />}
+      {/*
+        Full-width tab body. Previous layout capped at `max-w-3xl` and
+        owned its own scroll container — both decisions wasted ~40% of
+        the viewport at md+ and forced a nested scrollbar inside the
+        already-scrolling page. Now: full width + document-level scroll
+        + 2-column grid at md+ that lets short cards (Appearance,
+        Shortcuts, CliStatus) sit side-by-side while long cards (Tags,
+        ErrorLog, native notif, backup/recover) span the full row via
+        `md:col-span-2`.
+       */}
+      <div className="flex-1 grid grid-cols-1 md:grid-cols-2 gap-5 auto-rows-min items-start">
+        {tab === "appearance" && <AppearanceTab />}
 
-          {tab === "notifications" && (
-            <NotificationsTab
-              cli={cli}
-              notificationsEnabled={notificationsEnabled}
-              onEnable={handleNotify}
-            />
-          )}
+        {tab === "notifications" && (
+          <NotificationsTab
+            cli={cli}
+            notificationsEnabled={notificationsEnabled}
+            onEnable={handleNotify}
+          />
+        )}
 
-          {tab === "data" && (
-            <DataTab
-              tasks={tasks}
-              cli={cli}
-              fileRef={fileRef}
-              onExport={handleExport}
-              onImportFile={handleImportFile}
-              onClear={handleClear}
-            />
-          )}
+        {tab === "data" && (
+          <DataTab
+            tasks={tasks}
+            cli={cli}
+            fileRef={fileRef}
+            onExport={handleExport}
+            onImportFile={handleImportFile}
+            onClear={handleClear}
+          />
+        )}
 
-          {tab === "system" && <SystemTab cli={cli} />}
+        {tab === "system" && <SystemTab cli={cli} />}
 
-          {tab === "advanced" && <AdvancedTab />}
-        </div>
+        {tab === "advanced" && <AdvancedTab />}
       </div>
     </div>
   );
@@ -218,10 +257,21 @@ export function SettingsPage() {
    Tab content components
    ============================================================ */
 
+/**
+ * Appearance — Linear/Things-style flat preferences list. Each setting
+ * is a description-control row inside a single card so related controls
+ * stay visually unified, repeating "Settings" icons aren't shown 4×,
+ * and the wider picker (TimezonePicker) doesn't have to cram into a
+ * 558px tile.
+ *
+ * Row layout: title + hint take ~40% of the row on the left, the
+ * control sits on the right with breathing room. At narrower widths
+ * the row stacks vertically so the picker keeps its full width.
+ */
 function AppearanceTab() {
   const t = useT();
   return (
-    <Card className="border-primary/10 shadow-sm bg-card">
+    <Card className="md:col-span-2 border-primary/10 shadow-sm bg-card">
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
           <Settings className="h-5 w-5 text-primary" />
@@ -229,33 +279,75 @@ function AppearanceTab() {
         </CardTitle>
         <CardDescription>{t("settings.appearance.desc")}</CardDescription>
       </CardHeader>
-      <CardContent className="space-y-3">
-        <RowItem
+      <CardContent className="p-0">
+        <PrefRow
           title={t("settings.theme.label")}
           hint={t("settings.theme.hint")}
         >
           <ThemePicker />
-        </RowItem>
-        <RowItem
+        </PrefRow>
+        <PrefRow
           title={t("settings.accent.label")}
           hint={t("settings.accent.hint")}
         >
           <AccentPicker />
-        </RowItem>
-        <RowItem
+        </PrefRow>
+        <PrefRow
           title={t("settings.language.label")}
           hint={t("settings.language.hint")}
         >
           <LanguagePicker />
-        </RowItem>
-        <RowItem
+        </PrefRow>
+        <PrefRow
           title={t("settings.tz.label")}
           hint={t("settings.tz.hint")}
+          last
         >
           <TimezonePicker />
-        </RowItem>
+        </PrefRow>
       </CardContent>
     </Card>
+  );
+}
+
+/**
+ * Single preference row — title+hint on the left in a fixed-width
+ * description column, control on the right. Border-bottom separates
+ * rows; the `last` row drops its border so the card edge handles the
+ * outline. Stacks vertically on narrow viewports so the picker keeps
+ * its full horizontal canvas instead of squeezing into half a row.
+ */
+function PrefRow({
+  title,
+  hint,
+  last,
+  children,
+}: {
+  title: string;
+  hint?: string;
+  last?: boolean;
+  children: React.ReactNode;
+}) {
+  return (
+    <div
+      className={cn(
+        "flex flex-col lg:flex-row lg:items-center gap-4 lg:gap-6",
+        "px-5 py-4",
+        !last && "border-b border-border/40"
+      )}
+    >
+      <div className="lg:w-[40%] lg:shrink-0 min-w-0">
+        <h3 className="font-medium text-sm">{title}</h3>
+        {hint && (
+          <p className="text-[12px] text-muted-foreground mt-0.5 leading-relaxed">
+            {hint}
+          </p>
+        )}
+      </div>
+      <div className="lg:ml-auto flex-1 min-w-0 flex lg:justify-end">
+        {children}
+      </div>
+    </div>
   );
 }
 
@@ -271,7 +363,7 @@ function NotificationsTab({
   const t = useT();
   return (
     <>
-      <Card className="border-primary/10 shadow-sm bg-card">
+      <Card className="md:col-span-2 border-primary/10 shadow-sm bg-card">
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             {notificationsEnabled || cli ? (
@@ -332,7 +424,7 @@ function DataTab({
   const { toast } = useToast();
   return (
     <>
-      <Card className="border-primary/10 shadow-sm bg-card">
+      <Card className="md:col-span-2 border-primary/10 shadow-sm bg-card">
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <Database className="h-5 w-5 text-primary" />
@@ -421,7 +513,7 @@ function SystemTab({ cli }: { cli: boolean }) {
     <>
       {cli && <CliStatusCard />}
 
-      <Card className="border-primary/10 shadow-sm bg-card">
+      <Card className="md:col-span-2 border-primary/10 shadow-sm bg-card">
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <Keyboard className="h-5 w-5 text-primary" />
@@ -561,7 +653,7 @@ function TagsCard() {
   };
 
   return (
-    <Card className="border-primary/10 shadow-sm bg-card">
+    <Card className="md:col-span-2 border-primary/10 shadow-sm bg-card">
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
           <Hash className="h-5 w-5 text-primary" />
@@ -642,7 +734,7 @@ function ErrorLogCard() {
   };
 
   return (
-    <Card className="border-primary/10 shadow-sm bg-card">
+    <Card className="md:col-span-2 border-primary/10 shadow-sm bg-card">
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
           <Bug className="h-5 w-5 text-primary" />
@@ -814,7 +906,7 @@ function CliStatusCard() {
   };
 
   return (
-    <Card className="border-emerald-500/30 shadow-sm bg-card">
+    <Card className="md:col-span-2 border-emerald-500/30 shadow-sm bg-card">
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
           <Power className="h-5 w-5 text-emerald-500" />
@@ -823,12 +915,16 @@ function CliStatusCard() {
         <CardDescription>{t("settings.cli.desc")}</CardDescription>
       </CardHeader>
       <CardContent className="space-y-3">
+        {/* KV strip — was a sm:grid-cols-2 block that hugged the left
+            corner of the (now wider) card. Switching to a flex-wrap
+            row spreads the chips left-to-right so the card's full
+            width carries real content instead of empty whitespace. */}
         {info ? (
-          <div className="grid sm:grid-cols-2 gap-2 text-xs">
-            <KV label={t("settings.cli.row.port")} value={`localhost:${info.port}`} />
-            <KV label={t("settings.cli.row.version")} value={info.version} />
-            <KV label={t("settings.cli.row.platform")} value={info.platform} />
-            <KV label={t("settings.cli.row.dataFile")} value={info.dataFile} mono />
+          <div className="flex flex-wrap gap-x-4 gap-y-2 text-xs px-3 py-2.5 rounded-lg bg-background/50 border">
+            <KVChip label={t("settings.cli.row.port")} value={`localhost:${info.port}`} />
+            <KVChip label={t("settings.cli.row.version")} value={info.version} />
+            <KVChip label={t("settings.cli.row.platform")} value={info.platform} />
+            <KVChip label={t("settings.cli.row.dataFile")} value={info.dataFile} mono className="min-w-0 flex-1" />
           </div>
         ) : (
           <p className="text-xs text-muted-foreground">
@@ -867,6 +963,41 @@ function CliStatusCard() {
         </RowItem>
       </CardContent>
     </Card>
+  );
+}
+
+/**
+ * Compact inline KV chip used by CliStatusCard. Label is small caps,
+ * value sits below — both share one chip cell so the row reads as a
+ * sequence of `LABEL\nvalue` blocks separated by gap. `mono` switches
+ * the value to tabular font (used for file paths).
+ */
+function KVChip({
+  label,
+  value,
+  mono,
+  className,
+}: {
+  label: string;
+  value: string;
+  mono?: boolean;
+  className?: string;
+}) {
+  return (
+    <div className={cn("min-w-0", className)}>
+      <p className="text-[10px] uppercase tracking-wider font-semibold text-muted-foreground/70 leading-none">
+        {label}
+      </p>
+      <p
+        className={cn(
+          "text-xs font-medium mt-1 leading-tight truncate",
+          mono && "font-mono tabular-nums"
+        )}
+        title={value}
+      >
+        {value}
+      </p>
+    </div>
   );
 }
 
@@ -937,7 +1068,7 @@ function CliBackupRecoverCard() {
       : t("settings.cli.recover.slotMiddle");
 
   return (
-    <Card className="border-amber-500/20 shadow-sm bg-card">
+    <Card className="md:col-span-2 border-amber-500/20 shadow-sm bg-card">
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
           <Save className="h-5 w-5 text-amber-600" />
@@ -1041,7 +1172,7 @@ function CliNativeNotifCard() {
   };
 
   return (
-    <Card className="border-primary/10 shadow-sm bg-card">
+    <Card className="md:col-span-2 border-primary/10 shadow-sm bg-card">
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
           <Bell className="h-5 w-5 text-primary" />
@@ -1100,15 +1231,3 @@ function CliNativeNotifCard() {
   );
 }
 
-function KV({ label, value, mono }: { label: string; value: string; mono?: boolean }) {
-  return (
-    <div className="flex flex-col rounded-lg border bg-background/50 px-3 py-2">
-      <span className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">
-        {label}
-      </span>
-      <span className={mono ? "font-mono text-[11px] break-all" : "text-sm"}>
-        {value}
-      </span>
-    </div>
-  );
-}

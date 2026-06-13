@@ -195,7 +195,7 @@ export function HomeworkDialog({ parentTask, open, onOpenChange }: Props) {
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[480px] max-h-[92vh] flex flex-col gap-0 p-0">
+      <DialogContent className="sm:max-w-[480px] max-h-[92vh] flex flex-col gap-0 p-0 cm-sheet-mobile">
         <DialogHeader className="px-6 pt-6 pb-3 shrink-0">
           <DialogTitle className="flex items-center gap-2">
             <BookOpen className="h-5 w-5 text-primary" />

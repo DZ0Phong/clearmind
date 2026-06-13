@@ -504,6 +504,7 @@ export function VoiceMic({ onText, lang, className, title }: Props) {
               onClick={() => setPickerOpen((v) => !v)}
               title={t("voice.variantPicker.tooltip")}
               aria-label={t("voice.variantPicker.tooltip")}
+              aria-expanded={pickerOpen}
               className={cn(
                 "inline-flex items-center justify-center gap-1.5 px-2.5",
                 "text-xs font-bold tabular-nums outline-none transition-colors",
@@ -517,7 +518,12 @@ export function VoiceMic({ onText, lang, className, title }: Props) {
                 <Zap className="h-3.5 w-3.5 shrink-0 opacity-80" />
               )}
               <span className="leading-none">{variant.short}</span>
-              <ChevronDown className="h-3.5 w-3.5 opacity-60 shrink-0" />
+              <ChevronDown
+                className={cn(
+                  "h-3.5 w-3.5 opacity-60 shrink-0 transition-transform duration-200",
+                  pickerOpen && "rotate-180"
+                )}
+              />
             </button>
           </>
         )}

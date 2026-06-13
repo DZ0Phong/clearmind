@@ -1,4 +1,4 @@
-import { memo, useMemo, useState } from "react";
+import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useTickingNow } from "@/lib/use-ticking-now";
 import FullCalendar from "@fullcalendar/react";
@@ -47,6 +47,7 @@ import { HomeworkDialog } from "@/components/homework-dialog";
 import { useTaskCommands } from "@/components/task-commands";
 import { useTasks, type Task, type TaskType } from "@/hooks/use-tasks";
 import {
+  canonicalTimeZone,
   cn,
   subjectColor,
   tagStats,
@@ -105,8 +106,14 @@ const dayKey = (d: Date) =>
   `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 
 // Academic events vary by subject; everything else uses its fixed type color.
+// Done state is NOT folded in here — earlier we returned `var(--muted)` for
+// done, but that gave the chip a background that mixed muted with the page
+// background (≈ near-bg) AND set textColor to muted too → on light mode the
+// label vanished into the chip, on dark mode the chip looked solid black
+// with no readable text. Done styling now lives in `cm-done` CSS class
+// (opacity + strikethrough) applied via FC's `classNames` so the chip
+// keeps its real color, just dimmed.
 function eventColor(task: Task): string {
-  if (task.status === "done") return "var(--muted)";
   if (task.type === "academic") return subjectColor(task.title).raw;
   return TYPE_COLOR[task.type];
 }
@@ -178,11 +185,39 @@ export function CalendarView({ initialDate }: CalendarViewProps = {}) {
   // "X giờ" hour suffix, "8 – 14 thg 6" range); 'en-gb' for neutral
   // English (Mon-start week, 24h time, "8 – 14 Jun" range).
   const fcLocale = lang === "en" ? "en-gb" : "vi";
-  // IANA tz override or empty for device default. FullCalendar accepts
-  // "local" (= device) as a sentinel — when the user picks Auto we pass
-  // "local" explicitly so the prop value is stable (avoids re-mounting
-  // the grid when toggling Auto vs a specific zone).
-  const fcTimeZone = useTimeZone() || "local";
+  // FullCalendar tz selection. This is subtle: FC 6 only honours named
+  // timezones ("Asia/Ho_Chi_Minh", "America/New_York", …) when the
+  // optional `@fullcalendar/luxon3` plugin is installed. WITHOUT that
+  // plugin (we don't ship it — adds ~30KB for an edge case) FC silently
+  // treats every named tz as UTC, which makes timed events display
+  // shifted by the local offset (a 14:00 Vietnam event lands at 07:00,
+  // a 12:00 event at 05:00 → clipped below slotMinTime → invisible).
+  //
+  // Strategy:
+  //   1. Canonicalise the chosen tz (Asia/Saigon → Asia/Ho_Chi_Minh)
+  //      so the comparison below catches legacy aliases.
+  //   2. If the canonicalised choice matches the browser's own tz, pass
+  //      "local" — that branch FC handles natively and gives identical
+  //      results. Covers the 99% case (user on the same machine that
+  //      hosts the CLI; CLI mode = device mode behaviour-wise).
+  //   3. If the choice differs (e.g. travelling laptop wants to see
+  //      CLI-server time), still pass the named zone so the picker has
+  //      *some* effect — accepting the UTC fallback is preferable to
+  //      silently ignoring the user's pick.
+  const rawTz = useTimeZone();
+  const fcTimeZone = useMemo(() => {
+    if (!rawTz) return "local";
+    const canonical = canonicalTimeZone(rawTz);
+    try {
+      const browser = canonicalTimeZone(
+        Intl.DateTimeFormat().resolvedOptions().timeZone || ""
+      );
+      if (canonical === browser) return "local";
+    } catch {
+      /* fall through to named-zone */
+    }
+    return canonical;
+  }, [rawTz]);
 
   const [view, setView] = useState<ViewMode>(loadStoredView);
   const [hiddenTypes, setHiddenTypes] = useState<Set<TaskType>>(new Set());
@@ -195,11 +230,136 @@ export function CalendarView({ initialDate }: CalendarViewProps = {}) {
   const [dayDateIso, setDayDateIso] = useState<string>(
     () => initialDate ?? dayKey(new Date())
   );
+  // Agenda offset (lifted from AgendaView) so the prev/next/today buttons
+  // can sit in the sticky chrome stack alongside the view switcher. ±1 per
+  // click shifts the 14-day window by ±14 days; 0 = current week's Monday.
+  const [agendaOffset, setAgendaOffset] = useState(0);
+
+  // ── Scroll preservation ────────────────────────────────────────────
+  // The card body is the single scroll container. Saving scrollTop on
+  // every scroll and restoring it after a filter-state change prevents
+  // the browser from clamping scrollTop to 0 when content shrinks
+  // (e.g. user toggles off "Học tập" → half the events vanish → total
+  // scrollHeight drops → browser would otherwise reset scrollTop).
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const savedScrollTopRef = useRef(0);
+  const onBodyScroll = useCallback(() => {
+    if (scrollRef.current) {
+      savedScrollTopRef.current = scrollRef.current.scrollTop;
+    }
+  }, []);
+
+  // Identity of the active filter set. When this changes, restore the
+  // saved scrollTop after layout commits.
+  const filterKey = useMemo(
+    () =>
+      `${[...hiddenTypes].sort().join(",")}|${hideDone ? 1 : 0}|${activeTag ?? ""}`,
+    [hiddenTypes, hideDone, activeTag]
+  );
+
+  useLayoutEffect(() => {
+    const el = scrollRef.current;
+    if (el && savedScrollTopRef.current > 0) {
+      el.scrollTop = savedScrollTopRef.current;
+    }
+  }, [filterKey]);
+
+  // ── FullCalendar's internal time-grid scroll ──────────────────────
+  // For month/week/day, the OUTER scrollRef container doesn't scroll
+  // (FC fills it exactly via height="100%"). The scroll the user
+  // actually moves is the time-grid scroller INSIDE FC (`.fc-scroller`
+  // elements). FC happens to reset that scroller back to `scrollTime`
+  // whenever events change — which, on a filter chip click, looks like
+  // "the calendar jumped back to 07:00". We can't disable that from the
+  // FC props (`scrollTimeReset` only covers date-range changes), so we
+  // snapshot the user's scrollTop on every scroll and restore it after
+  // each filter-driven re-render.
+  const fcScrollTopRef = useRef(0);
+
+  useEffect(() => {
+    if (view === "agenda") return;
+    const root = scrollRef.current;
+    if (!root) return;
+    // FC builds its scrollers async after mount/view change. Defer the
+    // listener setup a tick so they exist by the time we querySelector.
+    let cleanups: Array<() => void> = [];
+    const t1 = setTimeout(() => {
+      const scrollers = root.querySelectorAll<HTMLElement>(".fc-scroller");
+      scrollers.forEach((s) => {
+        // Only the actually-scrollable scroller (time-grid body) matters;
+        // header / time-axis scrollers stay at 0.
+        if (s.scrollHeight <= s.clientHeight + 1) return;
+        const onScroll = () => {
+          fcScrollTopRef.current = s.scrollTop;
+        };
+        s.addEventListener("scroll", onScroll, { passive: true });
+        cleanups.push(() => s.removeEventListener("scroll", onScroll));
+      });
+    }, 80);
+    return () => {
+      clearTimeout(t1);
+      cleanups.forEach((fn) => fn());
+      cleanups = [];
+    };
+  }, [view, fcLocale]);
+
+  // Restore FC scroll after a filter-driven re-render. requestAnimationFrame
+  // gives FC a frame to finish its own internal layout pass first; setting
+  // scrollTop before that pass would be overwritten.
+  useLayoutEffect(() => {
+    if (view === "agenda") return;
+    const root = scrollRef.current;
+    if (!root || fcScrollTopRef.current === 0) return;
+    const target = fcScrollTopRef.current;
+    const id = requestAnimationFrame(() => {
+      const scrollers = root.querySelectorAll<HTMLElement>(".fc-scroller");
+      scrollers.forEach((s) => {
+        if (s.scrollHeight > s.clientHeight + 1) {
+          s.scrollTop = target;
+        }
+      });
+    });
+    return () => cancelAnimationFrame(id);
+  }, [filterKey, view]);
+
+  // Switching the view fundamentally changes the content (month grid vs
+  // week time-grid vs 14-day list), so saved scrollTops no longer make
+  // sense — start fresh at the top. FC will mount fresh and apply its
+  // own scrollTime ("07:00") for Week/Day.
+  useLayoutEffect(() => {
+    savedScrollTopRef.current = 0;
+    fcScrollTopRef.current = 0;
+    if (scrollRef.current) scrollRef.current.scrollTop = 0;
+  }, [view]);
 
   const persistView = (v: ViewMode) => {
     setView(v);
     localStorage.setItem(VIEW_STORAGE_KEY, v);
   };
+
+  // Agenda anchor (Monday of the current week, paged by agendaOffset).
+  // Lifted out of AgendaView so the AgendaToolbar in the sticky chrome
+  // and the day list rendered in the body can share the same window.
+  const agendaAnchor = useMemo(
+    () => initialDate ?? dayKey(new Date()),
+    [initialDate]
+  );
+  const agendaStart = useMemo(() => {
+    const d = new Date(agendaAnchor);
+    if (Number.isNaN(d.getTime())) return new Date();
+    const diff = (d.getDay() + 6) % 7; // back to Monday
+    d.setDate(d.getDate() - diff + agendaOffset * 14);
+    d.setHours(0, 0, 0, 0);
+    return d;
+  }, [agendaAnchor, agendaOffset]);
+
+  // Last day in the 14-day window (inclusive) — used for the date-range
+  // label "22 thg 6 — 05 thg 7, 2026" in the AgendaToolbar.
+  const agendaEnd = useMemo(() => {
+    const d = new Date(agendaStart);
+    d.setDate(agendaStart.getDate() + 13);
+    return d;
+  }, [agendaStart]);
 
   const toggleType = (t: TaskType) =>
     setHiddenTypes((prev) => {
@@ -234,6 +394,24 @@ export function CalendarView({ initialDate }: CalendarViewProps = {}) {
     [tasks, hiddenTypes, hideDone, view, activeTag]
   );
 
+  // Event count inside the agenda window — used as a "9 sự kiện" badge in
+  // the AgendaToolbar. Only computed for agenda view to avoid wasted work
+  // when the user is on month/week/day. Recurring tasks aren't counted
+  // here on purpose: agenda treats one-off events as the relevant unit.
+  const agendaTotal = useMemo(() => {
+    if (view !== "agenda") return 0;
+    let n = 0;
+    for (let i = 0; i < 14; i++) {
+      const d = new Date(agendaStart);
+      d.setDate(agendaStart.getDate() + i);
+      const iso = dayKey(d);
+      n += filteredTasks.filter(
+        (t) => t.deadline && t.deadline.slice(0, 10) === iso
+      ).length;
+    }
+    return n;
+  }, [view, filteredTasks, agendaStart]);
+
   const fcEvents = useMemo(
     () =>
       filteredTasks.flatMap((t) => {
@@ -251,10 +429,16 @@ export function CalendarView({ initialDate }: CalendarViewProps = {}) {
           tags: t.tags,
           recurrence: t.recurrence ?? null,
         };
+        // `cm-done` is applied via classNames so the chip dims as a whole
+        // (opacity + strikethrough in index.css). The inline styles stay
+        // pointing at the task's natural color — without that, dark mode
+        // ended up with black-on-black done chips.
+        const doneClass = t.status === "done" ? ["cm-done"] : undefined;
         const baseStyle = {
           backgroundColor: bg,
           borderColor: color,
           textColor: color,
+          classNames: doneClass,
         };
 
         // Non-recurring (one-off) — render as single event at its deadline.
@@ -432,34 +616,76 @@ export function CalendarView({ initialDate }: CalendarViewProps = {}) {
   /* ----- Render ------------------------------------------------- */
 
   return (
-    <div className="h-full w-full flex flex-col gap-3">
-      <CalendarToolbar
-        view={view}
-        onViewChange={persistView}
-        hiddenTypes={hiddenTypes}
-        onToggleType={toggleType}
-        hideDone={hideDone}
-        onToggleDone={() => setHideDone((v) => !v)}
-      />
+    <>
+      {/*
+        Single-scroll architecture. The card body (this div) is the only
+        scroll container — chrome inside it sticks at top:0 via
+        `position: sticky`, content flows below. For agenda the day list
+        flows naturally and this div scrolls. For month/week/day the
+        nested FullCalendar takes the remaining height via `flex-1
+        min-h-0` and engages its own internal time-grid scroll, so this
+        outer scroll stays inert (content fits).
 
-      {topTags.length > 0 && (
-        <TagFilterRow
-          tags={topTags.map((s) => ({ name: s.name, count: s.openCount }))}
-          active={activeTag}
-          onPick={setActiveTag}
-        />
-      )}
-
-      <div className="flex-1 min-h-0">
-        {view === "agenda" ? (
-          <AgendaView
-            tasks={filteredTasks}
-            anchorDate={initialDate ?? dayKey(new Date())}
-            onPickEvent={setSelectedEventId}
-            onCreate={(iso) => openCreate({ deadline: iso })}
+        Fragment-as-root so the scroll container is a direct flex child
+        of the card (`flex flex-col overflow-hidden`). An intermediate
+        `h-full` wrapper made the height chain ambiguous in some
+        viewports — flex-1 + min-h-0 here lets flexbox compute a
+        definite height every time, which is what sticky needs to lock
+        onto. Dialogs portal out, so they don't fight the flex slot.
+       */}
+      <div
+        ref={scrollRef}
+        onScroll={onBodyScroll}
+        className="flex-1 min-h-0 flex flex-col overflow-y-auto"
+      >
+        {/* Sticky chrome — every control the user asked to keep visible
+            while scrolling lives here. Stacks: view switcher + type
+            chips + Hide Done, tag filter row (when any tags), and the
+            agenda paging bar (only in agenda view). All bg-card so the
+            scrolling content behind reads cleanly. */}
+        <div className="cm-cal-chrome sticky top-0 z-20 shrink-0 bg-card/95 backdrop-blur-sm border-b border-border/60 px-3 md:px-4 py-3 flex flex-col gap-2.5">
+          <CalendarToolbar
+            view={view}
+            onViewChange={persistView}
+            hiddenTypes={hiddenTypes}
+            onToggleType={toggleType}
+            hideDone={hideDone}
+            onToggleDone={() => setHideDone((v) => !v)}
           />
+
+          {topTags.length > 0 && (
+            <TagFilterRow
+              tags={topTags.map((s) => ({ name: s.name, count: s.openCount }))}
+              active={activeTag}
+              onPick={setActiveTag}
+            />
+          )}
+
+          {view === "agenda" && (
+            <AgendaToolbar
+              offset={agendaOffset}
+              setOffset={setAgendaOffset}
+              start={agendaStart}
+              end={agendaEnd}
+              total={agendaTotal}
+            />
+          )}
+        </div>
+
+        {/* Body. Agenda flows in this scroll container; month/week/day
+            occupy the remaining height and let FullCalendar own the
+            internal scroll. */}
+        {view === "agenda" ? (
+          <div className="px-3 md:px-4 py-3 space-y-3">
+            <AgendaView
+              tasks={filteredTasks}
+              start={agendaStart}
+              onPickEvent={setSelectedEventId}
+              onCreate={(iso) => openCreate({ deadline: iso })}
+            />
+          </div>
         ) : view === "day" ? (
-          <div className="h-full grid lg:grid-cols-[minmax(0,1fr)_320px] gap-4 min-h-0">
+          <div className="flex-1 min-h-0 px-3 md:px-4 py-3 grid lg:grid-cols-[minmax(0,1fr)_320px] gap-4">
             <div className="min-h-0 lg:order-1 order-2">
               <FullCalendar
                 key={`day-${fcLocale}`}
@@ -505,41 +731,43 @@ export function CalendarView({ initialDate }: CalendarViewProps = {}) {
             </div>
           </div>
         ) : (
-          <FullCalendar
-            key={`${view}-${fcLocale}`}
-            plugins={[dayGridPlugin, timeGridPlugin, interactionPlugin]}
-            initialView={FC_VIEW[view as Exclude<ViewMode, "agenda">]}
-            initialDate={initialDate}
-            locales={[enGbLocale, viLocale]}
-            locale={fcLocale}
-            timeZone={fcTimeZone}
-            firstDay={1}
-            buttonText={{ today: t("calendar.today") }}
-            allDayText={t("common.allDay")}
-            headerToolbar={{ left: "prev,next today", center: "title", right: "" }}
-            events={fcEvents}
-            height="100%"
-            expandRows
-            stickyHeaderDates
-            nowIndicator
-            slotMinTime="06:00:00"
-            slotMaxTime="22:00:00"
-            scrollTime="07:00:00"
-            droppable
-            drop={handleDrop}
-            editable
-            eventDrop={handleEventDrop}
-            eventReceive={handleEventReceive}
-            dateClick={handleDateClick}
-            eventClick={handleEventClick}
-            slotEventOverlap={false}
-            defaultTimedEventDuration="01:00"
-            selectable
-            select={handleSelect}
-            dayMaxEvents={view === "month" ? 3 : false}
-            moreLinkText={(n) => t("calendar.moreLinkText", { n })}
-            eventContent={renderFcEvent}
-          />
+          <div className="flex-1 min-h-0 px-3 md:px-4 py-3">
+            <FullCalendar
+              key={`${view}-${fcLocale}`}
+              plugins={[dayGridPlugin, timeGridPlugin, interactionPlugin]}
+              initialView={FC_VIEW[view as Exclude<ViewMode, "agenda">]}
+              initialDate={initialDate}
+              locales={[enGbLocale, viLocale]}
+              locale={fcLocale}
+              timeZone={fcTimeZone}
+              firstDay={1}
+              buttonText={{ today: t("calendar.today") }}
+              allDayText={t("common.allDay")}
+              headerToolbar={{ left: "prev,next today", center: "title", right: "" }}
+              events={fcEvents}
+              height="100%"
+              expandRows
+              stickyHeaderDates
+              nowIndicator
+              slotMinTime="06:00:00"
+              slotMaxTime="22:00:00"
+              scrollTime="07:00:00"
+              droppable
+              drop={handleDrop}
+              editable
+              eventDrop={handleEventDrop}
+              eventReceive={handleEventReceive}
+              dateClick={handleDateClick}
+              eventClick={handleEventClick}
+              slotEventOverlap={false}
+              defaultTimedEventDuration="01:00"
+              selectable
+              select={handleSelect}
+              dayMaxEvents={view === "month" ? 3 : false}
+              moreLinkText={(n) => t("calendar.moreLinkText", { n })}
+              eventContent={renderFcEvent}
+            />
+          </div>
         )}
       </div>
 
@@ -594,7 +822,7 @@ export function CalendarView({ initialDate }: CalendarViewProps = {}) {
           onOpenChange={(b) => !b && setHomeworkParent(null)}
         />
       )}
-    </div>
+    </>
   );
 }
 
@@ -620,22 +848,24 @@ function CalendarToolbar({
   const t = useT();
   return (
     <div className="flex flex-wrap items-center gap-2 shrink-0">
-      <div className="inline-flex rounded-lg border bg-muted/40 p-0.5">
-        {VIEWS.map(({ key, labelKey, icon: Icon }) => (
-          <button
-            key={key}
-            onClick={() => onViewChange(key)}
-            className={cn(
-              "inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium transition-colors",
-              view === key
-                ? "bg-background shadow-sm text-foreground"
-                : "text-muted-foreground hover:text-foreground"
-            )}
-          >
-            <Icon className="h-3.5 w-3.5" />
-            {t(labelKey)}
-          </button>
-        ))}
+      <div className="cm-seg-track" role="tablist" aria-label={t("calendar.viewSwitcher")}>
+        {VIEWS.map(({ key, labelKey, icon: Icon }) => {
+          const active = view === key;
+          return (
+            <button
+              key={key}
+              type="button"
+              role="tab"
+              aria-selected={active}
+              data-active={active}
+              onClick={() => onViewChange(key)}
+              className="cm-seg-item cm-seg-item-sm cm-press"
+            >
+              <Icon className="h-3.5 w-3.5" />
+              {t(labelKey)}
+            </button>
+          );
+        })}
       </div>
 
       <div className="h-6 w-px bg-border" />
@@ -647,18 +877,17 @@ function CalendarToolbar({
           return (
             <button
               key={typeKey}
+              type="button"
+              aria-pressed={!hidden}
+              data-hidden={hidden}
               onClick={() => onToggleType(typeKey)}
               title={
                 hidden
                   ? t("calendar.showType", { label })
                   : t("calendar.hideType", { label })
               }
-              className={cn(
-                "inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium border transition-colors",
-                hidden
-                  ? "border-input text-muted-foreground/60 line-through bg-transparent"
-                  : "border-input bg-background hover:bg-accent text-foreground"
-              )}
+              className="cm-chip-cat cm-press"
+              style={{ ["--chip-color" as string]: TYPE_COLOR[typeKey] }}
             >
               <span
                 className="h-1.5 w-1.5 rounded-full"
@@ -672,14 +901,12 @@ function CalendarToolbar({
           );
         })}
         <button
+          type="button"
+          aria-pressed={hideDone}
+          data-active={hideDone}
           onClick={onToggleDone}
           title={t("calendar.hideDoneTitle")}
-          className={cn(
-            "inline-flex items-center rounded-full px-2.5 py-1 text-xs font-medium border transition-colors ml-1",
-            hideDone
-              ? "border-input text-muted-foreground bg-muted"
-              : "border-input text-muted-foreground/70 bg-background hover:bg-accent"
-          )}
+          className="cm-chip cm-press ml-1"
         >
           {t("calendar.hideDone")}
         </button>
@@ -998,7 +1225,7 @@ function EventDetailDialog({
   const { extractTimeLabel, formatDeadline } = useDateFns();
   return (
     <Dialog open={open} onOpenChange={(b) => !b && onClose()}>
-      <DialogContent className="sm:max-w-[460px] max-h-[92vh] flex flex-col gap-0 p-0">
+      <DialogContent className="sm:max-w-[460px] max-h-[92vh] flex flex-col gap-0 p-0 cm-sheet-mobile">
         {task && (
           <>
             <DialogHeader className="px-6 pt-6 pb-3 shrink-0">
@@ -1153,7 +1380,7 @@ function DayOverviewDialog({
 
   return (
     <Dialog open={!!date} onOpenChange={(b) => !b && onClose()}>
-      <DialogContent className="sm:max-w-[460px] max-h-[92vh] flex flex-col gap-0 p-0">
+      <DialogContent className="sm:max-w-[460px] max-h-[92vh] flex flex-col gap-0 p-0 cm-sheet-mobile">
         <DialogHeader className="px-6 pt-6 pb-3 shrink-0">
           <DialogTitle className="capitalize">
             {date &&
@@ -1274,33 +1501,82 @@ const DayTaskRow = memo(function DayTaskRow({
 
 /* ───── Agenda view (vertical timeline) ─────────────────────────── */
 
+interface AgendaToolbarProps {
+  offset: number;
+  setOffset: React.Dispatch<React.SetStateAction<number>>;
+  start: Date;
+  end: Date;
+  total: number;
+}
+
+// Sticky-chrome companion to AgendaView. State lives in CalendarView so
+// this row can stack with the view switcher and filter chips in a single
+// sticky container, sharing the same window with the day list below.
+function AgendaToolbar({ offset: _offset, setOffset, start, end, total }: AgendaToolbarProps) {
+  const t = useT();
+  const localeTag = useLocaleTag();
+  return (
+    <div className="flex items-center justify-between gap-2 flex-wrap">
+      <div className="flex items-center gap-1">
+        <Button
+          variant="outline"
+          size="icon-sm"
+          onClick={() => setOffset((o) => o - 1)}
+          title={t("calendar.prev14days")}
+        >
+          <ChevronLeft className="h-4 w-4" />
+        </Button>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => setOffset(0)}
+        >
+          {t("calendar.today")}
+        </Button>
+        <Button
+          variant="outline"
+          size="icon-sm"
+          onClick={() => setOffset((o) => o + 1)}
+          title={t("calendar.next14days")}
+        >
+          <ChevronRight className="h-4 w-4" />
+        </Button>
+      </div>
+      <p className="text-sm font-semibold text-foreground/80">
+        {start.toLocaleDateString(localeTag, { day: "2-digit", month: "short" })}{" "}
+        —{" "}
+        {end.toLocaleDateString(localeTag, {
+          day: "2-digit",
+          month: "short",
+          year: "numeric",
+        })}
+        <span className="ml-2 text-xs text-muted-foreground font-normal">
+          {t("calendar.eventCount", { n: total })}
+        </span>
+      </p>
+    </div>
+  );
+}
+
 interface AgendaViewProps {
   tasks: Task[];
-  anchorDate: string;
+  start: Date;
   onPickEvent: (id: string) => void;
   onCreate: (deadlineIso: string) => void;
 }
 
+// Pure presentation: renders 14 day groups starting from `start`. No
+// internal scroll — the day groups stack in the parent scroll container
+// (the card body) so the user-visible scrollbar is the card's, not a
+// nested one. Used to have its own paging state + inner overflow div
+// before; both lifted out so the AgendaToolbar above can sit in the
+// sticky chrome stack and share the window calculation.
 function AgendaView({
   tasks,
-  anchorDate,
+  start,
   onPickEvent,
   onCreate,
 }: AgendaViewProps) {
-  const t = useT();
-  const localeTag = useLocaleTag();
-  // Window of 14 days, paged by ±14 from the anchor week's Monday.
-  const [offset, setOffset] = useState(0);
-
-  const start = useMemo(() => {
-    const d = new Date(anchorDate || new Date());
-    if (Number.isNaN(d.getTime())) return new Date();
-    const diff = (d.getDay() + 6) % 7; // back to Monday
-    d.setDate(d.getDate() - diff + offset * 14);
-    d.setHours(0, 0, 0, 0);
-    return d;
-  }, [anchorDate, offset]);
-
   const days = useMemo(() => {
     const out: Array<{ date: Date; iso: string; items: Task[] }> = [];
     for (let i = 0; i < 14; i++) {
@@ -1322,65 +1598,22 @@ function AgendaView({
   const today = new Date();
   today.setHours(0, 0, 0, 0);
   const todayK = dayKey(today);
-  const total = days.reduce((n, d) => n + d.items.length, 0);
 
   return (
-    <div className="h-full flex flex-col">
-      <div className="flex items-center justify-between mb-2 shrink-0">
-        <div className="flex items-center gap-1">
-          <Button
-            variant="outline"
-            size="icon-sm"
-            onClick={() => setOffset((o) => o - 1)}
-            title={t("calendar.prev14days")}
-          >
-            <ChevronLeft className="h-4 w-4" />
-          </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => setOffset(0)}
-          >
-            {t("calendar.today")}
-          </Button>
-          <Button
-            variant="outline"
-            size="icon-sm"
-            onClick={() => setOffset((o) => o + 1)}
-            title={t("calendar.next14days")}
-          >
-            <ChevronRight className="h-4 w-4" />
-          </Button>
-        </div>
-        <p className="text-sm font-semibold text-foreground/80">
-          {start.toLocaleDateString(localeTag, { day: "2-digit", month: "short" })}{" "}
-          —{" "}
-          {days[13]?.date.toLocaleDateString(localeTag, {
-            day: "2-digit",
-            month: "short",
-            year: "numeric",
-          })}
-          <span className="ml-2 text-xs text-muted-foreground font-normal">
-            {t("calendar.eventCount", { n: total })}
-          </span>
-        </p>
-      </div>
-
-      <div className="flex-1 overflow-y-auto pr-1 space-y-3">
-        {days.map(({ date, iso, items }) => (
-          <AgendaDayGroup
-            key={iso}
-            date={date}
-            iso={iso}
-            items={items}
-            isToday={iso === todayK}
-            isPast={date < today}
-            onCreate={() => onCreate(`${iso}T09:00`)}
-            onPickEvent={onPickEvent}
-          />
-        ))}
-      </div>
-    </div>
+    <>
+      {days.map(({ date, iso, items }) => (
+        <AgendaDayGroup
+          key={iso}
+          date={date}
+          iso={iso}
+          items={items}
+          isToday={iso === todayK}
+          isPast={date < today}
+          onCreate={() => onCreate(`${iso}T09:00`)}
+          onPickEvent={onPickEvent}
+        />
+      ))}
+    </>
   );
 }
 

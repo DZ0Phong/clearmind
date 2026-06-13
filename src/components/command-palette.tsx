@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import {
   Calendar,
   CheckSquare,
+  Hash,
   LayoutDashboard,
   Plus,
   Search,
@@ -62,7 +63,7 @@ export function CommandPalette({ open, onOpenChange, onCreate, onPickTask }: Pro
 
   const actions: CommandAction[] = useMemo(
     () => [
-      { id: "new", label: t("palette.action.new"), hint: "⌘N", icon: <Plus className="h-4 w-4" />,
+      { id: "new", label: t("palette.action.new"), icon: <Plus className="h-4 w-4" />,
         run: () => { onOpenChange(false); onCreate(); } },
       { id: "dashboard", label: t("palette.action.dashboard"), icon: <LayoutDashboard className="h-4 w-4" />,
         run: () => { onOpenChange(false); navigate("/dashboard"); } },
@@ -74,12 +75,12 @@ export function CommandPalette({ open, onOpenChange, onCreate, onPickTask }: Pro
         run: () => { onOpenChange(false); navigate("/focus"); } },
       { id: "review", label: t("palette.action.review"), icon: <TrendingUp className="h-4 w-4" />,
         run: () => { onOpenChange(false); navigate("/review"); } },
-      { id: "import", label: t("palette.action.import"), hint: "Paste / ICS", icon: <CalendarPlus className="h-4 w-4" />,
+      { id: "import", label: t("palette.action.import"), hint: "Paste", icon: <CalendarPlus className="h-4 w-4" />,
         run: () => { onOpenChange(false); navigate("/import"); } },
       { id: "guide", label: t("palette.action.guide"), icon: <Sparkles className="h-4 w-4" />,
         run: () => { onOpenChange(false); navigate("/guide"); } },
       { id: "settings", label: t("palette.action.settings"), icon: <Settings className="h-4 w-4" />,
-        run: () => { onOpenChange(false); navigate("/settings"); } },
+        run: () => { onOpenChange(false); navigate("/settings?tab=appearance"); } },
     ],
     [navigate, onCreate, onOpenChange, t]
   );
@@ -89,6 +90,21 @@ export function CommandPalette({ open, onOpenChange, onCreate, onPickTask }: Pro
   const filteredActions = actions.filter((a) =>
     q ? a.label.toLowerCase().includes(q) : true
   );
+  // Tag search — every distinct tag whose name contains the query. Lands on
+  // /tasks?tag=X to mirror the calendar legend + the tasks page's existing
+  // ?tag= URL contract. Skipped on empty/short query to avoid showing the
+  // full tag library on every palette open.
+  const filteredTags = useMemo<string[]>(() => {
+    if (q.length < 2) return [];
+    const seen = new Set<string>();
+    for (const task of tasks) {
+      for (const raw of task.tags || []) {
+        const tag = raw.trim().toLowerCase();
+        if (tag && tag.includes(q)) seen.add(tag);
+      }
+    }
+    return Array.from(seen).slice(0, 5);
+  }, [tasks, q]);
   const filteredTasks =
     q.length >= 2
       ? tasks
@@ -98,6 +114,16 @@ export function CommandPalette({ open, onOpenChange, onCreate, onPickTask }: Pro
 
   const all = [
     ...filteredActions,
+    ...filteredTags.map<CommandAction>((tag) => ({
+      id: "tag:" + tag,
+      label: "#" + tag,
+      hint: t("palette.filterByTag"),
+      icon: <Hash className="h-4 w-4 text-muted-foreground" />,
+      run: () => {
+        onOpenChange(false);
+        navigate("/tasks?tag=" + encodeURIComponent(tag));
+      },
+    })),
     ...filteredTasks.map<CommandAction>((task) => ({
       id: "task:" + task.id,
       label: task.title,
@@ -183,13 +209,41 @@ export function CommandPalette({ open, onOpenChange, onCreate, onPickTask }: Pro
                   )}
                 </button>
               ))}
+              {filteredTags.length > 0 && (
+                <p className="text-[10px] uppercase tracking-wider text-muted-foreground px-2 py-1.5 mt-2">
+                  {t("palette.tags")}
+                </p>
+              )}
+              {filteredTags.map((tag, i) => {
+                const idx = i + filteredActions.length;
+                return (
+                  <button
+                    key={"tag:" + tag}
+                    onClick={() => {
+                      onOpenChange(false);
+                      navigate("/tasks?tag=" + encodeURIComponent(tag));
+                    }}
+                    onMouseEnter={() => setActiveIdx(idx)}
+                    className={cn(
+                      "w-full flex items-center gap-3 px-3 py-2 rounded-md text-sm text-left transition-colors",
+                      activeIdx === idx ? "bg-accent" : "hover:bg-accent/50"
+                    )}
+                  >
+                    <Hash className="h-4 w-4 text-muted-foreground" />
+                    <span className="flex-1 truncate">#{tag}</span>
+                    <span className="text-xs text-muted-foreground">
+                      {t("palette.filterByTag")}
+                    </span>
+                  </button>
+                );
+              })}
               {filteredTasks.length > 0 && (
                 <p className="text-[10px] uppercase tracking-wider text-muted-foreground px-2 py-1.5 mt-2">
                   {t("palette.tasks")}
                 </p>
               )}
               {filteredTasks.map((task, i) => {
-                const idx = i + filteredActions.length;
+                const idx = i + filteredActions.length + filteredTags.length;
                 return (
                   <button
                     key={"task:" + task.id}

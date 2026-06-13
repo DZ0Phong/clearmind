@@ -9,7 +9,7 @@ import {
   Sparkles,
   CalendarPlus,
 } from "lucide-react";
-import { NavLink } from "react-router-dom";
+import { Link, NavLink } from "react-router-dom";
 import { useTaskCommands } from "@/components/task-commands";
 import { useT } from "@/lib/i18n";
 import { Logo } from "@/components/logo";
@@ -37,9 +37,15 @@ export function Sidebar() {
   const t = useT();
 
   return (
-    <aside className="w-60 border-r bg-background/60 backdrop-blur-xl h-screen flex-col hidden md:flex z-10 sticky top-0 shrink-0">
-      {/* Brand — compact (p-4 not p-5; tighter line-height) */}
-      <NavLink
+    <aside
+      aria-label={t("nav.primary")}
+      className="w-60 border-r bg-background/60 backdrop-blur-xl h-dvh flex-col hidden md:flex z-10 sticky top-0 shrink-0"
+    >
+      {/* Brand — compact (p-4 not p-5; tighter line-height). Plain Link
+          (not NavLink) so it doesn't add a duplicate aria-current="page"
+          when the user is on /dashboard — the main nav item below is the
+          canonical active marker. */}
+      <Link
         to="/dashboard"
         title={t("topbar.dashboardTooltip")}
         className="cm-press p-4 pb-3 block hover:bg-accent/30 transition-colors shrink-0"
@@ -53,7 +59,7 @@ export function Sidebar() {
             </span>
           </div>
         </div>
-      </NavLink>
+      </Link>
 
       {/* Quick Capture — small button, ⌘K hint visible */}
       <button
@@ -102,7 +108,7 @@ export function Sidebar() {
       <div className="flex-1" />
 
       {/* Footer — secondary nav, same dense layout as main */}
-      <div className="p-3 border-t border-border/50 space-y-0.5 shrink-0">
+      <nav aria-label={t("nav.secondary")} className="p-3 border-t border-border/50 space-y-0.5 shrink-0">
         {footerItems.map(({ to, key, icon: Icon }) => (
           <NavLink
             key={to}
@@ -120,7 +126,7 @@ export function Sidebar() {
             <span>{t(key)}</span>
           </NavLink>
         ))}
-      </div>
+      </nav>
     </aside>
   );
 }

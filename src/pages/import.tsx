@@ -551,26 +551,28 @@ export function ImportPage() {
       </div>
 
       {/* Tab strip */}
-      <div className="shrink-0 flex items-center gap-1 p-1 rounded-lg bg-muted/50 w-fit">
-        {tabs.map(({ id, label, icon: Icon }) => (
-          <button
-            key={id}
-            onClick={() => setTab(id)}
-            className={cn(
-              // Match Settings tab strip exactly: px-3 py-1.5 canonical for
-              // pill-tab strips (also used by ThemePicker). Calendar view
-              // toggle is intentionally denser at px-2.5 py-1.
-              "cm-press flex items-center gap-2 px-3 py-1.5 rounded-md text-sm font-medium transition-all whitespace-nowrap",
-              "outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50",
-              tab === id
-                ? "bg-card text-foreground shadow-sm"
-                : "text-muted-foreground hover:text-foreground"
-            )}
-          >
-            <Icon className="h-4 w-4" />
-            {label}
-          </button>
-        ))}
+      <div
+        className="cm-seg-track shrink-0 w-fit"
+        role="tablist"
+        aria-label={t("import.title")}
+      >
+        {tabs.map(({ id, label, icon: Icon }) => {
+          const active = tab === id;
+          return (
+            <button
+              key={id}
+              type="button"
+              role="tab"
+              aria-selected={active}
+              data-active={active}
+              onClick={() => setTab(id)}
+              className="cm-seg-item cm-press outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50"
+            >
+              <Icon className="h-4 w-4" />
+              {label}
+            </button>
+          );
+        })}
       </div>
 
       <div className="flex-1 grid grid-cols-1 lg:grid-cols-5 gap-6 min-h-0 overflow-hidden">

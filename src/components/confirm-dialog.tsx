@@ -148,7 +148,7 @@ function ConfirmDialog({
     >
       <DialogContent
         showCloseButton={false}
-        className="sm:max-w-md"
+        className="sm:max-w-md cm-sheet-mobile"
         data-testid="confirm-dialog"
       >
         <DialogHeader>
@@ -235,7 +235,7 @@ function PromptDialog({
     >
       <DialogContent
         showCloseButton={false}
-        className="sm:max-w-md"
+        className="sm:max-w-md cm-sheet-mobile"
         data-testid="prompt-dialog"
       >
         <DialogHeader>

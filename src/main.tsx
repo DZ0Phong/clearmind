@@ -3,10 +3,16 @@ import { createRoot } from "react-dom/client";
 import "./index.css";
 import App from "./App.tsx";
 import { installGlobalErrorHandlers } from "@/lib/error-log";
+import { installGlobalWheelNormaliser } from "@/lib/horizontal-wheel";
 
 // Catches async errors thrown outside React's render tree (window.onerror +
 // unhandledrejection). The in-React ErrorBoundary handles render errors.
 installGlobalErrorHandlers();
+// Translate vertical wheel into horizontal scroll on horizontally-only
+// scrollers (tab strips, chip rows). Browser default ignores this and
+// scrolls the page underneath instead, which feels broken when a tab
+// strip clearly has overflow.
+installGlobalWheelNormaliser();
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>

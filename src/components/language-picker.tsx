@@ -1,5 +1,4 @@
 import { useI18n, useT } from "@/lib/i18n";
-import { cn } from "@/lib/utils";
 
 const OPTIONS = [
   { value: "vi" as const, label: "Tiếng Việt", short: "VI" },
@@ -16,7 +15,7 @@ export function LanguagePicker() {
     <div
       role="radiogroup"
       aria-label={t("settings.language.label")}
-      className="inline-flex items-center gap-1 p-1 rounded-xl border bg-muted/40"
+      className="cm-seg-track"
     >
       {OPTIONS.map((opt) => {
         const active = lang === opt.value;
@@ -26,13 +25,9 @@ export function LanguagePicker() {
             type="button"
             role="radio"
             aria-checked={active}
+            data-active={active}
             onClick={() => setLang(opt.value)}
-            className={cn(
-              "cm-press inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium transition-all duration-200",
-              active
-                ? "bg-background shadow-sm text-foreground"
-                : "text-muted-foreground hover:text-foreground hover:bg-background/50"
-            )}
+            className="cm-seg-item cm-press"
           >
             <span className="font-bold tabular-nums">{opt.short}</span>
             <span className="opacity-70 hidden sm:inline">{opt.label}</span>

@@ -5,16 +5,30 @@ import { useT } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
 
 /**
- * Rotating did-you-know banner. Replaces the static tray-only hint with a
- * pool of 14 tips that auto-cycle every 8 seconds. Tips marked `cliOnly`
- * skip when the SPA isn't hosted by the CLI (they reference features only
- * the CLI provides — tray icon, autostart, native toast, history slots).
- * `winOnly` tips skip on Mac/Linux (system-tray copy is Windows-specific).
+ * Did-you-know strip that renders as the second row of the page header —
+ * `position: sticky` at `top-12 sm:top-14` so it pins directly under the
+ * topbar while sharing the same scroll container. This solves three
+ * issues that `position: fixed` could not:
+ *   1. Pinch/pan-zoom on trackpads moves the visual viewport without
+ *      touching the layout viewport. `fixed` anchors to the layout
+ *      viewport and looks frozen in place while content slides under
+ *      it. `sticky` rides along with the page like the topbar does.
+ *   2. The strip occupies real layout height, so body content sits
+ *      *below* it instead of being hidden behind it.
+ *   3. Width tracks the main column automatically (no manual sidebar
+ *      offset like `md:left-60`).
  *
- * Animation: keyed `<p>` re-mounts on tip change, picking up the tailwind
- * `animate-in fade-in slide-in-from-bottom-1 duration-300` keyframes for
- * a smooth swap-in. No fade-out — the swap is fast enough that a single
- * fade-in reads cleanly without the in/out flicker.
+ * Visually styled to match `<TopBar>` (same backdrop blur, padding,
+ * border) so it reads as the topbar's tail row rather than a separate
+ * surface.
+ *
+ * Pool of 14 tips auto-cycles every 8 seconds. Tips marked `cliOnly` skip
+ * when the SPA isn't hosted by the CLI (tray icon, autostart, native
+ * toast, history slots). `winOnly` tips skip on Mac/Linux.
+ *
+ * z-[15] sits above main content (z-10) but below the topbar (z-20) and
+ * any popover/dialog/toast (z-50/90/100), so transient surfaces still
+ * paint cleanly over it.
  *
  * Dismissable; the flag persists in localStorage so once the user clicks
  * the X they never see the banner again (unless they wipe storage).
@@ -110,8 +124,18 @@ export function TipBanner() {
     <div
       data-testid="tip-banner"
       className={cn(
-        "border-b border-primary/15 bg-primary/8",
-        "px-4 py-2 flex items-center gap-3"
+        // Pin to topbar's effective height (3.5rem visible + safe-area-inset-top
+         // for notched / PWA standalone iOS). Matches the `style.height` calc
+         // in main-layout.tsx's <header> exactly — change one, change both.
+        "sticky top-[calc(3.5rem+env(safe-area-inset-top,0px))] z-[15] shrink-0",
+        // Accent-tinted frosted surface — differentiates from the topbar
+        // (which uses `bg-background/60`) and follows the user's accent
+        // pick because the tint comes from `--primary`. Strong backdrop
+        // blur + saturate occludes scrolling content below so text stays
+        // legible without going fully opaque.
+        "bg-primary/15 backdrop-blur-xl backdrop-saturate-150",
+        "border-b border-primary/25",
+        "px-3 sm:px-5 lg:px-6 py-2 flex items-center gap-3"
       )}
     >
       <Lightbulb className="h-4 w-4 text-primary shrink-0" />

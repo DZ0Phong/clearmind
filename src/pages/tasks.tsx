@@ -87,7 +87,7 @@ function StatusCycler({
       title={t("tooltip.toggleStatus", { label })}
       aria-label={t("tooltip.toggleStatus", { label })}
       className={cn(
-        "h-5 w-5 rounded-full border-2 mt-0.5 shrink-0 relative transition-all duration-200 cm-press hover:scale-110",
+        "cm-touch-44 h-5 w-5 rounded-full border-2 mt-0.5 shrink-0 relative transition-all duration-200 cm-press hover:scale-110",
         status === "todo" && "border-primary/50 hover:border-primary",
         status === "in-progress" &&
           "border-orange-500 bg-gradient-to-r from-orange-500 to-orange-500/0 from-50% to-50%",
@@ -572,7 +572,11 @@ export function TasksPage() {
         <QuickCapture />
       </div>
 
-      <div className="flex items-center gap-1 p-1 rounded-xl bg-muted/40 border w-fit">
+      <div
+        className="cm-seg-track w-fit"
+        role="tablist"
+        aria-label={t("tasks.viewSwitcher")}
+      >
         <ViewTab active={view === "tasks"} onClick={() => setView("tasks")} icon={ListTodo} label={t("tasks.viewTasks")} count={viewCounts.tasks} />
         <ViewTab active={view === "schedule"} onClick={() => setView("schedule")} icon={GraduationCap} label={t("tasks.viewSchedule")} count={viewCounts.schedule} />
         <ViewTab active={view === "all"} onClick={() => setView("all")} icon={Layers} label={t("tasks.viewAll")} count={viewCounts.all} />
@@ -893,13 +897,11 @@ function ViewTab({
   return (
     <button
       type="button"
+      role="tab"
+      aria-selected={active}
+      data-active={active}
       onClick={onClick}
-      className={cn(
-        "cm-press inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium transition-all duration-200",
-        active
-          ? "bg-background shadow-sm text-foreground"
-          : "text-muted-foreground hover:text-foreground hover:bg-background/50"
-      )}
+      className="cm-seg-item cm-press"
     >
       <Icon className={cn("h-4 w-4 transition-transform duration-200", active && "scale-110")} />
       {label}

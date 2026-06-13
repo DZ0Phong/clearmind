@@ -284,6 +284,35 @@
   filter: brightness(1.2) saturate(1.15);
 }
 
+/* Done state — desaturate + strikethrough so the chip reads as "checked
+   off" without becoming invisible. Earlier the calendar overrode the chip
+   color to `var(--muted)` which made light-mode text vanish and dark-mode
+   chips look like black blocks. Now the chip keeps its natural color and
+   `cm-done` dims it as a whole. Renderer adds line-through to the inner
+   title, but if the renderer falls back (e.g. allDay row in dayGrid), the
+   wrapper-level rule still wins. */
+.fc-event.cm-done {
+  opacity: 0.55;
+  filter: saturate(0.6);
+}
+.fc-event.cm-done .fc-event-title,
+.fc-event.cm-done .fc-event-main {
+  text-decoration: line-through;
+  text-decoration-thickness: 1px;
+}
+.dark .fc-event.cm-done {
+  opacity: 0.5;
+  filter: brightness(0.95) saturate(0.55);
+}
+.fc-event.cm-done:hover {
+  opacity: 0.75;
+  filter: saturate(0.75);
+}
+.dark .fc-event.cm-done:hover {
+  opacity: 0.7;
+  filter: brightness(1.05) saturate(0.7);
+}
+
 /* Month event: pill thoáng, đọc rõ */
 .fc-daygrid-event {
   margin: 2px 4px !important;
@@ -577,5 +606,410 @@ input[type="number"]::-webkit-inner-spin-button {
 }
 input[type="number"] {
   -moz-appearance: textfield;
+}
+
+/* ============================================================
+   Segmented control — pill-on-track (iOS / shadcn Tabs style).
+
+   Used by every view-switcher / top-tab strip in the app:
+     · Calendar toolbar (Month/Week/Day/Agenda)  — dense variant
+     · Tasks page view tabs (Tasks/Schedule/All)
+     · Settings tab strip
+     · Import tab strip
+     · Theme picker, Language picker
+     · Accent Studio dialog tab strip
+
+   Active state stacks FOUR redundant cues so it stays visible
+   even with a chosen accent that's pastel, a user with low
+   vision, or both:
+     1. Background swap     (track muted → pill bg/card)
+     2. Inset shadow ring   (light: subtle, dark: stronger)
+     3. Outline ring 1px    (border-mix, sits *above* the shadow)
+     4. Font-weight bump    (500 → 600)
+   That clears WCAG 1.4.11 (3:1 non-text contrast) in both
+   themes — earlier `bg-background` on `bg-muted/40` track was
+   ~1.4:1 in light mode and inverted/muddy in dark mode.
+
+   Dark mode picks `--card` for the pill (lighter than the very
+   dark `--background`) so the pill *elevates* over the track
+   instead of looking pressed-in. Box-shadow is darker too to
+   sell the elevation. */
+
+.cm-seg-track {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 4px;
+  border-radius: 0.625rem;
+  /* Light mode: noticeably darker than the page background so the
+     white pill visibly lifts off the track. `--muted` alone (#f1f5f9)
+     was only ~4 luminance points darker than `--background` — not
+     enough for low-vision eyes. Mixing in muted-foreground (slate-500)
+     pushes the track down ~15 points without changing hue. */
+  background: color-mix(in srgb, var(--muted-foreground) 16%, var(--muted));
+  border: 1px solid color-mix(in srgb, var(--border) 80%, transparent);
+}
+
+.dark .cm-seg-track {
+  /* Dark mode: --muted is already the *lightest* surface available
+     (the palette goes bg #09090b < card #18181b < muted #27272a).
+     Lightening it further would clash with the pill — leave the
+     track at muted and lift the pill above it via foreground mix. */
+  background: var(--muted);
+}
+
+.cm-seg-item {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  padding: 0.375rem 0.75rem;
+  border-radius: 0.375rem;
+  font-size: 0.8125rem;
+  font-weight: 500;
+  color: var(--muted-foreground);
+  background: transparent;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: color 160ms var(--ease-soft),
+              background-color 160ms var(--ease-soft),
+              box-shadow 160ms var(--ease-soft);
+}
+
+.cm-seg-item:hover {
+  color: var(--foreground);
+  background: color-mix(in srgb, var(--card) 50%, transparent);
+}
+
+.cm-seg-item[data-active="true"],
+.cm-seg-item.is-active {
+  color: var(--foreground);
+  font-weight: 600;
+  /* Pure white in light (vs the darkened slate track) plus a 4-layer
+     shadow stack that sells real elevation:
+       1. Sharp close drop      — defines the bottom edge
+       2. Diffuse soft drop     — adds depth halo
+       3. Primary-tinted ring   — accent presence (ties to user's 32-
+                                  color accent), non-color shape cue
+       4. Inset top highlight   — pill looks domed, not flat
+     Combined: pill reads "raised card" even with a pastel accent. */
+  background: var(--card);
+  box-shadow:
+    0 1px 2px rgba(15, 23, 42, 0.10),
+    0 6px 14px -4px rgba(15, 23, 42, 0.16),
+    0 0 0 1px color-mix(in srgb, var(--primary) 38%, transparent),
+    inset 0 1px 0 0 rgba(255, 255, 255, 0.7);
+}
+
+.dark .cm-seg-item[data-active="true"],
+.dark .cm-seg-item.is-active {
+  /* In dark mode, --card (#18181b) is darker than --muted (#27272a) —
+     using card as the pill would press it INTO the track. Mix in a
+     touch of foreground so the pill sits visibly above the muted
+     track surface. Inset highlight uses foreground-mix so it stays
+     theme-aware (no pure white blob on dark pills). */
+  background: color-mix(in srgb, var(--foreground) 9%, var(--card));
+  box-shadow:
+    0 2px 6px rgba(0, 0, 0, 0.55),
+    0 8px 18px -4px rgba(0, 0, 0, 0.6),
+    0 0 0 1px color-mix(in srgb, var(--primary) 45%, transparent),
+    inset 0 1px 0 0 color-mix(in srgb, var(--foreground) 14%, transparent);
+}
+
+/* Dense variant for the Calendar toolbar (text-xs, tighter pad). */
+.cm-seg-item.cm-seg-item-sm {
+  padding: 0.25rem 0.625rem;
+  font-size: 0.75rem;
+}
+
+/* ============================================================
+   Filter chip — tonal accent fill (Material 3 secondary-container
+   style). Used for binary on/off filters that should highlight
+   when "on":
+     · Calendar "Hide done" toggle
+     · (extensible) any future toggle chip
+
+   "On" state pulls the user's --primary accent into bg + border
+   + text + weight (4 cues). Even pastel accents stay legible
+   because the foreground does the heavy lifting at full
+   saturation, while the border ring provides a non-color shape
+   cue (WCAG 1.4.11 belt-and-braces). */
+
+.cm-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  padding: 0.25rem 0.625rem;
+  border-radius: 9999px;
+  font-size: 0.75rem;
+  font-weight: 500;
+  border: 1px solid color-mix(in srgb, var(--input) 80%, transparent);
+  background: transparent;
+  color: var(--muted-foreground);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: color 140ms var(--ease-soft),
+              background-color 140ms var(--ease-soft),
+              border-color 140ms var(--ease-soft);
+}
+
+.cm-chip:hover {
+  background: var(--muted);
+  color: var(--foreground);
+  border-color: var(--border);
+}
+
+.cm-chip[data-active="true"],
+.cm-chip.is-on {
+  background: color-mix(in srgb, var(--primary) 14%, transparent);
+  border-color: color-mix(in srgb, var(--primary) 50%, transparent);
+  color: var(--primary);
+  font-weight: 600;
+}
+
+.cm-chip[data-active="true"]:hover,
+.cm-chip.is-on:hover {
+  background: color-mix(in srgb, var(--primary) 20%, transparent);
+  border-color: color-mix(in srgb, var(--primary) 60%, transparent);
+}
+
+.dark .cm-chip[data-active="true"],
+.dark .cm-chip.is-on {
+  background: color-mix(in srgb, var(--primary) 22%, transparent);
+  border-color: color-mix(in srgb, var(--primary) 60%, transparent);
+}
+
+.dark .cm-chip[data-active="true"]:hover,
+.dark .cm-chip.is-on:hover {
+  background: color-mix(in srgb, var(--primary) 30%, transparent);
+  border-color: color-mix(in srgb, var(--primary) 70%, transparent);
+}
+
+/* ============================================================
+   Category chip — type filter (Academic / Work / Personal /
+   Other). Each chip carries its OWN type color (passed via
+   inline style as --chip-color), so when "shown" the chip
+   gets tinted with its category color — the filter row turns
+   into a colour legend that doubles as a toggle.
+
+   When "hidden", the chip strips its tint, dims its label,
+   and adds a strikethrough — three independent cues that the
+   category is excluded. */
+
+.cm-chip-cat {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  padding: 0.25rem 0.625rem;
+  border-radius: 9999px;
+  font-size: 0.75rem;
+  font-weight: 500;
+  border: 1px solid color-mix(in srgb, var(--chip-color, var(--muted-foreground)) 45%, transparent);
+  background: color-mix(in srgb, var(--chip-color, var(--muted-foreground)) 12%, transparent);
+  color: var(--chip-color, var(--foreground));
+  cursor: pointer;
+  white-space: nowrap;
+  transition: color 140ms var(--ease-soft),
+              background-color 140ms var(--ease-soft),
+              border-color 140ms var(--ease-soft),
+              opacity 140ms var(--ease-soft);
+}
+
+.cm-chip-cat:hover {
+  background: color-mix(in srgb, var(--chip-color, var(--muted-foreground)) 20%, transparent);
+  border-color: color-mix(in srgb, var(--chip-color, var(--muted-foreground)) 60%, transparent);
+}
+
+.dark .cm-chip-cat {
+  background: color-mix(in srgb, var(--chip-color, var(--muted-foreground)) 22%, transparent);
+  border-color: color-mix(in srgb, var(--chip-color, var(--muted-foreground)) 55%, transparent);
+}
+
+.dark .cm-chip-cat:hover {
+  background: color-mix(in srgb, var(--chip-color, var(--muted-foreground)) 30%, transparent);
+}
+
+.cm-chip-cat[data-hidden="true"] {
+  background: transparent;
+  border-color: color-mix(in srgb, var(--input) 60%, transparent);
+  color: color-mix(in srgb, var(--muted-foreground) 60%, transparent);
+  text-decoration: line-through;
+  text-decoration-thickness: 1px;
+  font-weight: 500;
+}
+
+.cm-chip-cat[data-hidden="true"]:hover {
+  background: color-mix(in srgb, var(--muted) 60%, transparent);
+  color: var(--muted-foreground);
+  border-color: var(--input);
+}
+
+/* ============================================================
+   Mobile design system — 2026-06-15
+   ============================================================
+   Single source for safe-area + bottom-tab bar + mobile dialog
+   sheet. Loaded once here; consumers apply via class names so
+   per-component env() math + offset drift go away.
+
+   Key trade-off documented for future maintainers:
+   `<main className="overflow-y-auto">` (set in main-layout) is
+   the only scroll container on mobile, which means iOS Safari
+   does NOT auto-collapse the address bar on scroll. Intentional
+   — the Calendar's sticky chrome (toolbar + agenda paging)
+   depends on the inner scroll container. Don't move scroll to
+   <body> without re-doing the sticky offset math first.
+   ============================================================ */
+
+:root {
+  --safe-top:    env(safe-area-inset-top, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+  --safe-left:   env(safe-area-inset-left, 0px);
+  --safe-right:  env(safe-area-inset-right, 0px);
+  /* Topbar shared height — change here, every sticky banner
+     pinned below it (tip / duplicate / calendar chrome) follows. */
+  --topbar-h: 3.5rem;
+  --mobile-tabbar-h: 3.5rem; /* 56px = comfortable thumb height */
+}
+@media (min-width: 768px) {
+  :root { --mobile-tabbar-h: 0px; } /* sidebar takes over — no bar */
+}
+
+/* Safe-area helpers — use max(default, env()) so non-notched
+   devices keep sensible base padding instead of collapsing. */
+.cm-safe-top    { padding-top:    max(0px, var(--safe-top)); }
+.cm-safe-bottom { padding-bottom: max(0px, var(--safe-bottom)); }
+.cm-safe-x {
+  padding-left:  max(0.75rem, var(--safe-left));
+  padding-right: max(0.75rem, var(--safe-right));
+}
+
+/* Touch-target hit-slop — visual chip stays tight (Linear /
+   Things 3 density) but the tappable rectangle extends to
+   WCAG 2.5.5 AAA / iOS HIG 44pt minimum. Apply to icon-sm /
+   icon-xs buttons and dense chips. The ::before is invisible
+   (no bg / border) — purely a hit zone expander. */
+.cm-touch-44 {
+  position: relative;
+}
+.cm-touch-44::before {
+  content: "";
+  position: absolute;
+  inset: -6px;
+}
+
+/* Mobile bottom-tab bar — primary nav < md.
+   Fixed so it survives <main>'s overflow-y-auto scroll. z-30
+   sits below dialogs (z-50) + topbar (z-20) but above body
+   content. Hidden ≥ md when sidebar takes over. */
+.cm-mobile-tabbar {
+  position: fixed;
+  inset-inline: 0;
+  bottom: 0;
+  z-index: 30;
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: 1fr;
+  border-top: 1px solid var(--border);
+  background: color-mix(in srgb, var(--background) 95%, transparent);
+  -webkit-backdrop-filter: blur(12px);
+  backdrop-filter: blur(12px);
+  padding-bottom: var(--safe-bottom);
+}
+@media (min-width: 768px) {
+  .cm-mobile-tabbar { display: none; }
+}
+
+.cm-mobile-tabbar-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  min-height: var(--mobile-tabbar-h);
+  padding: 6px 8px;
+  font-size: 0.6875rem;
+  font-weight: 500;
+  color: var(--muted-foreground);
+  transition: color 140ms var(--ease-soft),
+              background-color 140ms var(--ease-soft);
+  -webkit-tap-highlight-color: transparent;
+}
+.cm-mobile-tabbar-item[aria-current="page"] {
+  color: var(--primary);
+  font-weight: 600;
+}
+.cm-mobile-tabbar-item:active {
+  background: color-mix(in srgb, var(--primary) 8%, transparent);
+}
+
+/* Mobile content padding — reserves room for the bottom-tab
+   bar so the last list item / FAB doesn't hide behind it.
+   Auto-collapses on ≥ md. */
+.cm-mobile-content-pad {
+  padding-bottom: calc(var(--mobile-tabbar-h) + var(--safe-bottom) + 1rem);
+}
+@media (min-width: 768px) {
+  .cm-mobile-content-pad { padding-bottom: 0; }
+}
+
+/* Mobile dialog → bottom sheet swap.
+   Default DialogContent is centered on desktop, but on phones
+   centered modals fight the soft keyboard + waste vertical
+   space. Add `cm-sheet-mobile` to a DialogContent and on < md
+   it anchors to the bottom, full-width, with a drag-handle
+   hint. Desktop UX unchanged. Keeps the Radix Dialog primitive
+   — no migration to vaul required. */
+@media (max-width: 767px) {
+  [data-slot="dialog-content"].cm-sheet-mobile {
+    top: auto;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    transform: none;
+    width: 100%;
+    max-width: 100%;
+    max-height: 92dvh;
+    border-radius: 1rem 1rem 0 0;
+    padding-bottom: max(1.5rem, calc(var(--safe-bottom) + 1rem));
+    overflow-y: auto;
+  }
+  [data-slot="dialog-content"].cm-sheet-mobile::before {
+    content: "";
+    display: block;
+    width: 36px;
+    height: 4px;
+    border-radius: 9999px;
+    background: var(--border);
+    margin: -0.25rem auto 0.75rem;
+  }
+  [data-slot="dialog-content"].cm-sheet-mobile[data-state="open"] {
+    animation: cm-sheet-up 240ms var(--ease-out-expo);
+  }
+  [data-slot="dialog-content"].cm-sheet-mobile[data-state="closed"] {
+    animation: cm-sheet-down 200ms var(--ease-soft);
+  }
+}
+@keyframes cm-sheet-up {
+  from { transform: translateY(100%); opacity: 0; }
+  to   { transform: translateY(0);    opacity: 1; }
+}
+@keyframes cm-sheet-down {
+  from { transform: translateY(0);    opacity: 1; }
+  to   { transform: translateY(100%); opacity: 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  [data-slot="dialog-content"].cm-sheet-mobile[data-state="open"],
+  [data-slot="dialog-content"].cm-sheet-mobile[data-state="closed"] {
+    animation: none !important;
+  }
+}
+
+/* Hide native scrollbars on touch devices — iOS Safari +
+   Android Chrome both provide overlay scrollbars, so the 10px
+   desktop tracks waste viewport space and look out of place.
+   Pointer-coarse gates to touch input only. */
+@media (pointer: coarse) {
+  *::-webkit-scrollbar { width: 0; height: 0; }
+  * { scrollbar-width: none; }
 }
 

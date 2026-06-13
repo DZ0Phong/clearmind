@@ -33,9 +33,9 @@ export function ModeToggle() {
       onClick={() => setTheme(effectiveDark ? "light" : "dark")}
       className="rounded-full cm-press"
       title={effectiveDark ? t("theme.light") : t("theme.dark")}
+      aria-label={effectiveDark ? t("theme.light") : t("theme.dark")}
     >
       <Icon className="h-4 w-4 transition-transform duration-200" />
-      <span className="sr-only">Toggle light/dark</span>
     </Button>
   )
 }
