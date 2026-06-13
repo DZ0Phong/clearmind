@@ -27,13 +27,6 @@ import { useT, useLocaleTag, useDateFns, DOW_KEYS_MON_FIRST } from "@/lib/i18n";
 
 type T = ReturnType<typeof useT>;
 
-const TYPE_COLOR: Record<TaskType, string> = {
-  academic: "bg-primary",
-  personal: "bg-emerald-500",
-  work: "bg-orange-500",
-  other: "bg-muted-foreground",
-};
-
 /* ----------------------------------------------------------------
    Stats helpers — pure functions over the tasks array.
    ---------------------------------------------------------------- */
@@ -306,7 +299,7 @@ export function ReviewPage() {
   const { tasks } = useTasks();
   const t = useT();
   const localeTag = useLocaleTag();
-  const { tz, formatDeadline } = useDateFns();
+  const { tz } = useDateFns();
   const DOW_LABELS = DOW_KEYS_MON_FIRST.map((k) => t(k));
 
   const stats = useMemo(() => {
@@ -404,16 +397,14 @@ export function ReviewPage() {
     };
   }, [tasks, t]);
 
-  const maxType = Math.max(1, ...Object.values(stats.byType));
-
   return (
-    <div className="h-full flex flex-col gap-6">
-      <div className="shrink-0">
-        <h2 className="text-3xl font-bold tracking-tight">{t("review.title")}</h2>
-        <p className="text-muted-foreground mt-1">{t("review.subtitle")}</p>
+    <div className="flex flex-col gap-6 pb-6">
+      <div>
+        <h2 className="text-xl sm:text-3xl font-bold tracking-tight">{t("review.title")}</h2>
+        <p className="hidden sm:block text-muted-foreground mt-1">{t("review.subtitle")}</p>
       </div>
 
-      <div className="flex-1 overflow-y-auto space-y-6 pr-2">
+      <div className="space-y-6">
         {/* Hero card — reactive encouragement copy */}
         <Card className={cn("border shadow-sm", MOOD_BG[stats.mood.mood])}>
           <CardContent className="pt-6 pb-6">
@@ -462,40 +453,6 @@ export function ReviewPage() {
             </div>
           </CardContent>
         </Card>
-
-        {/* Achievement strip — only renders if any unlocked */}
-        {stats.achievements.length > 0 && (
-          <div>
-            <p className="text-xs uppercase tracking-wider text-muted-foreground font-semibold mb-2 inline-flex items-center gap-1.5">
-              <Trophy className="h-3 w-3" />
-              {t("review.achievements")}
-            </p>
-            <div className="flex items-center gap-2 flex-wrap">
-              {stats.achievements.map((a) => {
-                const Icon = a.icon;
-                return (
-                  <div
-                    key={a.key}
-                    className={cn(
-                      "inline-flex items-center gap-2.5 px-3 py-2 rounded-xl border",
-                      a.tint
-                    )}
-                  >
-                    <Icon className="h-4 w-4 shrink-0" />
-                    <div className="min-w-0">
-                      <p className="text-xs font-semibold leading-tight">
-                        {a.label}
-                      </p>
-                      <p className="text-[10px] opacity-70 leading-tight">
-                        {a.sublabel}
-                      </p>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        )}
 
         {/* Heatmap — 12 weeks × 7 days, GitHub-style */}
         <Card className="bg-card border shadow-sm">
@@ -590,80 +547,6 @@ export function ReviewPage() {
                 : undefined
             }
           />
-        </div>
-
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          <Card className="bg-card border shadow-sm">
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2 text-base">
-                <TrendingUp className="h-4 w-4 text-primary" />
-                {t("review.distributionTitle")}
-              </CardTitle>
-              <CardDescription>{t("review.distributionDesc")}</CardDescription>
-            </CardHeader>
-            <CardContent>
-              {stats.doneThisWeek.length === 0 ? (
-                <p className="text-sm text-muted-foreground text-center py-8">
-                  {t("review.noDoneThisWeek")}
-                </p>
-              ) : (
-                <div className="space-y-3">
-                  {(Object.entries(stats.byType) as [TaskType, number][]).map(
-                    ([type, n]) => (
-                      <div key={type}>
-                        <div className="flex items-center justify-between text-sm mb-1.5">
-                          <span>{t(`type.${type}`)}</span>
-                          <span className="text-muted-foreground tabular-nums">
-                            {n}
-                          </span>
-                        </div>
-                        <div className="h-2 rounded-full bg-muted overflow-hidden">
-                          <div
-                            className={cn(
-                              "h-full rounded-full transition-all",
-                              TYPE_COLOR[type]
-                            )}
-                            style={{ width: `${(n / maxType) * 100}%` }}
-                          />
-                        </div>
-                      </div>
-                    )
-                  )}
-                </div>
-              )}
-            </CardContent>
-          </Card>
-
-          <Card className="bg-card border shadow-sm">
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2 text-base text-destructive">
-                <AlertCircle className="h-4 w-4" />
-                {t("review.overdueTitle")}
-              </CardTitle>
-              <CardDescription>{t("review.overdueDesc")}</CardDescription>
-            </CardHeader>
-            <CardContent>
-              {stats.overdue.length === 0 ? (
-                <p className="text-sm text-muted-foreground text-center py-8">
-                  {t("review.overdueClean")}
-                </p>
-              ) : (
-                <div className="space-y-2 max-h-[280px] overflow-y-auto">
-                  {stats.overdue.map((task) => (
-                    <div
-                      key={task.id}
-                      className="flex items-center justify-between gap-2 p-3 rounded-lg border bg-background/50"
-                    >
-                      <p className="text-sm font-medium truncate">{task.title}</p>
-                      <span className="text-xs font-medium px-2 py-0.5 rounded-md bg-destructive/10 text-destructive shrink-0">
-                        {formatDeadline(task.deadline)}
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </CardContent>
-          </Card>
         </div>
 
         <Card className="bg-card border shadow-sm">

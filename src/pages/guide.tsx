@@ -179,9 +179,9 @@ export function GuidePage() {
   ];
 
   return (
-    <div className="h-full flex flex-col gap-8">
+    <div className="flex flex-col gap-8 pb-6">
       {/* Hero */}
-      <div className="shrink-0 relative overflow-hidden rounded-2xl border bg-gradient-to-br from-primary/15 via-background to-accent/20 p-8 md:p-12">
+      <div className="relative overflow-hidden rounded-2xl border bg-gradient-to-br from-primary/15 via-background to-accent/20 p-8 md:p-12">
         <div className="absolute -top-12 -right-12 h-48 w-48 rounded-full bg-primary/10 blur-3xl pointer-events-none" />
         <div className="absolute bottom-0 right-8 opacity-30 pointer-events-none hidden md:block">
           <Logo className="h-40 w-40" />

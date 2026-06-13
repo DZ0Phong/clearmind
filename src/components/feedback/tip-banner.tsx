@@ -135,16 +135,19 @@ export function TipBanner() {
         // legible without going fully opaque.
         "bg-primary/15 backdrop-blur-xl backdrop-saturate-150",
         "border-b border-primary/25",
-        "px-3 sm:px-5 lg:px-6 py-2 flex items-center gap-3"
+        "px-3 sm:px-5 lg:px-6 py-1.5 sm:py-2 flex items-center gap-2 sm:gap-3"
       )}
     >
-      <Lightbulb className="h-4 w-4 text-primary shrink-0" />
-      {/* Keyed wrapper — index change drops/remounts so animate-in re-fires */}
+      <Lightbulb className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-primary shrink-0" />
+      {/* Keyed wrapper — index change drops/remounts so animate-in re-fires.
+          On mobile (<sm) clamp to one line so the banner doesn't grow to
+          80px+ of sticky chrome on iPhone SE 375x667. The tip text is
+          informational, not load-bearing — a single line is enough. */}
       <p
         key={`${tip.key}-${index}`}
         data-testid="tip-banner-text"
         className={cn(
-          "text-xs flex-1 leading-relaxed min-w-0",
+          "text-[11px] sm:text-xs flex-1 leading-snug sm:leading-relaxed min-w-0 truncate sm:whitespace-normal",
           "animate-in fade-in slide-in-from-bottom-1 duration-300"
         )}
       >

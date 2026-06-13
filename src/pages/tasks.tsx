@@ -189,7 +189,7 @@ const TaskRow = memo(function TaskRow({
           )}
           <p
             className={cn(
-              "text-sm font-medium leading-tight truncate",
+              "text-sm font-medium leading-tight line-clamp-2 sm:truncate",
               task.status === "done" && "line-through text-muted-foreground"
             )}
           >
@@ -557,23 +557,28 @@ export function TasksPage() {
   };
 
   return (
-    <div className="h-full flex flex-col gap-6">
-      <div className="shrink-0 flex items-center justify-between gap-4 flex-wrap">
-        <div>
-          <h2 className="text-3xl font-bold tracking-tight">
+    <div className="flex flex-col gap-4 sm:gap-6 pb-6">
+      <div className="flex items-center justify-between gap-4 flex-wrap">
+        <div className="min-w-0 flex-1">
+          <h2 className="text-xl sm:text-3xl font-bold tracking-tight">
             {view === "schedule" ? t("tasks.viewSchedule") : view === "all" ? t("tasks.viewAll") : t("tasks.viewTasks")}
           </h2>
-          <p className="text-muted-foreground mt-1">
+          <p className="text-muted-foreground mt-0.5 sm:mt-1 text-xs sm:text-base">
             {view === "schedule"
               ? t("tasks.subtitleSchedule", { subjects: bySubject.length, sessions: filtered.length })
               : t("tasks.subtitleCount", { n: filtered.length })}
           </p>
         </div>
-        <QuickCapture />
+        {/* Big "Thêm nhanh" CTA hides on mobile — the topbar Plus button
+            does the same thing and the duplication wastes ~70px of
+            vertical chrome before the user can even see a task row. */}
+        <div className="hidden sm:block">
+          <QuickCapture />
+        </div>
       </div>
 
       <div
-        className="cm-seg-track w-fit"
+        className="cm-seg-track w-fit max-w-full overflow-x-auto"
         role="tablist"
         aria-label={t("tasks.viewSwitcher")}
       >
@@ -582,6 +587,12 @@ export function TasksPage() {
         <ViewTab active={view === "all"} onClick={() => setView("all")} icon={Layers} label={t("tasks.viewAll")} count={viewCounts.all} />
       </div>
 
+      {/* Single consolidated control row — filter pills + sort + clean-dups
+          + search on one line at sm+. Previously this was THREE rows
+          (filter pills, search alone, then sort + xoá-trùng-lặp on a
+          dedicated row) which ate ~120 px of vertical chrome before any
+          task was visible. Sort + Wand2 collapse to icon-only on the
+          right, search stretches into remaining width. */}
       <div className="flex items-center gap-2 flex-wrap">
         <Button
           variant={filter === "all" ? "default" : "outline"}
@@ -611,7 +622,41 @@ export function TasksPage() {
           <span className="text-[10px] tabular-nums opacity-70">{filterCounts.done}</span>
         </Button>
 
-        <div className="relative ml-auto w-full sm:w-[260px]">
+        {/* Sort dropdown — collapses to icon-only on mobile so it never
+            pushes the filter pills off-row. The select is invisible but
+            still receives clicks (absolute inset-0). */}
+        <div className="relative inline-flex items-center ml-auto sm:ml-0">
+          <ArrowUpDown className="absolute left-2 h-3.5 w-3.5 text-muted-foreground pointer-events-none" />
+          <select
+            value={sortMode}
+            onChange={(e) => setSortMode(e.target.value as SortMode)}
+            aria-label={t("tasks.sortLabel")}
+            className="h-8 pl-7 pr-7 rounded-md border border-input bg-background text-xs shadow-xs appearance-none cursor-pointer outline-none transition-[color,box-shadow] hover:bg-accent/30 focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50"
+          >
+            {(["deadline", "priority", "recent"] as SortMode[]).map((m) => (
+              <option key={m} value={m}>
+                {t(`tasks.sort.${m}`)}
+              </option>
+            ))}
+          </select>
+          <ChevronDown className="absolute right-2 h-3.5 w-3.5 text-muted-foreground pointer-events-none" />
+        </div>
+
+        {/* Clean-duplicates — icon-only button. The DuplicateBanner runs
+            once on mount automatically; this manual trigger covers the
+            case where new dups appeared during the session (e.g. after
+            an import). Tooltip explains. */}
+        <Button
+          variant="outline"
+          size="icon-sm"
+          onClick={handleClearDuplicates}
+          title={t("tasks.clearDuplicates")}
+          aria-label={t("tasks.clearDuplicates")}
+        >
+          <Wand2 className="h-3.5 w-3.5" />
+        </Button>
+
+        <div className="relative w-full sm:w-[260px] sm:ml-auto">
           <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
           <Input
             value={query}
@@ -630,66 +675,17 @@ export function TasksPage() {
         </div>
       </div>
 
-      {/* Tag chip row — appears only when there are tags to filter by */}
+      {/* Tag chip row — collapsed to "+N tags" toggle when there are
+          more than 5, since heavy users of #tags can rack up dozens
+          which would wrap to 3+ rows of chrome. Active tag always
+          visible. */}
       {allTagStats.length > 0 && (
-        <div className="flex items-center gap-1.5 flex-wrap text-xs">
-          <span className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mr-1 inline-flex items-center gap-1">
-            <Hash className="h-3 w-3" /> Tags
-          </span>
-          {activeTag && (
-            <button
-              onClick={() => setActiveTag(null)}
-              className="inline-flex items-center gap-1 rounded-full bg-primary text-primary-foreground px-2.5 py-1 font-medium hover:bg-primary/90 transition-colors"
-            >
-              #{activeTag}
-              <X className="h-3 w-3" />
-            </button>
-          )}
-          {allTagStats
-            .filter((s) => s.name !== activeTag)
-            .map((s) => (
-              <button
-                key={s.name}
-                onClick={() => setActiveTag(s.name)}
-                className="inline-flex items-center gap-1 rounded-full border bg-background hover:border-primary/40 hover:bg-primary/5 hover:text-primary px-2.5 py-1 font-medium text-muted-foreground transition-colors"
-              >
-                #{s.name}
-                <span className="text-[10px] tabular-nums opacity-60">
-                  {s.openCount || s.count}
-                </span>
-              </button>
-            ))}
-        </div>
+        <TagFilterStrip
+          stats={allTagStats}
+          active={activeTag}
+          onPick={setActiveTag}
+        />
       )}
-
-      <div className="flex items-center gap-2 flex-wrap text-xs">
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={handleClearDuplicates}
-          className="gap-1.5"
-          title={t("tasks.clearDuplicates")}
-        >
-          <Wand2 className="h-3.5 w-3.5" />
-          {t("tasks.clearDuplicates")}
-        </Button>
-
-        <div className="ml-auto relative inline-flex items-center">
-          <ArrowUpDown className="absolute left-2 h-3.5 w-3.5 text-muted-foreground pointer-events-none" />
-          <select
-            value={sortMode}
-            onChange={(e) => setSortMode(e.target.value as SortMode)}
-            className="h-8 pl-7 pr-7 rounded-md border border-input bg-background text-xs shadow-xs appearance-none cursor-pointer outline-none transition-[color,box-shadow] hover:bg-accent/30 focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50"
-          >
-            {(["deadline", "priority", "recent"] as SortMode[]).map((m) => (
-              <option key={m} value={m}>
-                {t(`tasks.sort.${m}`)}
-              </option>
-            ))}
-          </select>
-          <ChevronDown className="absolute right-2 h-3.5 w-3.5 text-muted-foreground pointer-events-none" />
-        </div>
-      </div>
 
       {homeworkParent && (
         <HomeworkDialog
@@ -877,6 +873,79 @@ export function TasksPage() {
         </Card>
         )}
       </div>
+    </div>
+  );
+}
+
+/* Tag filter chip strip — collapses to first 5 + "+N more" toggle when
+   the user has many tags. Active tag always renders first. Power users
+   running #lich-hoc + #bai-tap + #thi + ~6 subject codes were seeing
+   3+ wrapped rows of chips before this collapsed view. */
+function TagFilterStrip({
+  stats,
+  active,
+  onPick,
+}: {
+  stats: Array<{ name: string; count: number; openCount: number }>;
+  active: string | null;
+  onPick: (t: string | null) => void;
+}) {
+  const t = useT();
+  const [expanded, setExpanded] = useState(false);
+  const VISIBLE = 5;
+  // Active tag always shows; otherwise top by openCount.
+  const ordered = [...stats].sort((a, b) => {
+    if (a.name === active) return -1;
+    if (b.name === active) return 1;
+    return (b.openCount || b.count) - (a.openCount || a.count);
+  });
+  const visible = expanded ? ordered : ordered.slice(0, VISIBLE);
+  const hidden = ordered.length - visible.length;
+  return (
+    <div className="flex items-center gap-1.5 flex-wrap text-xs">
+      <span className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mr-1 inline-flex items-center gap-1">
+        <Hash className="h-3 w-3" /> {t("palette.tags")}
+      </span>
+      {visible.map((s) => {
+        const isActive = active === s.name;
+        return (
+          <button
+            key={s.name}
+            onClick={() => onPick(isActive ? null : s.name)}
+            className={cn(
+              "inline-flex items-center gap-1 rounded-full px-2.5 py-1 font-medium transition-colors",
+              isActive
+                ? "bg-primary text-primary-foreground hover:bg-primary/90"
+                : "border bg-background text-muted-foreground hover:border-primary/40 hover:bg-primary/5 hover:text-primary"
+            )}
+          >
+            #{s.name}
+            {isActive ? (
+              <X className="h-3 w-3" />
+            ) : (
+              <span className="text-[10px] tabular-nums opacity-60">
+                {s.openCount || s.count}
+              </span>
+            )}
+          </button>
+        );
+      })}
+      {hidden > 0 && (
+        <button
+          onClick={() => setExpanded(true)}
+          className="inline-flex items-center gap-1 rounded-full border bg-background px-2.5 py-1 font-medium text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
+        >
+          + {hidden}
+        </button>
+      )}
+      {expanded && stats.length > VISIBLE && (
+        <button
+          onClick={() => setExpanded(false)}
+          className="inline-flex items-center gap-1 rounded-full px-2 py-1 text-muted-foreground hover:text-foreground transition-colors"
+        >
+          {t("common.collapse")}
+        </button>
+      )}
     </div>
   );
 }

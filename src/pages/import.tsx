@@ -531,17 +531,17 @@ export function ImportPage() {
       : null;
 
   return (
-    <div className="h-full flex flex-col gap-6">
-      <div className="shrink-0">
-        <h2 className="text-3xl font-bold tracking-tight">{t("import.title")}</h2>
-        <p className="text-muted-foreground mt-1">
+    <div className="flex flex-col gap-6 pb-6">
+      <div>
+        <h2 className="text-xl sm:text-3xl font-bold tracking-tight">{t("import.title")}</h2>
+        <p className="hidden sm:block text-muted-foreground mt-1">
           {t("import.subtitle")}
         </p>
       </div>
 
       {/* Tab strip */}
       <div
-        className="cm-seg-track shrink-0 w-fit"
+        className="cm-seg-track w-fit"
         role="tablist"
         aria-label={t("import.title")}
       >
@@ -564,11 +564,11 @@ export function ImportPage() {
         })}
       </div>
 
-      <div className="flex-1 grid grid-cols-1 lg:grid-cols-5 gap-6 min-h-0 overflow-hidden">
+      <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
         {/* Left: source input */}
-        <div className="lg:col-span-2 flex flex-col overflow-hidden">
+        <div className="lg:col-span-2 flex flex-col">
           {tab === "paste" && (
-            <Card className="flex-1 flex flex-col overflow-hidden">
+            <Card className="flex flex-col">
               <CardHeader>
                 <CardTitle className="flex items-center gap-2 text-lg">
                   <ClipboardPaste className="h-5 w-5 text-primary" />
@@ -578,14 +578,14 @@ export function ImportPage() {
                   {t("import.paste.desc")}
                 </CardDescription>
               </CardHeader>
-              <CardContent className="flex-1 flex flex-col gap-3 min-h-0">
+              <CardContent className="flex flex-col gap-3">
                 <textarea
                   ref={textareaRef}
                   value={raw}
                   onChange={(e) => setRaw(e.target.value)}
                   onPaste={handlePaste}
                   placeholder={SAMPLE_TEXT}
-                  className="flex-1 min-h-[260px] rounded-md border border-input bg-background px-3 py-2 text-[16px] md:text-xs font-mono leading-relaxed shadow-xs resize-none outline-none transition-[color,box-shadow] placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50"
+                  className="min-h-[200px] sm:min-h-[260px] rounded-md border border-input bg-background px-3 py-2 text-[16px] md:text-xs font-mono leading-relaxed shadow-xs resize-y outline-none transition-[color,box-shadow] placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50"
                 />
                 <div className="flex items-center justify-between gap-2 text-xs">
                   <div className="flex items-center gap-2 text-muted-foreground">
@@ -629,7 +629,7 @@ export function ImportPage() {
           )}
 
           {tab === "bookmarklet" && (
-            <Card className="flex-1 overflow-y-auto">
+            <Card>
               <CardHeader>
                 <CardTitle className="flex items-center gap-2 text-lg">
                   <Bookmark className="h-5 w-5 text-primary" />
@@ -834,7 +834,7 @@ export function ImportPage() {
           )}
 
           {tab === "ics" && (
-            <Card className="flex-1 overflow-y-auto">
+            <Card>
               <CardHeader>
                 <CardTitle className="flex items-center gap-2 text-lg">
                   <Upload className="h-5 w-5 text-primary" />
@@ -857,8 +857,8 @@ export function ImportPage() {
         </div>
 
         {/* Right: preview */}
-        <div className="lg:col-span-3 flex flex-col overflow-hidden">
-          <Card className="flex-1 flex flex-col overflow-hidden">
+        <div className="lg:col-span-3 flex flex-col">
+          <Card>
             <CardHeader>
               <div className="flex items-start justify-between gap-3 flex-wrap">
                 <div>
@@ -906,7 +906,7 @@ export function ImportPage() {
                 })()}
               </div>
             </CardHeader>
-            <CardContent className="flex-1 flex flex-col gap-3 min-h-0 overflow-y-auto">
+            <CardContent className="flex flex-col gap-3">
               {parsed.length === 0 ? (
                 <EmptyPreview />
               ) : (

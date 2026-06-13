@@ -37,7 +37,27 @@ function readLocale(dataDir) {
 function writeLocale(dataDir, lang) {
   const safe = lang === "en" ? "en" : "vi";
   try { fs.writeFileSync(localeFile(dataDir), safe, "utf8"); } catch (_) {}
+  // Fan out to any in-process listeners (notably tray.js, which needs to
+  // re-translate its menu items the moment SPA toggles the language).
+  for (const fn of localeListeners) {
+    try { fn(safe); } catch (_) { /* one bad listener doesn't break others */ }
+  }
+  // Also push a `locale-changed` SSE event so every open SPA tab can
+  // mirror the change immediately — covers the case where the tray's
+  // own toggle item flips the language but the SPA, which originated
+  // none of the writes, would otherwise stay on the old lang until
+  // next focus / reload.
+  sseBroadcast("locale-changed", { lang: safe });
   return safe;
+}
+
+// In-process pub/sub so tray can subscribe to locale changes without
+// either side having to know about the other. cli.js wires the tray's
+// `setLocale` callback at boot.
+const localeListeners = new Set();
+function onLocaleChange(fn) {
+  localeListeners.add(fn);
+  return () => localeListeners.delete(fn);
 }
 
 const MIME = {
@@ -546,4 +566,4 @@ function startPeriodicReschedule(dataDir) {
   if (rescheduleInterval.unref) rescheduleInterval.unref();
 }
 
-module.exports = { start };
+module.exports = { start, onLocaleChange, readLocale, writeLocale };

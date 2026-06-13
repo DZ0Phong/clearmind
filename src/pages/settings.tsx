@@ -182,10 +182,10 @@ export function SettingsPage() {
   ];
 
   return (
-    <div className="h-full flex flex-col gap-6">
-      <div className="shrink-0">
-        <h2 className="text-3xl font-bold tracking-tight">{t("settings.title")}</h2>
-        <p className="text-muted-foreground mt-1">{t("settings.subtitle")}</p>
+    <div className="flex flex-col gap-6 pb-6">
+      <div>
+        <h2 className="text-xl sm:text-3xl font-bold tracking-tight">{t("settings.title")}</h2>
+        <p className="hidden sm:block text-muted-foreground mt-1">{t("settings.subtitle")}</p>
       </div>
 
       {/* Tab strip — pill nav, scrolls on narrow screens */}
@@ -223,7 +223,7 @@ export function SettingsPage() {
         ErrorLog, native notif, backup/recover) span the full row via
         `md:col-span-2`.
        */}
-      <div className="flex-1 grid grid-cols-1 md:grid-cols-2 gap-5 auto-rows-min items-start">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-5 auto-rows-min items-start">
         {tab === "appearance" && <AppearanceTab />}
 
         {tab === "notifications" && (

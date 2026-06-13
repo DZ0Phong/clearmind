@@ -484,9 +484,9 @@ export function FocusPage() {
   );
 
   return (
-    <div className="h-full flex flex-col gap-4 max-w-2xl mx-auto w-full">
+    <div className="flex flex-col gap-4 max-w-2xl mx-auto w-full pb-6">
       {/* Compact top bar: title left, today stats + sound toggle right */}
-      <div className="shrink-0 flex items-center justify-between gap-3 flex-wrap">
+      <div className="flex items-center justify-between gap-3 flex-wrap">
         <div className="min-w-0">
           <h2 className="text-2xl font-bold tracking-tight">{t("focus.title")}</h2>
         </div>
@@ -603,11 +603,11 @@ export function FocusPage() {
 
       <Card
         className={cn(
-          "bg-gradient-to-br border shadow-sm flex-1 transition-all duration-500",
+          "bg-gradient-to-br border shadow-sm transition-all duration-500",
           tone.bg
         )}
       >
-        <CardContent className="flex flex-col items-center justify-center py-8 gap-5">
+        <CardContent className="flex flex-col items-center justify-center py-5 sm:py-8 gap-4 sm:gap-5">
           {/* Mode + round dots */}
           <div className="flex items-center gap-3">
             <span className={cn("text-xs font-semibold uppercase tracking-wider inline-flex items-center gap-1.5", tone.text)}>
@@ -636,7 +636,7 @@ export function FocusPage() {
           {/* Timer circle */}
           <div
             className={cn(
-              "relative h-64 w-64 rounded-full border-8 flex items-center justify-center transition-all duration-500",
+              "relative h-48 w-48 sm:h-64 sm:w-64 rounded-full border-[6px] sm:border-8 flex items-center justify-center transition-all duration-500",
               tone.ring,
               running && tone.glow,
               ringing && "cm-late-pulse border-primary/50"
@@ -678,7 +678,7 @@ export function FocusPage() {
                 <>
                   <p
                     className={cn(
-                      "text-6xl font-bold tracking-tight tabular-nums transition-colors",
+                      "text-5xl sm:text-6xl font-bold tracking-tight tabular-nums transition-colors",
                       running && tone.text
                     )}
                   >

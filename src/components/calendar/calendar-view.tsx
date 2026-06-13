@@ -1,6 +1,7 @@
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useTickingNow } from "@/hooks/use-ticking-now";
+import { useIsMobile } from "@/hooks/use-media-query";
 import FullCalendar from "@fullcalendar/react";
 import dayGridPlugin from "@fullcalendar/daygrid";
 import timeGridPlugin from "@fullcalendar/timegrid";
@@ -13,7 +14,6 @@ import interactionPlugin from "@fullcalendar/interaction";
 import enGbLocale from "@fullcalendar/core/locales/en-gb";
 import viLocale from "@fullcalendar/core/locales/vi";
 import {
-  AlertCircle,
   AlignLeft,
   BookOpen,
   Calendar,
@@ -24,15 +24,15 @@ import {
   Clock,
   Clock4,
   Coffee,
+  Filter as FilterIcon,
   Flame,
-  Hash,
   List,
   MapPin,
   Pencil,
   Plus,
   Sparkles,
   Trash2,
-  Zap,
+  X,
 } from "lucide-react";
 
 import {
@@ -146,9 +146,15 @@ function renderHorizonIso(): string {
 function loadStoredView(): ViewMode {
   if (typeof window === "undefined") return "week";
   const v = localStorage.getItem(VIEW_STORAGE_KEY);
-  return v === "month" || v === "week" || v === "day" || v === "agenda"
-    ? v
-    : "week";
+  if (v === "month" || v === "week" || v === "day" || v === "agenda") return v;
+  // First-time mobile users default to Agenda — Month and Week time-grids
+  // are unreadable at 375px-wide (7 columns at ~50px each leaves no room
+  // for event chip text) while Agenda is naturally vertical-flow and
+  // works at any width. Desktop keeps "week" as the most info-dense view.
+  if (typeof window.matchMedia === "function" && window.matchMedia("(max-width: 767px)").matches) {
+    return "agenda";
+  }
+  return "week";
 }
 
 /* ───── FullCalendar callback arg shapes (minimal narrowing) ────── */
@@ -187,6 +193,11 @@ export function CalendarView({ initialDate }: CalendarViewProps = {}) {
   const navigate = useNavigate();
   const t = useT();
   const { lang } = useI18n();
+  // Mobile detection — drives FC config (column header format, title
+  // format, max events per cell) and hides the Tuần/Week view button.
+  // Time-grid week at 375px is unusable (7 cols × ~50px each, hour rows
+  // pushed off-screen), so we steer the user toward Day / Agenda.
+  const isMobile = useIsMobile();
   // FullCalendar locale: 'vi' for Vietnamese (day names, month titles,
   // "X giờ" hour suffix, "8 – 14 thg 6" range); 'en-gb' for neutral
   // English (Mon-start week, 24h time, "8 – 14 Jun" range).
@@ -228,6 +239,21 @@ export function CalendarView({ initialDate }: CalendarViewProps = {}) {
   const [view, setView] = useState<ViewMode>(loadStoredView);
   const [hiddenTypes, setHiddenTypes] = useState<Set<TaskType>>(new Set());
   const [hideDone, setHideDone] = useState(false);
+  // Sticky calendar chrome used to stack three rows of pills (type
+  // chips + tag chips + Hide done) which the user reported as "too
+  // many things". Collapse them all behind a single Filters button.
+  // Default closed; active filter pills still show inline next to the
+  // button so the user always sees WHAT is filtered without expanding.
+  const [filtersOpen, setFiltersOpen] = useState(false);
+
+  // Auto-redirect off Week view when shrinking to mobile — Tuần is hidden
+  // from the switcher on mobile; if the user had it open on desktop and
+  // resized down (or rotated portrait), bump them to Agenda so the view
+  // doesn't break silently. Doesn't fight: only triggers WHEN crossing
+  // into mobile; user can switch back on desktop.
+  useEffect(() => {
+    if (isMobile && view === "week") setView("agenda");
+  }, [isMobile, view]);
   const [activeTag, setActiveTag] = useState<string | null>(null);
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
   const [selectedEventId, setSelectedEventId] = useState<string | null>(null);
@@ -653,17 +679,39 @@ export function CalendarView({ initialDate }: CalendarViewProps = {}) {
           <CalendarToolbar
             view={view}
             onViewChange={persistView}
-            hiddenTypes={hiddenTypes}
-            onToggleType={toggleType}
-            hideDone={hideDone}
-            onToggleDone={() => setHideDone((v) => !v)}
+            isMobile={isMobile}
+            filtersOpen={filtersOpen}
+            onToggleFilters={() => setFiltersOpen((v) => !v)}
+            activeFilters={{
+              types: Array.from(hiddenTypes),
+              hideDone,
+              activeTag,
+            }}
+            onRemoveTypeFilter={(typeKey) => {
+              setHiddenTypes((prev) => {
+                const next = new Set(prev);
+                next.delete(typeKey);
+                return next;
+              });
+            }}
+            onRemoveTag={() => setActiveTag(null)}
+            onRemoveHideDone={() => setHideDone(false)}
           />
 
-          {topTags.length > 0 && (
-            <TagFilterRow
-              tags={topTags.map((s) => ({ name: s.name, count: s.openCount }))}
-              active={activeTag}
-              onPick={setActiveTag}
+          {filtersOpen && (
+            <FiltersPanel
+              hiddenTypes={hiddenTypes}
+              onToggleType={toggleType}
+              hideDone={hideDone}
+              onToggleDone={() => setHideDone((v) => !v)}
+              tags={topTags}
+              activeTag={activeTag}
+              onPickTag={setActiveTag}
+              onClearAll={() => {
+                setHiddenTypes(new Set());
+                setHideDone(false);
+                setActiveTag(null);
+              }}
             />
           )}
 
@@ -692,6 +740,11 @@ export function CalendarView({ initialDate }: CalendarViewProps = {}) {
           </div>
         ) : view === "day" ? (
           <div className="flex-1 min-h-0 px-3 md:px-4 py-3 grid lg:grid-cols-[minmax(0,1fr)_320px] gap-4">
+            {/* Hide the hour-by-hour time grid on mobile — at 375 px it
+                shrinks to ~50 px wide and the user reported "99% data
+                hidden". DaySidePanel below carries the full schedule as
+                a vertical list, which is more legible on phones. */}
+            {!isMobile && (
             <div className="min-h-0 lg:order-1 order-2">
               <FullCalendar
                 key={`day-${fcLocale}`}
@@ -702,7 +755,7 @@ export function CalendarView({ initialDate }: CalendarViewProps = {}) {
                 locale={fcLocale}
                 timeZone={fcTimeZone}
                 firstDay={1}
-                buttonText={{ today: t("calendar.today") }}
+                buttonText={{ today: todayButtonLabel(view, t) }}
                 headerToolbar={{ left: "prev,next today", center: "title", right: "" }}
                 events={fcEvents}
                 height="100%"
@@ -727,6 +780,7 @@ export function CalendarView({ initialDate }: CalendarViewProps = {}) {
                 datesSet={handleDatesSet}
               />
             </div>
+            )}
             <div className="lg:order-2 order-1 lg:min-h-0">
               <DaySidePanel
                 dateIso={dayDateIso}
@@ -739,7 +793,7 @@ export function CalendarView({ initialDate }: CalendarViewProps = {}) {
         ) : (
           <div className="flex-1 min-h-0 px-3 md:px-4 py-3">
             <FullCalendar
-              key={`${view}-${fcLocale}`}
+              key={`${view}-${fcLocale}-${isMobile ? "m" : "d"}`}
               plugins={[dayGridPlugin, timeGridPlugin, interactionPlugin]}
               initialView={FC_VIEW[view as Exclude<ViewMode, "agenda">]}
               initialDate={initialDate}
@@ -747,9 +801,26 @@ export function CalendarView({ initialDate }: CalendarViewProps = {}) {
               locale={fcLocale}
               timeZone={fcTimeZone}
               firstDay={1}
-              buttonText={{ today: t("calendar.today") }}
+              buttonText={{ today: todayButtonLabel(view, t) }}
               allDayText={t("common.allDay")}
               headerToolbar={{ left: "prev,next today", center: "title", right: "" }}
+              // Compact column header on mobile — "narrow" gives single
+              // letters (M T W T F S S) instead of "Th 2 / Th 3" which
+              // wrapped to 2 lines per cell at 375px. Desktop keeps
+              // "short" weekday for full readability.
+              dayHeaderFormat={
+                isMobile ? { weekday: "narrow" } : { weekday: "short" }
+              }
+              // Compact title on mobile — "Th6 2026" / "Jun 2026" instead
+              // of "tháng 6 năm 2026" / "June 2026" which also wrapped to
+              // 2 lines next to the prev/next buttons.
+              titleFormat={
+                isMobile
+                  ? { month: "short", year: "numeric" }
+                  : view === "month"
+                    ? { month: "long", year: "numeric" }
+                    : { month: "short", day: "numeric", year: "numeric" }
+              }
               events={fcEvents}
               height="100%"
               expandRows
@@ -769,7 +840,14 @@ export function CalendarView({ initialDate }: CalendarViewProps = {}) {
               defaultTimedEventDuration="01:00"
               selectable
               select={handleSelect}
-              dayMaxEvents={view === "month" ? 3 : false}
+              // Drop event chips on mobile month view — at 375px they
+              // truncate to single letters / crossed-out time strings
+              // and carry no info. CSS (.fc-daygrid-event-harness display
+              // none + :has() presence dot) does the visual. dayMaxEvents
+              // = 0 also skips the "+N more" link FC would otherwise add.
+              dayMaxEvents={
+                isMobile && view === "month" ? 0 : view === "month" ? 3 : false
+              }
               moreLinkText={(n) => t("calendar.moreLinkText", { n })}
               eventContent={renderFcEvent}
             />
@@ -832,30 +910,56 @@ export function CalendarView({ initialDate }: CalendarViewProps = {}) {
   );
 }
 
-/* ───── Toolbar (view switcher + type filters) ──────────────────── */
+/* ───── Toolbar (view switcher + filters button) ──────────────────── */
 
 interface CalendarToolbarProps {
   view: ViewMode;
   onViewChange: (v: ViewMode) => void;
-  hiddenTypes: Set<TaskType>;
-  onToggleType: (t: TaskType) => void;
-  hideDone: boolean;
-  onToggleDone: () => void;
+  isMobile: boolean;
+  filtersOpen: boolean;
+  onToggleFilters: () => void;
+  activeFilters: {
+    types: TaskType[]; // hidden types
+    hideDone: boolean;
+    activeTag: string | null;
+  };
+  onRemoveTypeFilter: (t: TaskType) => void;
+  onRemoveTag: () => void;
+  onRemoveHideDone: () => void;
 }
 
 function CalendarToolbar({
   view,
   onViewChange,
-  hiddenTypes,
-  onToggleType,
-  hideDone,
-  onToggleDone,
+  isMobile,
+  filtersOpen,
+  onToggleFilters,
+  activeFilters,
+  onRemoveTypeFilter,
+  onRemoveTag,
+  onRemoveHideDone,
 }: CalendarToolbarProps) {
   const t = useT();
+  const visibleViews = isMobile
+    ? VIEWS.filter((v) => v.key !== "week")
+    : VIEWS;
+  const activeCount =
+    activeFilters.types.length +
+    (activeFilters.activeTag ? 1 : 0) +
+    (activeFilters.hideDone ? 1 : 0);
   return (
-    <div className="flex flex-wrap items-center gap-2 shrink-0">
-      <div className="cm-seg-track" role="tablist" aria-label={t("calendar.viewSwitcher")}>
-        {VIEWS.map(({ key, labelKey, icon: Icon }) => {
+    // flex-row flex-wrap on every viewport — keeps view tabs + Bộ lọc on
+    // the same row at 375 px mobile. Active filter pills wrap below if
+    // they don't fit. Previously this was flex-col sm:flex-row, which
+    // forced a separate row for the Filters button on phones.
+    <div className="flex flex-row flex-wrap items-center gap-2 shrink-0">
+      {/* View switcher */}
+      <div
+        className="cm-seg-track max-w-full overflow-x-auto"
+        role="tablist"
+        aria-label={t("calendar.viewSwitcher")}
+      >
+        {visibleViews.map(({ key, labelKey, icon: Icon }) => {
           const active = view === key;
           return (
             <button
@@ -874,92 +978,232 @@ function CalendarToolbar({
         })}
       </div>
 
-      <div className="h-6 w-px bg-border" />
-
-      <div className="flex items-center gap-1 flex-wrap">
-        {(Object.keys(TYPE_COLOR) as TaskType[]).map((typeKey) => {
-          const hidden = hiddenTypes.has(typeKey);
+      {/* Active filter pills + Bộ lọc button — ml-auto pushes them to
+          the right at any width. Pills wrap to next row if they don't
+          fit (e.g. multiple types hidden). Bộ lọc shows icon-only on
+          phones so it always fits next to the view tabs. */}
+      <div className="flex items-center gap-1.5 flex-wrap ml-auto">
+        {activeFilters.types.map((typeKey) => {
           const label = t(`type.${typeKey}`);
           return (
             <button
               key={typeKey}
               type="button"
-              aria-pressed={!hidden}
-              data-hidden={hidden}
-              onClick={() => onToggleType(typeKey)}
-              title={
-                hidden
-                  ? t("calendar.showType", { label })
-                  : t("calendar.hideType", { label })
-              }
-              className="cm-chip-cat cm-press"
-              style={{ ["--chip-color" as string]: TYPE_COLOR[typeKey] }}
+              onClick={() => onRemoveTypeFilter(typeKey)}
+              title={t("calendar.showType", { label })}
+              className="inline-flex items-center gap-1 rounded-full bg-primary/15 text-primary px-2 py-0.5 text-xs font-medium hover:bg-primary/25 transition-colors"
             >
               <span
                 className="h-1.5 w-1.5 rounded-full"
-                style={{
-                  background: TYPE_COLOR[typeKey],
-                  opacity: hidden ? 0.35 : 1,
-                }}
+                style={{ background: TYPE_COLOR[typeKey] }}
               />
-              {label}
+              {t("calendar.activeFilterHidden", { label })}
+              <X className="h-3 w-3" />
             </button>
           );
         })}
+        {activeFilters.hideDone && (
+          <button
+            type="button"
+            onClick={onRemoveHideDone}
+            className="inline-flex items-center gap-1 rounded-full bg-primary/15 text-primary px-2 py-0.5 text-xs font-medium hover:bg-primary/25 transition-colors"
+          >
+            {t("calendar.hideDone")}
+            <X className="h-3 w-3" />
+          </button>
+        )}
+        {activeFilters.activeTag && (
+          <button
+            type="button"
+            onClick={onRemoveTag}
+            className="inline-flex items-center gap-1 rounded-full bg-primary text-primary-foreground px-2 py-0.5 text-xs font-medium hover:bg-primary/90 transition-colors"
+          >
+            #{activeFilters.activeTag}
+            <X className="h-3 w-3" />
+          </button>
+        )}
+
         <button
           type="button"
-          aria-pressed={hideDone}
-          data-active={hideDone}
-          onClick={onToggleDone}
-          title={t("calendar.hideDoneTitle")}
-          className="cm-chip cm-press ml-1"
+          onClick={onToggleFilters}
+          aria-expanded={filtersOpen}
+          aria-label={t("calendar.filtersLabel")}
+          title={t("calendar.filtersLabel")}
+          className={cn(
+            "inline-flex items-center gap-1.5 h-8 px-2 sm:px-3 rounded-md border text-xs font-medium transition-colors",
+            "cm-press shrink-0",
+            filtersOpen
+              ? "bg-accent border-input"
+              : "bg-background hover:bg-accent border-input"
+          )}
         >
-          {t("calendar.hideDone")}
+          <FilterIcon className="h-3.5 w-3.5" />
+          {/* Text hidden on mobile to keep the button compact next to
+              the view tabs. Visible from sm+ where horizontal room
+              allows. Icon alone is fine — the button has an
+              aria-label + title for accessibility. */}
+          <span className="hidden sm:inline">
+            {t("calendar.filtersLabel")}
+          </span>
+          {activeCount > 0 && (
+            <span className="text-[10px] tabular-nums px-1.5 py-0.5 rounded-full bg-primary text-primary-foreground">
+              {activeCount}
+            </span>
+          )}
         </button>
       </div>
     </div>
   );
 }
 
-/* ───── Tag filter row ──────────────────────────────────────────── */
-
-interface TagFilterRowProps {
-  tags: Array<{ name: string; count: number }>;
-  active: string | null;
-  onPick: (t: string | null) => void;
+/**
+ * "Hôm Nay" button text adapts to the current view:
+ *   - month → "Tháng này"
+ *   - week  → "Tuần này"
+ *   - day   → "Hôm nay"
+ *   - agenda → "Hôm nay"
+ *
+ * FullCalendar's `today` button always jumps the visible range to the
+ * one containing `new Date()`; the label was previously hard-coded as
+ * "Hôm Nay" regardless of view, which read awkwardly on Tháng/Tuần
+ * (you're not "jumping to today" so much as "jumping to this period").
+ */
+function todayButtonLabel(view: ViewMode, t: ReturnType<typeof useT>): string {
+  if (view === "month") return t("calendar.thisMonth");
+  if (view === "week") return t("calendar.thisWeek");
+  return t("calendar.todayJump");
 }
 
-function TagFilterRow({ tags, active, onPick }: TagFilterRowProps) {
+/* ───── Filters panel (collapsed by default) ────────────────────── */
+
+interface FiltersPanelProps {
+  hiddenTypes: Set<TaskType>;
+  onToggleType: (t: TaskType) => void;
+  hideDone: boolean;
+  onToggleDone: () => void;
+  tags: Array<{ name: string; count: number; openCount: number }>;
+  activeTag: string | null;
+  onPickTag: (t: string | null) => void;
+  onClearAll: () => void;
+}
+
+function FiltersPanel({
+  hiddenTypes,
+  onToggleType,
+  hideDone,
+  onToggleDone,
+  tags,
+  activeTag,
+  onPickTag,
+  onClearAll,
+}: FiltersPanelProps) {
+  const t = useT();
+  const hasActive =
+    hiddenTypes.size > 0 || hideDone || activeTag !== null;
   return (
-    <div className="flex items-center gap-1.5 flex-wrap shrink-0 text-xs">
-      <span className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mr-1 inline-flex items-center gap-1">
-        <Hash className="h-3 w-3" /> Tag
-      </span>
-      {active && (
-        <button
-          onClick={() => onPick(null)}
-          className="inline-flex items-center gap-1 rounded-full bg-primary text-primary-foreground px-2.5 py-1 font-medium hover:bg-primary/90 transition-colors"
-        >
-          #{active} ×
-        </button>
-      )}
-      {tags
-        .filter((t) => t.name !== active)
-        .map((t) => (
+    <div className="rounded-xl border bg-card/50 p-3 sm:p-4 space-y-4 shrink-0">
+      {/* Type filter section */}
+      <div className="space-y-2">
+        <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">
+          {t("calendar.filtersTypeLabel")}
+        </p>
+        <div className="flex items-center gap-1.5 flex-wrap">
+          {(Object.keys(TYPE_COLOR) as TaskType[]).map((typeKey) => {
+            const hidden = hiddenTypes.has(typeKey);
+            const label = t(`type.${typeKey}`);
+            return (
+              <button
+                key={typeKey}
+                type="button"
+                aria-pressed={!hidden}
+                data-hidden={hidden}
+                onClick={() => onToggleType(typeKey)}
+                title={
+                  hidden
+                    ? t("calendar.showType", { label })
+                    : t("calendar.hideType", { label })
+                }
+                className="cm-chip-cat cm-press"
+                style={{ ["--chip-color" as string]: TYPE_COLOR[typeKey] }}
+              >
+                <span
+                  className="h-1.5 w-1.5 rounded-full"
+                  style={{
+                    background: TYPE_COLOR[typeKey],
+                    opacity: hidden ? 0.35 : 1,
+                  }}
+                />
+                {label}
+              </button>
+            );
+          })}
           <button
-            key={t.name}
-            onClick={() => onPick(t.name)}
-            className="inline-flex items-center gap-1 rounded-full border bg-background hover:border-primary/40 hover:bg-primary/5 hover:text-primary px-2.5 py-1 font-medium text-muted-foreground transition-colors"
+            type="button"
+            aria-pressed={hideDone}
+            data-active={hideDone}
+            onClick={onToggleDone}
+            title={t("calendar.hideDoneTitle")}
+            className="cm-chip cm-press"
           >
-            #{t.name}
-            <span className="text-[10px] tabular-nums opacity-60">
-              {t.count}
-            </span>
+            {t("calendar.hideDone")}
           </button>
-        ))}
+        </div>
+      </div>
+
+      {/* Tag filter section */}
+      {tags.length > 0 && (
+        <div className="space-y-2">
+          <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">
+            {t("calendar.filtersTagLabel")}
+          </p>
+          <div className="flex items-center gap-1.5 flex-wrap">
+            {tags.map((tag) => {
+              const isActive = activeTag === tag.name;
+              return (
+                <button
+                  key={tag.name}
+                  type="button"
+                  onClick={() => onPickTag(isActive ? null : tag.name)}
+                  className={cn(
+                    "inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-medium transition-colors",
+                    isActive
+                      ? "bg-primary text-primary-foreground hover:bg-primary/90"
+                      : "border bg-background text-muted-foreground hover:border-primary/40 hover:bg-primary/5 hover:text-primary"
+                  )}
+                >
+                  #{tag.name}
+                  <span
+                    className={cn(
+                      "text-[10px] tabular-nums",
+                      isActive ? "opacity-80" : "opacity-60"
+                    )}
+                  >
+                    {tag.openCount || tag.count}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {hasActive && (
+        <div className="flex justify-end pt-1">
+          <button
+            type="button"
+            onClick={onClearAll}
+            className="text-xs text-muted-foreground hover:text-foreground inline-flex items-center gap-1 transition-colors"
+          >
+            <X className="h-3 w-3" />
+            {t("calendar.filtersClearAll")}
+          </button>
+        </div>
+      )}
     </div>
   );
 }
+
+/* ───── Tag filter row ──────────────────────────────────────────── */
 
 /* ───── FullCalendar event renderer ─────────────────────────────── */
 
@@ -1548,15 +1792,15 @@ function AgendaToolbar({ offset: _offset, setOffset, start, end, total }: Agenda
           <ChevronRight className="h-4 w-4" />
         </Button>
       </div>
-      <p className="text-sm font-semibold text-foreground/80">
-        {start.toLocaleDateString(localeTag, { day: "2-digit", month: "short" })}{" "}
-        —{" "}
+      <p className="text-xs sm:text-sm font-semibold text-foreground/80 leading-tight">
+        {start.toLocaleDateString(localeTag, { day: "2-digit", month: "short" })}
+        {" — "}
         {end.toLocaleDateString(localeTag, {
           day: "2-digit",
           month: "short",
           year: "numeric",
         })}
-        <span className="ml-2 text-xs text-muted-foreground font-normal">
+        <span className="ml-2 text-[10px] sm:text-xs text-muted-foreground font-normal">
           {t("calendar.eventCount", { n: total })}
         </span>
       </p>
@@ -1902,6 +2146,20 @@ function DaySidePanel({
     [timed, date, isToday, now]
   );
 
+  // Sort timed tasks chronologically — same order the FC time-grid
+  // would render them. This is the "full day schedule" used by the new
+  // Lịch ngày section on mobile (where FC time-grid is hidden).
+  const timedAll = useMemo(
+    () =>
+      [...dayTasks]
+        .filter((t) => t.deadline?.includes("T"))
+        .sort(
+          (a, b) =>
+            new Date(a.deadline!).getTime() - new Date(b.deadline!).getTime()
+        ),
+    [dayTasks]
+  );
+
   return (
     <aside className="h-full lg:overflow-y-auto pr-1 space-y-3">
       <DayHeroCard
@@ -1910,46 +2168,80 @@ function DaySidePanel({
         stats={stats}
       />
 
-      {overdueToday.length > 0 && (
+      {/* Lịch ngày — full chronological list of timed tasks. Each row
+          carries inline state: ring/tint highlight for "next up", red
+          stripe + "X late" badge for overdue, strikethrough for done.
+          Replaces the separate NextUp / OverdueToday cards on mobile so
+          the user sees the entire day's flow in one scroll-able list
+          rather than fragmented across multiple panels. */}
+      {timedAll.length > 0 && (
         <SidePanelCard
-          icon={AlertCircle}
-          title={t("calendar.overdueTitle")}
-          count={overdueToday.length}
-          variant="destructive"
-          hint={t("calendar.overdueHint")}
+          icon={Clock}
+          title={t("calendar.dayScheduleTitle")}
+          count={timedAll.length}
         >
-          <div className="space-y-1">
-            {overdueToday.map((task) => {
-              const tMs = new Date(task.deadline!).getTime();
-              const diffMin = Math.max(1, Math.floor((now.getTime() - tMs) / 60_000));
-              const ago =
-                diffMin < 60
-                  ? `${diffMin}p`
-                  : `${Math.floor(diffMin / 60)}h${diffMin % 60 ? ` ${diffMin % 60}p` : ""}`;
+          <div className="space-y-1.5">
+            {timedAll.map((task) => {
+              const time = task.deadline
+                ? `${pad2(new Date(task.deadline).getHours())}:${pad2(new Date(task.deadline).getMinutes())}`
+                : "";
+              const isNext = nextUp?.id === task.id;
+              const isLate = overdueToday.some((o) => o.id === task.id);
+              const isDone = task.status === "done";
+              const color = subjectColor(task.title);
               return (
                 <button
                   key={task.id}
                   onClick={() => onPickEvent(task.id)}
-                  className="w-full text-left px-2.5 py-1.5 rounded-md text-sm hover:bg-destructive/10 transition-colors flex items-center gap-2"
+                  className={cn(
+                    "w-full text-left px-2.5 py-2 rounded-lg flex items-center gap-2.5 transition-colors",
+                    "border bg-background/40 hover:bg-accent",
+                    isNext &&
+                      !isLate &&
+                      "ring-2 ring-primary/30 border-primary/40 bg-primary/5 hover:bg-primary/10",
+                    isLate && "ring-1 ring-destructive/40 border-destructive/40 bg-destructive/5",
+                    isDone && "opacity-60"
+                  )}
                 >
                   <span
                     className={cn(
-                      "h-1.5 w-1.5 rounded-full shrink-0",
-                      subjectColor(task.title).dot
+                      "text-xs font-bold tabular-nums w-10 shrink-0",
+                      isLate && "text-destructive",
+                      isNext && !isLate && "text-primary"
                     )}
-                  />
-                  <span className="truncate flex-1">{task.title}</span>
-                  <span className="text-[10px] font-semibold text-destructive tabular-nums shrink-0">
-                    {t("tasks.lateBy", { time: ago })}
+                  >
+                    {time}
                   </span>
+                  <span
+                    className={cn("w-0.5 h-7 rounded-full shrink-0", color.dot)}
+                  />
+                  <span
+                    className={cn(
+                      "flex-1 min-w-0 text-sm font-medium leading-tight truncate",
+                      isDone && "line-through text-muted-foreground"
+                    )}
+                  >
+                    {task.title}
+                  </span>
+                  {isLate && (
+                    <span className="text-[10px] font-bold uppercase text-destructive shrink-0">
+                      {t("dash.upnextOverdue")}
+                    </span>
+                  )}
+                  {isNext && !isLate && (
+                    <span className="text-[10px] font-bold uppercase text-primary shrink-0">
+                      {t("dash.upnext")}
+                    </span>
+                  )}
+                  {task.priority === "high" && !isDone && !isLate && !isNext && (
+                    <Flame className="h-3 w-3 text-destructive shrink-0" />
+                  )}
                 </button>
               );
             })}
           </div>
         </SidePanelCard>
       )}
-
-      {nextUp && <NextUpCard task={nextUp} onPick={() => onPickEvent(nextUp.id)} />}
 
       {untimed.length > 0 && (
         <SidePanelCard
@@ -2069,38 +2361,6 @@ function DayHeroCard({ date, isToday, stats }: DayHeroCardProps) {
         </p>
       )}
     </div>
-  );
-}
-
-function NextUpCard({ task, onPick }: { task: Task; onPick: () => void }) {
-  const t = useT();
-  const now = useTickingNow();
-  const { extractTimeLabel } = useDateFns();
-  const start = new Date(task.deadline!);
-  const time = extractTimeLabel(task.deadline);
-  return (
-    <button
-      onClick={onPick}
-      className="w-full text-left rounded-xl border bg-card p-3.5 hover:bg-accent/40 hover:border-primary/30 transition-all group"
-    >
-      <p className="text-[10px] uppercase tracking-wider font-semibold text-primary inline-flex items-center gap-1">
-        <Zap className="h-3 w-3" /> {t("calendar.nextUp")}
-      </p>
-      <p className="font-semibold mt-1 leading-snug">{task.title}</p>
-      <div className="flex items-center gap-2 mt-1.5 text-xs text-muted-foreground">
-        <span className="font-medium tabular-nums">{time}</span>
-        <span>·</span>
-        <span className="text-primary font-medium">{countdown(start, now, t)}</span>
-        {task.location && (
-          <>
-            <span>·</span>
-            <span className="inline-flex items-center gap-0.5">
-              <MapPin className="h-3 w-3" /> {task.location}
-            </span>
-          </>
-        )}
-      </div>
-    </button>
   );
 }
 
@@ -2243,21 +2503,6 @@ function computeFreeSlots(
     slots.push({ start: new Date(cursor), end: dayEnd });
   }
   return slots;
-}
-
-function countdown(
-  target: Date,
-  now: Date,
-  t: ReturnType<typeof useT>
-): string {
-  const ms = target.getTime() - now.getTime();
-  if (ms <= 0) return t("calendar.happening");
-  const mins = Math.round(ms / 60_000);
-  if (mins < 60) return t("calendar.countdownMin", { n: mins });
-  const h = Math.floor(mins / 60);
-  const m = mins % 60;
-  if (h < 24) return t("calendar.countdownHourMin", { h, m });
-  return t("calendar.countdownDays", { n: Math.round(h / 24) });
 }
 
 function toLocalIso(d: Date): string {

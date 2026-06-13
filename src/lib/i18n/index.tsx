@@ -180,6 +180,36 @@ export function I18nProvider({ children }: { children: React.ReactNode }) {
     return () => window.removeEventListener("storage", onStorage);
   }, []);
 
+  // CLI ↔ SPA locale sync: when the tray's own "Switch to English /
+  // Tiếng Việt" toggle flips the language, the CLI broadcasts a
+  // `locale-changed` SSE event. Mirror it here so the open web tabs
+  // catch up without a reload. Note: when SPA itself flipped via
+  // Settings, we already updated state — re-applying on the echo is a
+  // no-op because setLangState bails when the value matches.
+  useEffect(() => {
+    let es: EventSource | null = null;
+    try {
+      es = new EventSource("/api/events");
+    } catch {
+      return;
+    }
+    const onLocale = (ev: MessageEvent) => {
+      try {
+        const data = JSON.parse(ev.data) as { lang?: string };
+        if (data.lang === "en" || data.lang === "vi") {
+          setLangState(data.lang);
+        }
+      } catch {
+        /* ignore malformed payload */
+      }
+    };
+    es.addEventListener("locale-changed", onLocale as EventListener);
+    return () => {
+      es?.removeEventListener("locale-changed", onLocale as EventListener);
+      es?.close();
+    };
+  }, []);
+
   // Memoize t + setLang + provider value so consumers don't re-render on
   // every parent update. Previously `t` was a fresh fn each render, which
   // (a) broke memoization in components like VoiceMic (effect deps={[t]}

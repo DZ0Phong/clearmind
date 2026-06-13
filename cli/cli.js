@@ -162,10 +162,37 @@ async function runForeground(opts, dataDir) {
         port: actualPort,
         dataDir,
         onQuit: () => shutdown("tray"),
+        onRestart: () => restart("tray"),
       });
     } catch (e) {
       console.warn("[clearmind] Tray không init được:", e && e.message);
     }
+  }
+
+  // Restart from tray — detached-spawn a new tray child with the same
+  // resolved port + data dir, then graceful-shutdown self. The child is
+  // unrefed so it survives our exit.
+  function restart(reason) {
+    console.log(`[clearmind] Đang khởi động lại (${reason})...`);
+    const cliJs = path.resolve(__dirname, "cli.js");
+    const childArgs = [
+      cliJs,
+      "--tray",
+      "--skip-update",
+      "--no-browser",
+      `--port=${actualPort}`,
+    ];
+    if (opts.dataDir) childArgs.push(`--data-dir=${opts.dataDir}`);
+    const child = spawn(process.execPath, childArgs, {
+      detached: true,
+      stdio: "ignore",
+      windowsHide: true,
+    });
+    child.unref();
+    // Brief gap so the child binds its lockfile + http server before we
+    // release ours. Without this the child might race and find the lock
+    // still held, then exit early as "already running".
+    setTimeout(() => shutdown("restart"), 350);
   }
 
   if (!opts.noBrowser && !opts.tray) {

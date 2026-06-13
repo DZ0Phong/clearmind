@@ -12,9 +12,45 @@ const PNG_FILE = path.join(ASSETS_DIR, "icon.png");
 const PNG_LARGE_FILE = path.join(ASSETS_DIR, "icon-256.png");
 const ICO_FILE = path.join(ASSETS_DIR, "icon.ico");
 
-// Indigo brand color from public/favicon.svg gradient mid-stop.
-const BG = { r: 0x63, g: 0x66, b: 0xf1, a: 0xff };
+// Diagonal 3-stop gradient — pulled verbatim from public/favicon.svg so
+// the tray icon and the favicon look identical. Earlier the tray was a
+// flat #6366f1 indigo block; users complained it "looked basic / dead"
+// next to the colorful favicons in Windows 11 taskbar. The gradient adds
+// real depth + halftone variety at 16×16 without busting recognizability.
+//
+// Stops (in SVG order): #a5b4fc indigo-300 (TL bright), #6366f1 indigo-500
+// (midbody), #3730a3 indigo-800 (BR deep). Linear from top-left → bottom-
+// right; we sample by `(x+y) / (W+H)` so it scales to any output size.
+const GRAD = [
+  { t: 0.0, r: 0xa5, g: 0xb4, b: 0xfc },
+  { t: 0.55, r: 0x63, g: 0x66, b: 0xf1 },
+  { t: 1.0, r: 0x37, g: 0x30, b: 0xa3 },
+];
 const FG = { r: 0xff, g: 0xff, b: 0xff, a: 0xff };
+
+function lerp(a, b, t) {
+  return Math.round(a + (b - a) * t);
+}
+
+function sampleGrad(t) {
+  // Three-stop piecewise linear interpolation along the gradient.
+  if (t <= GRAD[0].t) return { r: GRAD[0].r, g: GRAD[0].g, b: GRAD[0].b };
+  if (t >= GRAD[GRAD.length - 1].t)
+    return {
+      r: GRAD[GRAD.length - 1].r,
+      g: GRAD[GRAD.length - 1].g,
+      b: GRAD[GRAD.length - 1].b,
+    };
+  for (let i = 1; i < GRAD.length; i++) {
+    if (t <= GRAD[i].t) {
+      const a = GRAD[i - 1];
+      const b = GRAD[i];
+      const f = (t - a.t) / (b.t - a.t);
+      return { r: lerp(a.r, b.r, f), g: lerp(a.g, b.g, f), b: lerp(a.b, b.b, f) };
+    }
+  }
+  return { r: GRAD[GRAD.length - 1].r, g: GRAD[GRAD.length - 1].g, b: GRAD[GRAD.length - 1].b };
+}
 
 // --- PNG plumbing ---
 
@@ -122,23 +158,94 @@ function starPoints(size) {
   return points;
 }
 
+// Two small "sparkle" satellites positioned in the dim quadrants of the
+// gradient so they catch the eye without crowding the central star.
+// Placed at ~75% of half-diagonal — close enough to read as one cluster.
+function sparklePoints(size) {
+  // BR satellite (in deep indigo zone) — small 4-point.
+  const br = { cx: size * 0.78, cy: size * 0.78, r: size * 0.08 };
+  // TL satellite (in light indigo zone) — even smaller dot.
+  const tl = { cx: size * 0.24, cy: size * 0.24, r: size * 0.05 };
+  return [br, tl];
+}
+
+function isInSparkle(x, y, sp) {
+  // Diamond rather than circle — sparkles read crisper at low res because
+  // diamonds align with the pixel grid on the cardinal axes.
+  const dx = Math.abs(x - sp.cx);
+  const dy = Math.abs(y - sp.cy);
+  return dx + dy <= sp.r;
+}
+
 function drawIcon(size) {
-  const radius = Math.max(2, Math.round(size * 7 / 32));
+  const radius = Math.max(2, Math.round((size * 7) / 32));
   const star = starPoints(size);
+  const sparkles = sparklePoints(size);
+  // Highlight band — 1 row tall at the very top inside the rounded rect,
+  // tinted slightly lighter than the gradient top stop. Gives the icon a
+  // "glass" sheen at 32+ px without affecting the silhouette at 16 px.
+  const highlightAtY = Math.max(1, Math.round(size * 0.04));
   const pixels = Buffer.alloc(size * size * 4);
   for (let y = 0; y < size; y++) {
     for (let x = 0; x < size; x++) {
       const i = (y * size + x) * 4;
-      const cx = x + 0.5, cy = y + 0.5;
+      const cx = x + 0.5,
+        cy = y + 0.5;
       if (!isInRoundedRect(cx, cy, size, size, radius)) {
-        pixels[i] = 0; pixels[i + 1] = 0; pixels[i + 2] = 0; pixels[i + 3] = 0;
+        pixels[i] = 0;
+        pixels[i + 1] = 0;
+        pixels[i + 2] = 0;
+        pixels[i + 3] = 0;
         continue;
       }
+
+      // Star always wins — it's the primary mark.
       if (isInPolygon(cx, cy, star)) {
-        pixels[i] = FG.r; pixels[i + 1] = FG.g; pixels[i + 2] = FG.b; pixels[i + 3] = FG.a;
-      } else {
-        pixels[i] = BG.r; pixels[i + 1] = BG.g; pixels[i + 2] = BG.b; pixels[i + 3] = BG.a;
+        pixels[i] = FG.r;
+        pixels[i + 1] = FG.g;
+        pixels[i + 2] = FG.b;
+        pixels[i + 3] = FG.a;
+        continue;
       }
+
+      // Sparkles next — pure white, soft accent in dim quadrants.
+      let isSparkle = false;
+      for (const sp of sparkles) {
+        if (isInSparkle(cx, cy, sp)) {
+          isSparkle = true;
+          break;
+        }
+      }
+      if (isSparkle) {
+        // 85% opacity so they read as secondary, not co-equal with the star.
+        pixels[i] = 0xff;
+        pixels[i + 1] = 0xff;
+        pixels[i + 2] = 0xff;
+        pixels[i + 3] = 0xd9;
+        continue;
+      }
+
+      // Body — diagonal 3-stop gradient sampled by (x+y)/(W+H).
+      const t = (x + y) / (size + size - 2);
+      const c = sampleGrad(t);
+      let r = c.r,
+        g = c.g,
+        b = c.b;
+
+      // Top-edge highlight — mix in 25% white on the very first row inside
+      // the rounded rect. Adds the "glass dome" feel users associate with
+      // polished app icons. Skipped at 16 px because a 1-row band swallows
+      // half the readable area; preserved at 32 px and up.
+      if (size >= 24 && y <= highlightAtY) {
+        r = Math.min(255, r + Math.round((255 - r) * 0.3));
+        g = Math.min(255, g + Math.round((255 - g) * 0.3));
+        b = Math.min(255, b + Math.round((255 - b) * 0.3));
+      }
+
+      pixels[i] = r;
+      pixels[i + 1] = g;
+      pixels[i + 2] = b;
+      pixels[i + 3] = 0xff;
     }
   }
   return encodePng(size, size, pixels);

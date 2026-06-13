@@ -44,12 +44,17 @@ const SECTIONS: Array<{ key: string; accents: Accent[] }> = [
   { key: "neutral", accents: ["graphite", "mocha"] },
 ];
 
-// Drop colors already shown in the inline strip so they don't repeat
-// inside the dialog tabs.
-const DIALOG_SECTIONS = SECTIONS.map((s) => ({
-  key: s.key,
-  accents: s.accents.filter((a) => !INLINE_SET.has(a)),
-})).filter((s) => s.accents.length > 0);
+// Studio shows the FULL palette per section — no dedup against the inline
+// strip. The previous "drop inline colors from dialog" behaviour created
+// the "ô màu chạy ra 1 chỗ khác biệt" confusion: a user with indigo
+// selected (visible in the inline strip) would open Studio and find that
+// the Classic tab had been quietly stripped of indigo (and 5 other
+// inline colors). They'd land on a tab where their current color simply
+// wasn't, and the visible palette looked completely different from the
+// row they just clicked "More" from. Showing the full set everywhere
+// keeps the mental model consistent — inline = quick picks, Studio =
+// the same picks plus the rest, with the current one highlighted.
+const DIALOG_SECTIONS = SECTIONS;
 
 function resolveAccentColor(accent: Accent): string {
   const isDark = document.documentElement.classList.contains("dark");

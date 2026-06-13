@@ -671,6 +671,11 @@ input[type="number"] {
   background: transparent;
   white-space: nowrap;
   cursor: pointer;
+  /* Never shrink — when a track is narrower than its items at mobile
+     widths, the parent's overflow-x-auto must scroll instead of
+     squashing labels (which made Settings tabs 4-5 visually appear
+     icon-only because their text got compressed away). */
+  flex-shrink: 0;
   transition: color 160ms var(--ease-soft),
               background-color 160ms var(--ease-soft),
               box-shadow 160ms var(--ease-soft);
@@ -973,17 +978,21 @@ input[type="number"] {
     bottom: 0;
     left: 0;
     right: 0;
-    /* Tailwind 4 splits transform into individual properties — Radix's
-       `translate-x-[-50%] translate-y-[-50%]` writes the `translate`
-       property directly, NOT `transform`. Setting `transform: none`
-       alone leaves the translate in place and pushes the sheet up off
-       the viewport (was causing the dialog to render with negative
-       top, fully outside screen). Reset both, plus `rotate`/`scale`
-       for completeness in case other utilities land later. */
-    transform: none;
-    translate: none;
-    rotate: none;
-    scale: none;
+    /* Tailwind 4 splits transform into INDIVIDUAL `translate`/`rotate`/`scale`
+       CSS properties — Radix's `translate-x-[-50%] translate-y-[-50%]`
+       sets `translate: -50% -50%` directly, NOT `transform`. The build
+       pipeline (lightning-css) was MERGING our four resets into a single
+       `transform: translate(0)rotate(0)scale(1)` shorthand, which does
+       NOT reset the individual `translate` property — so the dialog
+       stayed translated -50%/-50% off-canvas (bbox.x=-188 on a 375px
+       viewport). Use `!important` to defeat the optimizer + keep the
+       individual properties surviving minification. Concrete `0 0` /
+       `0` / `1` values instead of `none` for the same reason: `none` is
+       a special keyword the optimizer is more likely to fold away. */
+    translate: 0 0 !important;
+    rotate: 0 !important;
+    scale: 1 !important;
+    transform: none !important;
     width: 100%;
     max-width: 100%;
     max-height: 92dvh;
@@ -1019,6 +1028,82 @@ input[type="number"] {
   [data-slot="dialog-content"].cm-sheet-mobile[data-state="open"],
   [data-slot="dialog-content"].cm-sheet-mobile[data-state="closed"] {
     animation: none !important;
+  }
+}
+
+/* ============================================================
+   Calendar mobile-specific overrides — 2026-06-14
+   ============================================================
+   At ≤ 767 px the month-view cells are ~50 px wide; FullCalendar
+   tries to fit event title chips inside them and they truncate
+   to single letters / crossed-out time strings ("12:", "15:") —
+   useless to the user. We strip the chips on mobile and replace
+   them with a single presence-dot via `:has()` so the user still
+   sees which days have stuff and can tap to drill in.
+
+   Why `:has()` and not a React render override: pure CSS keeps
+   the FC event pipeline intact (drop / edit / recurring expansion
+   still works) — we just hide its visual on mobile month. The
+   dot uses the user's accent color so the calendar stays
+   theme-aware.
+
+   Tap a day cell on mobile month → existing FC `dateClick`
+   handler fires → opens the day picker / quick-add flow we
+   already have. No new JS path.
+   ============================================================ */
+@media (max-width: 767px) {
+  /* Drop the event chip row + the "+N more" link inside each
+     day cell. We re-add presence info via the dot below. */
+  .fc-daygrid .fc-daygrid-day-events,
+  .fc-daygrid .fc-daygrid-day-bottom {
+    display: none !important;
+  }
+  /* Day cells can be tighter without events filling them. */
+  .fc-daygrid-day-frame {
+    min-height: 0 !important;
+    padding: 2px 0 !important;
+  }
+  /* Presence dot — appears on the day-top row only when the cell
+     has at least one event-harness child. `:has()` is supported
+     in every Chromium-based browser (Edge / Thorium / Chrome
+     105+) and Safari 15.4+. */
+  .fc-daygrid .fc-daygrid-day:has(.fc-daygrid-event-harness)
+    .fc-daygrid-day-top::after {
+    content: "";
+    display: inline-block;
+    width: 5px;
+    height: 5px;
+    border-radius: 9999px;
+    background: var(--primary);
+    margin-left: 4px;
+    flex-shrink: 0;
+    align-self: center;
+  }
+  /* Today cell — same dot but lifted on the white pill so it
+     reads cleanly. Override color to white for contrast. */
+  .fc-daygrid .fc-day-today:has(.fc-daygrid-event-harness)
+    .fc-daygrid-day-top::after {
+    background: var(--primary);
+  }
+  /* Title format compaction — FC's titleFormat prop handles the
+     content side, but the toolbar still wraps when the title
+     plus prev/next/today buttons add up tighter than 375 px.
+     `flex-wrap` here lets prev/next/today stack onto their own
+     row when needed instead of squeezing the title into 2
+     lines next to half-cut buttons. */
+  .fc .fc-toolbar.fc-header-toolbar {
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+  .fc .fc-toolbar-title {
+    font-size: 1rem !important;
+  }
+  /* Column header (THỨ HAI / Mon etc.) — at single-letter format
+     we can also tighten padding so the grid breathes. */
+  .fc .fc-col-header-cell-cushion {
+    padding: 6px 2px;
+    font-size: 0.7rem;
+    letter-spacing: 0;
   }
 }
 
