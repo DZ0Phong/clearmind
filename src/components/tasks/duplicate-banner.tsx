@@ -1,6 +1,6 @@
 import { useEffect, useRef } from "react";
 import { useTasks } from "@/hooks/use-tasks";
-import { useToast } from "@/components/toast";
+import { useToast } from "@/components/feedback/toast";
 import { useT } from "@/lib/i18n";
 
 /**

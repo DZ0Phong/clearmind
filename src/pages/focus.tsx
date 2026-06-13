@@ -9,7 +9,7 @@ import { useSearchParams } from "react-router-dom";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { useTasks, type Task } from "@/hooks/use-tasks";
-import { useToast } from "@/components/toast";
+import { useToast } from "@/components/feedback/toast";
 import { useT, useDateFns } from "@/lib/i18n";
 import {
   Play,

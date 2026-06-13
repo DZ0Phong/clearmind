@@ -23,8 +23,8 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { AutoTextarea } from "@/components/ui/auto-textarea";
-import { TagInput } from "@/components/tag-input";
-import { VoiceMic } from "@/components/voice-mic";
+import { TagInput } from "@/components/tasks/tag-input";
+import { VoiceMic } from "@/components/tasks/voice-mic";
 import { DateTimePicker } from "@/components/date-time-picker";
 import {
   useTasks,

@@ -2,8 +2,8 @@ import { memo, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { useTickingNow } from "@/hooks/use-ticking-now";
 import { useTasks, type Task, type TaskStatus } from "@/hooks/use-tasks";
-import { useTaskCommands } from "@/components/task-commands";
-import { useToast } from "@/components/toast";
+import { useTaskCommands } from "@/components/tasks/task-commands";
+import { useToast } from "@/components/feedback/toast";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   CheckSquare,
@@ -31,11 +31,11 @@ import {
   Layers,
   GraduationCap,
 } from "lucide-react";
-import { QuickCapture } from "@/components/task-dialog";
+import { QuickCapture } from "@/components/tasks/task-dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useT, useDateFns, DOW_KEYS_SUN_FIRST } from "@/lib/i18n";
-import { HomeworkDialog } from "@/components/homework-dialog";
+import { HomeworkDialog } from "@/components/tasks/homework-dialog";
 import {
   formatTimeAgoShort,
   BUCKET_ORDER,

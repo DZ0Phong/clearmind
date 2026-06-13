@@ -1,0 +1,9 @@
+dist
+node_modules
+cli/node_modules
+*.lock
+*.log
+.git
+public/sw.js
+src/lib/i18n/dict-vi.ts
+src/lib/i18n/dict-en.ts

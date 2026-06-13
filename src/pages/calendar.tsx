@@ -1,5 +1,5 @@
 import { useSearchParams } from "react-router-dom";
-import { CalendarView } from "@/components/calendar-view";
+import { CalendarView } from "@/components/calendar/calendar-view";
 import { useT } from "@/lib/i18n";
 
 export function CalendarPage() {

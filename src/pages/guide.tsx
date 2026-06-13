@@ -7,7 +7,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { useTaskCommands } from "@/components/task-commands";
+import { useTaskCommands } from "@/components/tasks/task-commands";
 import {
   LayoutDashboard,
   Calendar,

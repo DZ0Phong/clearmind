@@ -437,6 +437,37 @@ export function TasksProvider({ children }: { children: React.ReactNode }) {
     return id;
   }, []);
 
+  // When a recurring task is just completed, spawn the next occurrence in
+  // front of the updated list — unless we've passed `recurrenceEndAt` or
+  // the next instance was already created (fresh import etc.). Shared by
+  // updateTaskStatus + cycleStatus so the two never drift. Returns the
+  // list to commit. The original `prev` is needed for the duplicate
+  // check; the `updated` list is what gets prepended to.
+  const maybeSpawnRecurrence = (
+    prev: Task[],
+    target: Task,
+    updated: Task[],
+    justCompleted: boolean,
+  ): Task[] => {
+    if (!justCompleted || !target.recurrence || !target.deadline) return updated;
+    const nextDeadline = nextRecurrence(target.deadline, target.recurrence);
+    const stopBy = target.recurrenceEndAt
+      ? new Date(target.recurrenceEndAt).getTime()
+      : Number.POSITIVE_INFINITY;
+    if (new Date(nextDeadline).getTime() > stopBy) return updated;
+    if (nextInstanceAlreadyExists(prev, target, nextDeadline)) return updated;
+    const spawn: Task = {
+      ...target,
+      id: crypto.randomUUID(),
+      status: "todo",
+      deadline: nextDeadline,
+      createdAt: new Date().toISOString(),
+      completedAt: undefined,
+      pomodoroMinutes: 0,
+    };
+    return [spawn, ...updated];
+  };
+
   const updateTaskStatus = useCallback((id: string, status: TaskStatus) => {
     setTasks((prev) => {
       const target = prev.find((t) => t.id === id);
@@ -453,30 +484,7 @@ export function TasksProvider({ children }: { children: React.ReactNode }) {
             }
           : t
       );
-      // recurrence: spawn a new occurrence (unless past recurrenceEndAt
-      // OR the next instance was already created — e.g. via a fresh import)
-      if (justCompleted && target.recurrence && target.deadline) {
-        const nextDeadline = nextRecurrence(target.deadline, target.recurrence);
-        const stopBy = target.recurrenceEndAt
-          ? new Date(target.recurrenceEndAt).getTime()
-          : Number.POSITIVE_INFINITY;
-        if (
-          new Date(nextDeadline).getTime() <= stopBy &&
-          !nextInstanceAlreadyExists(prev, target, nextDeadline)
-        ) {
-          const spawn: Task = {
-            ...target,
-            id: crypto.randomUUID(),
-            status: "todo",
-            deadline: nextDeadline,
-            createdAt: new Date().toISOString(),
-            completedAt: undefined,
-            pomodoroMinutes: 0,
-          };
-          return [spawn, ...next];
-        }
-      }
-      return next;
+      return maybeSpawnRecurrence(prev, target, next, justCompleted);
     });
   }, []);
 
@@ -498,28 +506,7 @@ export function TasksProvider({ children }: { children: React.ReactNode }) {
             }
           : t
       );
-      if (justCompleted && target.recurrence && target.deadline) {
-        const nextDeadline = nextRecurrence(target.deadline, target.recurrence);
-        const stopBy = target.recurrenceEndAt
-          ? new Date(target.recurrenceEndAt).getTime()
-          : Number.POSITIVE_INFINITY;
-        if (
-          new Date(nextDeadline).getTime() <= stopBy &&
-          !nextInstanceAlreadyExists(prev, target, nextDeadline)
-        ) {
-          const spawn: Task = {
-            ...target,
-            id: crypto.randomUUID(),
-            status: "todo",
-            deadline: nextDeadline,
-            createdAt: new Date().toISOString(),
-            completedAt: undefined,
-            pomodoroMinutes: 0,
-          };
-          return [spawn, ...updated];
-        }
-      }
-      return updated;
+      return maybeSpawnRecurrence(prev, target, updated, justCompleted);
     });
   }, []);
 

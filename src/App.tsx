@@ -5,11 +5,11 @@ import { ThemeProvider } from "@/components/theme-provider";
 import { AccentProvider } from "@/components/accent-provider";
 import { I18nProvider } from "@/lib/i18n";
 import { TasksProvider } from "@/hooks/use-tasks";
-import { ToastProvider } from "@/components/toast";
-import { TaskCommandsProvider } from "@/components/task-commands";
-import { DialogProvider } from "@/components/confirm-dialog";
+import { ToastProvider } from "@/components/feedback/toast";
+import { TaskCommandsProvider } from "@/components/tasks/task-commands";
+import { DialogProvider } from "@/components/feedback/confirm-dialog";
 import { MainLayout } from "@/components/layout/main-layout";
-import { ErrorBoundary } from "@/components/error-boundary";
+import { ErrorBoundary } from "@/components/feedback/error-boundary";
 // Dashboard stays eager — it's the default route and the user's first
 // paint. Every other page is lazy so initial bundle stays small.
 import { Dashboard } from "@/pages/dashboard";

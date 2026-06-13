@@ -6,7 +6,7 @@ import {
   useMemo,
   useState,
 } from "react";
-import { TaskDialog, type CreatePrefill } from "@/components/task-dialog";
+import { TaskDialog, type CreatePrefill } from "@/components/tasks/task-dialog";
 import { CommandPalette } from "@/components/command-palette";
 import { useTasks } from "@/hooks/use-tasks";
 

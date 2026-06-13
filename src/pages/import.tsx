@@ -11,7 +11,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useTasks } from "@/hooks/use-tasks";
-import { useToast } from "@/components/toast";
+import { useToast } from "@/components/feedback/toast";
 import {
   parseAny,
   parseICS,

@@ -9,7 +9,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { useTasks, type Task } from "@/hooks/use-tasks";
-import { useTaskCommands } from "@/components/task-commands";
+import { useTaskCommands } from "@/components/tasks/task-commands";
 import { useT, useI18n, useDateFns, DOW_KEYS_SUN_FIRST } from "@/lib/i18n";
 import { Button } from "@/components/ui/button";
 import {
@@ -34,7 +34,7 @@ import {
   subjectColor,
   cn,
 } from "@/lib/utils";
-import { FirstRunWelcome } from "@/components/first-run-welcome";
+import { FirstRunWelcome } from "@/components/feedback/first-run-welcome";
 
 export function Dashboard() {
   const { tasks } = useTasks();

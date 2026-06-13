@@ -43,8 +43,8 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { HomeworkDialog } from "@/components/homework-dialog";
-import { useTaskCommands } from "@/components/task-commands";
+import { HomeworkDialog } from "@/components/tasks/homework-dialog";
+import { useTaskCommands } from "@/components/tasks/task-commands";
 import { useTasks, type Task, type TaskType } from "@/hooks/use-tasks";
 import {
   canonicalTimeZone,

@@ -10,10 +10,10 @@ import {
   CalendarPlus,
 } from "lucide-react";
 import { Link, NavLink } from "react-router-dom";
-import { useTaskCommands } from "@/components/task-commands";
+import { useTaskCommands } from "@/components/tasks/task-commands";
 import { useT } from "@/lib/i18n";
 import { Logo } from "@/components/logo";
-import { MiniCalendar } from "@/components/mini-calendar";
+import { MiniCalendar } from "@/components/calendar/mini-calendar";
 
 // Main nav — the five top-level workspaces.
 const navItems = [

@@ -7,10 +7,10 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { ThemePicker } from "@/components/theme-picker";
-import { LanguagePicker } from "@/components/language-picker";
-import { AccentPicker } from "@/components/accent-picker";
-import { TimezonePicker } from "@/components/timezone-picker";
+import { ThemePicker } from "@/components/settings/theme-picker";
+import { LanguagePicker } from "@/components/settings/language-picker";
+import { AccentPicker } from "@/components/settings/accent-picker";
+import { TimezonePicker } from "@/components/settings/timezone-picker";
 import { useT, useLocaleTag } from "@/lib/i18n";
 import { Button } from "@/components/ui/button";
 import {
@@ -36,8 +36,8 @@ import {
 import { readErrorLog, clearErrorLog, type ErrorEntry } from "@/lib/error-log";
 import { useTasks } from "@/hooks/use-tasks";
 import { tagStats, cn } from "@/lib/utils";
-import { useToast } from "@/components/toast";
-import { useDialog } from "@/components/confirm-dialog";
+import { useToast } from "@/components/feedback/toast";
+import { useDialog } from "@/components/feedback/confirm-dialog";
 import { Switch } from "@/components/ui/switch";
 import { downloadICS } from "@/lib/ics";
 import {

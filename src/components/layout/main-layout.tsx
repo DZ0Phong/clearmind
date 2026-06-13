@@ -5,16 +5,16 @@ import { Sidebar } from "./sidebar";
 import { MobileTabBar } from "./mobile-tab-bar";
 import { Logo } from "@/components/logo";
 import { Button } from "@/components/ui/button";
-import { ModeToggle } from "@/components/mode-toggle";
+import { ModeToggle } from "@/components/settings/mode-toggle";
 import { useTasks } from "@/hooks/use-tasks";
-import { useTaskCommands } from "@/components/task-commands";
+import { useTaskCommands } from "@/components/tasks/task-commands";
 import { isPast, isRecurringClass } from "@/lib/utils";
 import { useTickingNow } from "@/hooks/use-ticking-now";
 import { useCliHealth } from "@/hooks/use-cli-health";
 import { useI18n, useT, useTimeZoneOption } from "@/lib/i18n";
-import { LanguageToggle } from "@/components/language-toggle";
-import { TipBanner } from "@/components/tip-banner";
-import { DuplicateBanner } from "@/components/duplicate-banner";
+import { LanguageToggle } from "@/components/settings/language-toggle";
+import { TipBanner } from "@/components/feedback/tip-banner";
+import { DuplicateBanner } from "@/components/tasks/duplicate-banner";
 
 export function MainLayout({ children }: { children: ReactNode }) {
   // Root locked to exactly viewport height (h-dvh handles mobile address-bar
