@@ -1956,6 +1956,34 @@ function deviceTimeZone(): string {
   }
 }
 
+/** Day-of-week i18n key arrays — single source of truth.
+ *  `DOW_KEYS_SUN_FIRST` lines up with JavaScript's `Date.getDay()` (0=Sun)
+ *  so consumers iterating over a week can index directly. `DOW_KEYS_MON_FIRST`
+ *  matches the Vietnamese convention used by the date picker and review
+ *  heatmap (week starts Monday). Use the one that matches your index source;
+ *  don't redeclare them per file (was duplicated in 5 places before). */
+export const DOW_KEYS_SUN_FIRST = [
+  "review.dow.sun",
+  "review.dow.mon",
+  "review.dow.tue",
+  "review.dow.wed",
+  "review.dow.thu",
+  "review.dow.fri",
+  "review.dow.sat",
+] as const;
+
+export const DOW_KEYS_MON_FIRST = [
+  "review.dow.mon",
+  "review.dow.tue",
+  "review.dow.wed",
+  "review.dow.thu",
+  "review.dow.fri",
+  "review.dow.sat",
+  "review.dow.sun",
+] as const;
+
+export type DowKey = (typeof DOW_KEYS_SUN_FIRST)[number];
+
 export function I18nProvider({ children }: { children: React.ReactNode }) {
   const [lang, setLangState] = useState<Lang>(() => {
     try {

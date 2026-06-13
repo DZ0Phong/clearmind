@@ -1,6 +1,6 @@
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { useTickingNow } from "@/lib/use-ticking-now";
+import { useTickingNow } from "@/hooks/use-ticking-now";
 import FullCalendar from "@fullcalendar/react";
 import dayGridPlugin from "@fullcalendar/daygrid";
 import timeGridPlugin from "@fullcalendar/timegrid";
@@ -49,6 +49,8 @@ import { useTasks, type Task, type TaskType } from "@/hooks/use-tasks";
 import {
   canonicalTimeZone,
   cn,
+  dayKey,
+  pad2,
   subjectColor,
   tagStats,
 } from "@/lib/utils";
@@ -101,9 +103,13 @@ const VIEW_STORAGE_KEY = "clearmind_calendar_view";
 
 /* ───── Pure helpers ────────────────────────────────────────────── */
 
-const pad = (n: number) => n.toString().padStart(2, "0");
-const dayKey = (d: Date) =>
-  `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+// `pad` aliases the canonical `pad2` from @/lib/utils so the rest of this
+// file's date-string construction stays terse. `dayKey` is intentionally
+// NOT redeclared here — the canonical tz-aware `dayKey(d, tz)` from utils
+// is imported above and called with the user's resolved tz inside the
+// component (was a silent bug before: local dayKey ignored user tz, so
+// switching tz left bucket boundaries on the system clock).
+const pad = pad2;
 
 // Academic events vary by subject; everything else uses its fixed type color.
 // Done state is NOT folded in here — earlier we returned `var(--muted)` for
@@ -228,7 +234,7 @@ export function CalendarView({ initialDate }: CalendarViewProps = {}) {
   const [homeworkParent, setHomeworkParent] = useState<string | null>(null);
   // Tracks the day currently shown by timeGridDay so the side panel stays in sync.
   const [dayDateIso, setDayDateIso] = useState<string>(
-    () => initialDate ?? dayKey(new Date())
+    () => initialDate ?? dayKey(new Date(), rawTz)
   );
   // Agenda offset (lifted from AgendaView) so the prev/next/today buttons
   // can sit in the sticky chrome stack alongside the view switcher. ±1 per
@@ -341,8 +347,8 @@ export function CalendarView({ initialDate }: CalendarViewProps = {}) {
   // Lifted out of AgendaView so the AgendaToolbar in the sticky chrome
   // and the day list rendered in the body can share the same window.
   const agendaAnchor = useMemo(
-    () => initialDate ?? dayKey(new Date()),
-    [initialDate]
+    () => initialDate ?? dayKey(new Date(), rawTz),
+    [initialDate, rawTz]
   );
   const agendaStart = useMemo(() => {
     const d = new Date(agendaAnchor);
@@ -404,13 +410,13 @@ export function CalendarView({ initialDate }: CalendarViewProps = {}) {
     for (let i = 0; i < 14; i++) {
       const d = new Date(agendaStart);
       d.setDate(agendaStart.getDate() + i);
-      const iso = dayKey(d);
+      const iso = dayKey(d, rawTz);
       n += filteredTasks.filter(
         (t) => t.deadline && t.deadline.slice(0, 10) === iso
       ).length;
     }
     return n;
-  }, [view, filteredTasks, agendaStart]);
+  }, [view, filteredTasks, agendaStart, rawTz]);
 
   const fcEvents = useMemo(
     () =>
@@ -1577,12 +1583,17 @@ function AgendaView({
   onPickEvent,
   onCreate,
 }: AgendaViewProps) {
+  // Pull the user's resolved tz so day bucketing matches the bucket
+  // boundaries the rest of the app uses. Without this, a user on
+  // Asia/Ho_Chi_Minh viewing the app on a UTC machine would see events
+  // shift by a day around midnight in Vietnam time.
+  const tz = useTimeZone();
   const days = useMemo(() => {
     const out: Array<{ date: Date; iso: string; items: Task[] }> = [];
     for (let i = 0; i < 14; i++) {
       const d = new Date(start);
       d.setDate(start.getDate() + i);
-      const iso = dayKey(d);
+      const iso = dayKey(d, tz);
       const items = tasks
         .filter((t) => t.deadline && t.deadline.slice(0, 10) === iso)
         .sort((a, b) => {
@@ -1593,11 +1604,11 @@ function AgendaView({
       out.push({ date: d, iso, items });
     }
     return out;
-  }, [start, tasks]);
+  }, [start, tasks, tz]);
 
   const today = new Date();
   today.setHours(0, 0, 0, 0);
-  const todayK = dayKey(today);
+  const todayK = dayKey(today, tz);
 
   return (
     <>

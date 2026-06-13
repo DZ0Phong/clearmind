@@ -198,12 +198,13 @@ export function dayKey(d: Date, tz?: string): string {
   return `${p.year}-${p.month}-${p.day}`;
 }
 
-/** Canonical FPT-style subject code regex. Single match, no g-flag — for
- *  identification / dedup / display. Distinct from {@link SUBJECT_CODE_RE}
- *  below which is broader + g-flag for tag harvesting. Exported so callers
- *  doing `.replace(match[0], ...)` on the matched span can reuse the
- *  pattern without redefining it. */
-export const SUBJECT_CODE_PATTERN = /\b([A-Z]{3,4}\d{3,4}[a-z]{0,3})\b/;
+/** Canonical subject code regex — single source of truth.
+ *  Matches FPT-style codes (PRU213, EXE101g) plus 2-letter variants
+ *  (AI201, CS201) so `extractSubjectCode` and `suggestTags` no longer
+ *  disagree on the same input. Caller picks no-flag (single match) or
+ *  the g-flag companion below for tag harvesting. */
+export const SUBJECT_CODE_PATTERN = /\b([A-Z]{2,4}\d{2,4}[a-z]{0,3})\b/;
+export const SUBJECT_CODE_PATTERN_G = new RegExp(SUBJECT_CODE_PATTERN.source, "g");
 
 /** Pull the FPT-style subject code (e.g. "PRU213", "EXE101g") from a free-form
  *  title. Returns null if not found. Used by the importer, the homework
@@ -506,7 +507,6 @@ export interface Classification {
  *   3. "thi" / "kiểm tra" / "exam" / "midterm" / "final" → tag "thi"
  * Existing tags được preserve; chỉ thêm tag mới, không bao giờ xoá tag user.
  */
-const SUBJECT_CODE_RE = /\b([A-Z]{2,4}\d{2,3}[a-z]?)\b/g;
 const BAITAP_RE = /\b(bai tap|homework|assignment|btvn|asm)\b/;
 const THI_RE = /\b(thi|kiem tra|de thi|exam|test|midterm|final|quiz)\b/;
 
@@ -514,7 +514,9 @@ export function suggestTags(input: string, existing: string[] = []): string[] {
   const text = " " + stripDiacritics(input).toLowerCase() + " ";
   const out = new Set(existing.map((t) => t.toLowerCase()));
   // Subject codes — giữ chữ in để dễ đọc nhưng lowercase trong tag store.
-  const codes = input.match(SUBJECT_CODE_RE);
+  // Use the canonical g-flag pattern so suggestTags and extractSubjectCode
+  // never disagree on whether something is a code.
+  const codes = input.match(SUBJECT_CODE_PATTERN_G);
   if (codes) for (const c of codes) out.add(c.toLowerCase());
   if (BAITAP_RE.test(text)) out.add("bai-tap");
   if (THI_RE.test(text)) out.add("thi");

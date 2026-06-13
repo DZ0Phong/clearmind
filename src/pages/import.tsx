@@ -43,7 +43,7 @@ import {
 import { cn, extractSubjectCode } from "@/lib/utils";
 import { Logo } from "@/components/logo";
 import { buildBookmarklet, getBookmarkletBody } from "@/lib/bookmarklet";
-import { useT } from "@/lib/i18n";
+import { useT, DOW_KEYS_SUN_FIRST } from "@/lib/i18n";
 
 type Tab = "paste" | "bookmarklet" | "ics";
 
@@ -115,25 +115,14 @@ function diffParsedAgainst(c: ParsedClass, existing: Task): FieldChange[] {
 }
 
 // Translated weekday names — replaces DOW_LABEL_VI which was VN-only.
-// Index matches Date.getDay(): 0 = Sunday … 6 = Saturday. We pass through
-// the existing short keys (review.dow.*) since import preview rows are
-// dense and read better with compact labels.
-const DOW_I18N_KEYS = [
-  "review.dow.sun",
-  "review.dow.mon",
-  "review.dow.tue",
-  "review.dow.wed",
-  "review.dow.thu",
-  "review.dow.fri",
-  "review.dow.sat",
-];
+// DOW keys live in @/lib/i18n (DOW_KEYS_SUN_FIRST) — single source of truth.
 
 export function ImportPage() {
   const { addTask, updateTask, removeTask, tasks } = useTasks();
   const { toast } = useToast();
   const navigate = useNavigate();
   const t = useT();
-  const dowLabel = (dow: number) => t(DOW_I18N_KEYS[dow] ?? "review.dow.sun");
+  const dowLabel = (dow: number) => t(DOW_KEYS_SUN_FIRST[dow] ?? "review.dow.sun");
   const [tab, setTab] = useState<Tab>("paste");
   const [raw, setRaw] = useState("");
   const [parsed, setParsed] = useState<ParsedClass[]>([]);
@@ -1300,7 +1289,7 @@ function PreviewList({
           <div key={key}>
             <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-2 flex items-center gap-2 flex-wrap">
               <CalendarRange className="h-3 w-3" />
-              <span>{t(DOW_I18N_KEYS[dow] ?? "review.dow.sun")}</span>
+              <span>{t(DOW_KEYS_SUN_FIRST[dow] ?? "review.dow.sun")}</span>
               <span className="text-muted-foreground/70 font-normal normal-case tabular-nums">
                 · {fmtFullDate(dateForHeader)}
               </span>

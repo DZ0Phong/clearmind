@@ -6,7 +6,9 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
+    "typecheck": "tsc -b --noEmit",
     "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
     "preview": "vite preview",
     "cli": "node cli/cli.js",
     "cli:tray": "node cli/cli.js --tray",
@@ -27,7 +29,6 @@
     "react": "^19.2.6",
     "react-dom": "^19.2.6",
     "react-router-dom": "^7.15.1",
-    "shadcn-ui": "^0.9.5",
     "tailwind-merge": "^3.6.0",
     "tailwindcss": "^4.3.0",
     "tailwindcss-animate": "^1.0.7"

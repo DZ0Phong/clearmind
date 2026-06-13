@@ -23,7 +23,7 @@ import {
   Minus,
 } from "lucide-react";
 import { cn, dayKey, isPast, isRecurringClass } from "@/lib/utils";
-import { useT, useLocaleTag, useDateFns } from "@/lib/i18n";
+import { useT, useLocaleTag, useDateFns, DOW_KEYS_MON_FIRST } from "@/lib/i18n";
 
 type T = ReturnType<typeof useT>;
 
@@ -307,15 +307,7 @@ export function ReviewPage() {
   const t = useT();
   const localeTag = useLocaleTag();
   const { tz, formatDeadline } = useDateFns();
-  const DOW_LABELS = [
-    t("review.dow.mon"),
-    t("review.dow.tue"),
-    t("review.dow.wed"),
-    t("review.dow.thu"),
-    t("review.dow.fri"),
-    t("review.dow.sat"),
-    t("review.dow.sun"),
-  ];
+  const DOW_LABELS = DOW_KEYS_MON_FIRST.map((k) => t(k));
 
   const stats = useMemo(() => {
     const now = new Date();

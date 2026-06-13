@@ -1,6 +1,6 @@
 import { memo, useEffect, useMemo } from "react";
 import { useNavigate, Link, useSearchParams } from "react-router-dom";
-import { useTickingNow } from "@/lib/use-ticking-now";
+import { useTickingNow } from "@/hooks/use-ticking-now";
 import {
   Card,
   CardContent,
@@ -10,7 +10,7 @@ import {
 } from "@/components/ui/card";
 import { useTasks, type Task } from "@/hooks/use-tasks";
 import { useTaskCommands } from "@/components/task-commands";
-import { useT, useI18n, useDateFns } from "@/lib/i18n";
+import { useT, useI18n, useDateFns, DOW_KEYS_SUN_FIRST } from "@/lib/i18n";
 import { Button } from "@/components/ui/button";
 import {
   Clock,
@@ -99,7 +99,7 @@ export function Dashboard() {
   // Build localized weekday labels once per language flip — buildWeekStrip
   // receives them as a 7-element array indexed by getDay().
   const dowLabels = useMemo(
-    () => DOW_I18N_KEYS.map((k) => t(k)),
+    () => DOW_KEYS_SUN_FIRST.map((k) => t(k)),
     [t]
   );
   const weekStrip = useMemo(
@@ -752,15 +752,7 @@ interface DayCell {
 
 // Sun..Sat order, indexed by Date.getDay(). Resolved at render time via
 // useT() so the labels follow the app language toggle.
-const DOW_I18N_KEYS = [
-  "review.dow.sun",
-  "review.dow.mon",
-  "review.dow.tue",
-  "review.dow.wed",
-  "review.dow.thu",
-  "review.dow.fri",
-  "review.dow.sat",
-];
+// DOW keys live in @/lib/i18n (DOW_KEYS_SUN_FIRST) — single source of truth.
 
 function buildWeekStrip(tasks: Task[], dowLabels: string[]): DayCell[] {
   const now = new Date();

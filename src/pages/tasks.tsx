@@ -1,6 +1,6 @@
 import { memo, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
-import { useTickingNow } from "@/lib/use-ticking-now";
+import { useTickingNow } from "@/hooks/use-ticking-now";
 import { useTasks, type Task, type TaskStatus } from "@/hooks/use-tasks";
 import { useTaskCommands } from "@/components/task-commands";
 import { useToast } from "@/components/toast";
@@ -31,10 +31,10 @@ import {
   Layers,
   GraduationCap,
 } from "lucide-react";
-import { QuickCapture } from "@/components/quick-capture";
+import { QuickCapture } from "@/components/task-dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { useT, useDateFns } from "@/lib/i18n";
+import { useT, useDateFns, DOW_KEYS_SUN_FIRST } from "@/lib/i18n";
 import { HomeworkDialog } from "@/components/homework-dialog";
 import {
   formatTimeAgoShort,
@@ -976,16 +976,7 @@ function SubjectGroup({
   const summary = (() => {
     if (!next?.deadline) return null;
     const d = new Date(next.deadline);
-    const dowKeys = [
-      "review.dow.sun",
-      "review.dow.mon",
-      "review.dow.tue",
-      "review.dow.wed",
-      "review.dow.thu",
-      "review.dow.fri",
-      "review.dow.sat",
-    ];
-    const dow = t(dowKeys[d.getDay()] ?? "review.dow.sun");
+    const dow = t(DOW_KEYS_SUN_FIRST[d.getDay()] ?? "review.dow.sun");
     const hh = d.getHours().toString().padStart(2, "0");
     const mm = d.getMinutes().toString().padStart(2, "0");
     const dd = d.getDate().toString().padStart(2, "0");

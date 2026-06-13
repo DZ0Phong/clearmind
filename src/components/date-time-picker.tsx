@@ -10,7 +10,7 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import { useT, useLocaleTag } from "@/lib/i18n";
+import { useT, useLocaleTag, DOW_KEYS_MON_FIRST } from "@/lib/i18n";
 
 interface Props {
   value: string;
@@ -153,15 +153,7 @@ export function DateTimePicker({
 }: Props) {
   const t = useT();
   const localeTag = useLocaleTag();
-  const DOW_LABELS = [
-    t("review.dow.mon"),
-    t("review.dow.tue"),
-    t("review.dow.wed"),
-    t("review.dow.thu"),
-    t("review.dow.fri"),
-    t("review.dow.sat"),
-    t("review.dow.sun"),
-  ];
+  const DOW_LABELS = DOW_KEYS_MON_FIRST.map((k) => t(k));
   const TIME_PRESETS: Array<[number, number, string]> = [
     [8, 0, t("dtp.timePresetMorning")],
     [12, 0, t("dtp.timePresetNoon")],

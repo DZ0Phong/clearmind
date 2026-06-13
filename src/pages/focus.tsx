@@ -10,7 +10,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { useTasks, type Task } from "@/hooks/use-tasks";
 import { useToast } from "@/components/toast";
-import { useT } from "@/lib/i18n";
+import { useT, useDateFns } from "@/lib/i18n";
 import {
   Play,
   Pause,
@@ -94,15 +94,6 @@ function loadSessions(): SessionLog[] {
   } catch {
     return [];
   }
-}
-
-function isSameDay(iso: string, day: Date) {
-  const d = new Date(iso);
-  return (
-    d.getFullYear() === day.getFullYear() &&
-    d.getMonth() === day.getMonth() &&
-    d.getDate() === day.getDate()
-  );
 }
 
 /**
@@ -217,6 +208,11 @@ export function FocusPage() {
   const { tasks, incrementPomodoro } = useTasks();
   const { toast } = useToast();
   const t = useT();
+  // tz-aware "is the session timestamp today?" — replaces the old local
+  // isSameDay helper that compared via getFullYear/getMonth/getDate, which
+  // broke when the user picked a tz different from the OS clock (session
+  // logged at 23:50 local could mis-bucket to the next day).
+  const { isToday } = useDateFns();
   const [searchParams, setSearchParams] = useSearchParams();
   const [settings, setSettings] = useState<FocusSettings>(() => loadSettings());
   const [sessions, setSessions] = useState<SessionLog[]>(() => loadSessions());
@@ -459,11 +455,10 @@ export function FocusPage() {
   const tone = MODE_TONE[mode];
 
   const todayStats = useMemo(() => {
-    const today = new Date();
-    const todaySessions = sessions.filter((s) => isSameDay(s.at, today));
+    const todaySessions = sessions.filter((s) => isToday(s.at));
     const minutes = todaySessions.reduce((acc, s) => acc + s.minutes, 0);
     return { count: todaySessions.length, minutes };
-  }, [sessions]);
+  }, [sessions, isToday]);
 
   const applyPreset = (p: (typeof PRESETS)[number]) => {
     setSettings((s) => ({

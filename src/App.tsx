@@ -1,6 +1,6 @@
 import { lazy, Suspense, type ComponentType } from "react";
 import { BrowserRouter, Routes, Route, Navigate, useLocation } from "react-router-dom";
-import { useDocumentTitle } from "@/lib/use-document-title";
+import { useDocumentTitle } from "@/hooks/use-document-title";
 import { ThemeProvider } from "@/components/theme-provider";
 import { AccentProvider } from "@/components/accent-provider";
 import { I18nProvider } from "@/lib/i18n";
