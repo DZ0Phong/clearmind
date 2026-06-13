@@ -1,172 +1,308 @@
 # Clearmind
 
-Bộ não phụ cho sinh viên — quản lý lịch học, deadline, lịch thi, bài tập, và phiên focus. Local-first (lưu hết vào `localStorage`), không tài khoản, không server.
+A local-first task & calendar app for students. Single-page React app with an optional Node host that adds a system tray icon, native OS notifications, and on-disk persistence — same source, two storage adapters.
 
-## Tính năng chính
+No account, no backend, no telemetry. Your data stays on your device.
 
-**Calendar — 4 view linh hoạt**
-- **Tháng**: lưới truyền thống, event chip màu theo loại (🎓 Học / 💼 Việc / ✨ Cá nhân / 📌 Khác) + emoji prefix, môn học khác hue
-- **Tuần**: time-grid 06:00–22:00 với event card adaptive theo độ dài (30 phút → 1 dòng, 60+ → title 2 dòng, 90+ → location)
-- **Ngày**: split layout — timeline trái + **side panel** thông tin phải:
-  - Hero card với progress bar `X/Y xong · N gấp`
-  - "Sắp tới" với countdown động cập nhật mỗi phút
-  - Danh sách task "chưa định giờ" — click để gán giờ
-  - **Khung giờ rảnh tự tính** (gap ≥ 30 phút giữa các event, bỏ giờ đã qua) — click để tạo task vào khung đó
-- **Agenda**: timeline dọc 14 ngày, mỗi event 1 thẻ đầy đủ — UX dễ đọc nhất khi nhiều việc
+---
 
-**Task management**
-- 5 trường: title, mô tả, loại, ưu tiên, location, tags, deadline (date hoặc datetime), recurrence, notify
-- Quick Capture với **NL parser tiếng Việt**: "thi Toán thứ 5 lúc 14h phòng A1.404" → tự đoán loại + giờ + tag
-- Auto-classifier theo từ khoá (hoc/thi/họp/gym/...) → gợi ý type + priority
-- Voice input (Web Speech API) cho title
-- Tag system: autocomplete từ tag đã dùng, top tags ở sidebar, filter `?tag=` URL-driven, click bất cứ tag nào để lọc
+## Highlights
 
-**Focus & Review**
-- Pomodoro 25/5, chọn 1 task, mỗi phiên cộng phút focus vào task
-- Weekly Review: streak ngày liên tiếp, focus minutes, phân bố done theo loại, danh sách overdue
+- **Local-first.** Browser mode stores everything in `localStorage`. Desktop mode stores JSON on disk under `%APPDATA%/Clearmind/` (Windows) or its platform equivalent. Export anytime as JSON.
+- **Two modes, one codebase.** The SPA detects the desktop host via an injected window marker and swaps to the on-disk adapter automatically. Run `npm run dev` for the browser-only flow, `clearmind` for the tray-resident flow.
+- **Calendar with four views.** Month grid, week time-grid, focused day with side panel, vertical agenda. Drag-and-drop, recurrence (daily / weekday / weekly / monthly), full IANA timezone support.
+- **Pomodoro & weekly review.** Focus sessions log per-task minutes. The review page surfaces streaks, focus minutes, a 12-week activity heatmap, and a completion split by task type.
+- **Smart import.** Paste your school schedule as text, install the bookmarklet for one-click extraction, or drop in an `.ics` file. Parser handles subject codes, day-of-week, start/end times, and recurrence.
+- **Voice capture.** Web Speech API for fast title entry online; offline Whisper (`@huggingface/transformers`) for mixed Vietnamese-English transcription — works fully offline once the model caches.
+- **Theme.** Light / dark / system, 32-color accent picker (each pair tuned for both surfaces), full VI / EN UI synchronized across tabs.
+- **Mobile-ready.** Bottom-tab navigation under `md`, sheet-style dialogs, safe-area handling for notched iPhones and Android gestural nav.
 
-**Import lịch học**
-- Paste lịch dạng text từ website trường
-- Bookmarklet inject một cú vào trang lịch của trường
-- ICS file (`.ics`)
-- Hỗ trợ recurrence (hàng tuần) + end-date (cuối học kỳ)
+---
 
-**Header thông minh**
-- Date + time pill tick mỗi phút
-- Search bar mở Command Palette (`⌘K` / `Ctrl+K`)
-- Badge "N quá hạn" đỏ chỉ hiện khi cần
-- Quick Capture button luôn trong tầm tay
+## Requirements
 
-**Khác**
-- Dark/light theme (system-aware)
-- Local notifications cho deadline (5m / 15m / 1h / 1d trước)
-- Recurrence: daily / weekday / weekly / monthly với end-date
-- Roll-forward & dedupe cho task lặp đã quá hạn
-- Subtask "bài tập" gắn với task academic
+- Node.js **18+** (tested on 24)
+- npm 9+
 
-## Tech stack
+Windows is the primary target for desktop mode (native tray + WinRT toasts). macOS and Linux fall back to `node-notifier` for notifications and work otherwise.
 
-- **React 19** + **TypeScript** + **Vite**
-- **Tailwind v4** + **shadcn/ui**
-- **FullCalendar 6** (dayGrid + timeGrid + interaction)
-- **React Router 7**
-- **Lucide React** icons
-- **linkedom** cho HTML parsing (bookmarklet / paste)
+---
 
-## Chạy local
+## Quick start
+
+### Browser mode (zero install beyond `npm install`)
 
 ```bash
+git clone https://github.com/your-handle/clearmind.git
+cd clearmind
 npm install
-npm run dev      # http://localhost:5173
-npm run build    # TS check + vite build → dist/
-npm run lint     # eslint
+npm run dev
 ```
 
-## Chạy ngầm trên máy (Windows) — CLI mode
+Open <http://localhost:5173>. Data persists in browser `localStorage`.
 
-Đây là mode chạy như một dịch vụ ngầm: tray icon ở khay hệ thống (cạnh đồng hồ), data lưu ra ổ cứng (`%APPDATA%/Clearmind/clearmind.json`) thay vì `localStorage`. Cảm hứng cấu trúc lấy từ [decolua/9router](https://github.com/decolua/9router).
-
-```bash
-npm install              # cài deps SPA
-npm run build            # build dist/
-npm run cli:install      # cài systray2 + node-notifier trong cli/
-npm run cli              # → mở dashboard + dựng tray
-```
-
-**Đăng ký `clearmind` thành lệnh toàn cục** (giống cách 9router làm — gõ `9router` ở bất cứ terminal nào):
+### Desktop mode (tray icon, on-disk JSON, native notifications)
 
 ```bash
+npm install              # SPA deps
+npm run build            # bundles dist/
+npm run cli:install      # tray + notifier deps in cli/
+
+# Option 1 — run once from the repo
+npm run cli
+
+# Option 2 — register `clearmind` as a global command
 cd cli
-npm link                 # tạo shim clearmind.cmd trong %APPDATA%/npm
-# từ giờ ở bất kỳ thư mục nào:
-clearmind                # mở dashboard
-clearmind --tray         # chạy nền
+npm link
+clearmind                # opens dashboard
+clearmind --tray         # background only, no browser launch
 clearmind --help
 ```
 
-`npm link` tạo symlink (không copy), nên mỗi lần `npm run build` tạo `dist/` mới, lệnh `clearmind` tự pick up. Để gỡ: `cd cli && npm unlink -g`.
+`npm link` symlinks the CLI entry into your npm global bin (`%APPDATA%/npm` on Windows), so every subsequent `npm run build` is picked up automatically. To remove: `cd cli && npm unlink -g`.
 
-Tray menu:
-- **Mở Dashboard** — `http://localhost:20129/dashboard`
-- **Thêm nhanh** — bật Quick Capture dialog ngay
-- **Bắt đầu phiên Focus** — vào trang focus, timer chạy luôn
-- **Khởi động cùng Windows** — toggle (ghi `Clearmind.vbs` vào Startup folder, hidden window)
-- **Mở thư mục dữ liệu** — Explorer mở `%APPDATA%/Clearmind/`
-- **Tạo backup ngay** — snapshot `backups/YYYY-MM-DD-HH-mm-ss.json` (giữ 14 bản gần nhất)
-- **Thoát**
+> **Notifications on Windows** are emitted via PowerShell + WinRT `ToastNotificationManager`, not `node-notifier`. The WinRT path renders the app icon, Vietnamese text without mangling, and three action buttons (snooze 10m / 1h / done). `node-notifier` is kept only as a Mac/Linux fallback.
 
-Khi chạy CLI:
-- **Native OS notifications** — toast Windows bay lên cả khi browser đã đóng. Server schedule lại trên mỗi `PUT /api/tasks`, dùng `node-notifier` + SnoreToast.
-- **Auto-backup mỗi 24h** — server tự snapshot vào `backups/` (giữ rolling 14 bản); nếu lần backup gần nhất > 12h trước, snapshot ngay khi start.
-- **Safety net `previous.json`** — mỗi PUT lưu bản cũ làm previous; bấm **Khôi phục bản trước** trong Settings để rollback (swap được — bấm lần nữa là undo).
+---
 
-Một số args:
-- `--no-tray` — chỉ server, không tray (debug)
-- `--no-browser` — không tự mở browser
-- `--port N` — đổi port (mặc định 20129; tự nhảy lên 20130, 20131… nếu bận)
-- `--data-dir DIR` — đổi nơi lưu data
-- `--tray` — bypass detach + foreground server (mode dùng cho autostart .vbs)
+## Features
 
-Lần đầu mở CLI mode, nếu trong `localStorage` đã có task → tự migrate lên on-disk, sau đó xoá khỏi browser. Bật lại `npm run dev` (vite 5173) thì lại quay về localStorage — 2 chế độ độc lập nhau.
+### Tasks
 
-Data path mặc định:
-- Windows: `%APPDATA%\Clearmind\`
-- macOS: `~/Library/Application Support/Clearmind/`
-- Linux: `~/.config/clearmind/`
+- Full editor: title, description, type (academic / work / personal / other), priority, location, tags, deadline (date or datetime), recurrence, notification timing
+- **Natural-language quick capture** — paste `thi Toán thứ 5 14h phòng A1.404` and the parser pulls type, time, location, and a `#thi` tag automatically
+- **Voice capture** — Web Speech (online, fast) or Whisper (offline, accent-robust, handles VN + EN mixed)
+- **Tag system** — autocomplete from used tags; the calendar legend doubles as a tinted per-type filter; deep-link via `?tag=` and `#overdue`
+- **Command palette** (Cmd/Ctrl + K) — actions, task search by title, tag search (type two characters of any tag)
 
-## Cấu trúc
+### Calendar (4 views)
+
+| View   | Behaviour                                                                         |
+| ------ | ---------------------------------------------------------------------------------- |
+| Month  | Traditional grid, color-dotted chips, today highlighted as a pill                  |
+| Week   | Time-grid 06:00–22:00, event cards adapt their content to duration                 |
+| Day    | Timeline + side panel (progress bar, "next up" countdown, free-slot suggestions)   |
+| Agenda | Vertical 14-day list paged ±14 days, sticky chrome stays visible while scrolling   |
+
+- Drag-and-drop to reschedule
+- Recurrence rendered via FullCalendar's native `daysOfWeek` + `startRecur` / `endRecur`
+- Smart timezone fallback — uses `"local"` when the chosen IANA zone matches the browser's, falls back to the named zone otherwise (avoids the FullCalendar v6 quirk that drops named zones to UTC without the Luxon plugin)
+
+### Focus
+
+- Pomodoro 25/5 with custom durations
+- Bind a task to log session minutes against it
+- Looping Tibetan-bowl synth chime when the timer ends (until dismissed)
+
+### Weekly review
+
+- Streak ring with reactive copy
+- Focus minutes for the week
+- Completion split by task type (Academic / Work / Personal / Other)
+- 12-week activity heatmap
+
+### Import
+
+- **Paste text** — any tabular schedule export from your school portal
+- **Bookmarklet** — one click on the portal page extracts the schedule into Clearmind
+- **ICS file** — drop in any standard `.ics`
+- Deduplication via signature `(subject_code, day_of_week, time)` for weekly entries; date-based for one-offs
+
+### Desktop-only extras
+
+- **System tray** — open dashboard, quick capture, start focus session, toggle "start with Windows", open data folder, manual backup, quit
+- **Auto-backup** — rolling 14 daily snapshots in `backups/`; if the last backup is older than 12 h on start, one fires immediately
+- **Multi-slot recovery** — every save rotates the previous version into one of three numbered slots (`clearmind.previous-{1,2,3}.json`). The Settings → Data tab lets you swap any slot back into place (swap is reversible)
+- **Single instance** — lockfile + port probe; if a stale PID is alive but doesn't respond to `/api/health`, the lock is reclaimed
+- **Autostart** — writes `Clearmind.vbs` into the Windows Startup folder (hidden window). Toggle from Settings or the tray menu
+- **Real-time sync** — multiple browser tabs stay in lockstep via Server-Sent Events from the host
+
+---
+
+## CLI reference
 
 ```
-cli/                       # Node CLI host (optional — for "chạy ngầm" mode)
-├── cli.js                 # entry: arg parse + detached spawn + single-instance probe
-├── server.js              # http: GET/PUT /api/tasks, /api/health, /api/backup, /api/recover, /api/autostart
-├── storage.js             # atomic JSON write + previous.json safety net + rotating backups
-├── notifications.js       # native OS toasts via node-notifier, re-scheduled on every PUT
-├── tray.js                # systray2 menu (Open / Capture / Focus / Autostart / Backup / Quit)
-├── autostart.js           # ghi VBS vào Startup folder (Win) / plist (Mac) / .desktop (Linux)
-├── single-instance.js     # lockfile %APPDATA%/Clearmind/clearmind.lock + PID liveness probe
-├── icon.js                # sinh icon.png + icon.ico tự động bằng zlib (16x16 indigo)
-├── open-browser.js        # start / open / xdg-open + Explorer
-└── package.json           # bin: clearmind → cli.js (deps: systray2 + node-notifier)
+clearmind                    Open dashboard (auto-picks port from 20129)
+clearmind --tray             Background mode, no browser launch
+clearmind --no-tray          Foreground server, no tray (useful for SSH/debug)
+clearmind --no-browser       Don't auto-open browser on start
+clearmind --port N           Use port N (auto-bumps if busy)
+clearmind --data-dir DIR     Override the data directory
+clearmind --help
+clearmind --version
+```
 
+Running `clearmind` in a TTY without flags opens an arrow-key TTY menu (Open / Restore / Autostart / Restart / Stop / Minimize) inspired by [decolua/9router](https://github.com/decolua/9router).
+
+---
+
+## Data location
+
+| OS      | Path                                          |
+| ------- | --------------------------------------------- |
+| Windows | `%APPDATA%\Clearmind\`                        |
+| macOS   | `~/Library/Application Support/Clearmind/`    |
+| Linux   | `~/.config/clearmind/`                        |
+
+Contents:
+
+| File                          | Purpose                                  |
+| ----------------------------- | ---------------------------------------- |
+| `clearmind.json`              | Current task list                        |
+| `clearmind.previous-{1,2,3}.json` | Rolling history slots                |
+| `backups/*.json`              | Daily snapshots (rolling 14)             |
+| `clearmind.lock`              | Single-instance marker (pid + port)      |
+
+Browser mode keeps everything under the localStorage key `clearmind_tasks` instead. Switching to desktop mode the first time migrates the browser data to disk and stashes a `clearmind_tasks_legacy` key as a safety net.
+
+---
+
+## Tech stack
+
+- **React 19** + **TypeScript 6** + **Vite 8** (Rolldown)
+- **Tailwind 4** + **shadcn/ui** on top of **Radix UI** primitives
+- **FullCalendar 6** (dayGrid + timeGrid + interaction)
+- **React Router 7** with lazy-loaded routes
+- **Lucide React** icons
+- **@huggingface/transformers** for offline Whisper STT (lazy `~23 MB` WASM, loaded only when picked)
+- **linkedom** for HTML parsing in the import flow
+
+Desktop host:
+
+- Node 18+
+- **systray2** — native Go binary tray
+- **node-notifier** — Mac/Linux toast fallback
+- Native PowerShell + WinRT for Windows toasts (UTF-16 env-var bridge for Vietnamese)
+
+---
+
+## Architecture
+
+```
+┌─────────────────────────┐         ┌──────────────────────────┐
+│  Browser (SPA)          │         │  Optional Node host      │
+│  ─────────────────────  │  HTTP   │  ───────────────────     │
+│  React 19               │ ◄─────► │  http server + REST      │
+│  Tailwind 4             │  + SSE  │  Storage adapter         │
+│  FullCalendar           │         │  Notifier (WinRT / node) │
+│  i18n VI / EN           │         │  Systray2                │
+│  Accent system          │         │  Single-instance lock    │
+│  localStorage adapter   │         │  Rolling backups         │
+└─────────────────────────┘         └──────────────────────────┘
+         │                                  │
+         │ Detect host via                  │ %APPDATA%/Clearmind/
+         │ window.__CLEARMIND_CLI__         │ ├─ clearmind.json
+         └ ▼                                │ ├─ clearmind.previous-{1,2,3}.json
+            Same source, two                │ ├─ backups/*.json
+            storage adapters                │ └─ clearmind.lock
+                                            └────────────────────────────
+```
+
+Notable decisions:
+
+- **Storage adapter pattern.** The SPA checks `window.__CLEARMIND_CLI__` at startup; the same hooks talk to either `localStorage` or the REST API behind a uniform interface. No code path duplicated.
+- **Inline hydration.** On desktop mode, the host injects the current task array into the initial HTML alongside an mtime marker, so the SPA renders the real list at first paint with zero fetch.
+- **SSE over polling.** The host pushes `tasks-updated` events on every PUT; the SPA reconciles by mtime and ignores echoes of its own writes.
+- **Service Worker disabled.** `public/sw.js` is a self-destruct shim that unregisters any prior SW, clears caches, and reloads — Clearmind's main bundle is hash-busted by Vite already, and a SW kept serving stale shells after CLI rebuilds.
+- **Vite manualChunks.** `node_modules` is split into seven vendor chunks (react-dom, router, radix, icons, whisper, fullcalendar, catch-all) so app-code edits don't bust dependency hashes.
+
+---
+
+## Project structure
+
+```
 src/
-├── pages/                 # 1 file / route
-│   ├── dashboard.tsx      # hero + agenda + week strip + focus snapshot
-│   ├── calendar.tsx       # wrapper cho CalendarView
-│   ├── tasks.tsx          # bucketed list (Overdue/Today/This-week/Later/None) + tag filter
-│   ├── focus.tsx          # pomodoro timer
-│   ├── review.tsx         # weekly stats
-│   ├── settings.tsx       # import/export, notification
-│   ├── guide.tsx          # in-app help
-│   └── import.tsx         # 3 cách import lịch học
+├── pages/                       one file per route
+│   ├── dashboard.tsx            hero + agenda + week strip + focus snapshot
+│   ├── calendar.tsx             wrapper for CalendarView
+│   ├── tasks.tsx                3-view list (Tasks / Schedule / All) + filters
+│   ├── focus.tsx                Pomodoro timer
+│   ├── review.tsx               weekly stats + heatmap
+│   ├── settings.tsx             tabbed Appearance / Notifications / Data / System / Advanced
+│   ├── import.tsx               paste / bookmarklet / ICS
+│   └── guide.tsx                in-app help
 ├── components/
-│   ├── calendar-view.tsx  # 4 view (month/week/day/agenda) + day side panel
-│   ├── task-dialog.tsx    # create + edit task
-│   ├── command-palette.tsx # ⌘K
-│   ├── tag-input.tsx      # autocomplete từ tag đã dùng
-│   ├── homework-dialog.tsx # subtask cho task academic
-│   ├── quick-capture.tsx  # = TaskDialog kind=create
-│   ├── voice-mic.tsx      # Web Speech API
-│   ├── date-time-picker.tsx
-│   ├── mini-calendar.tsx  # sidebar dot calendar
-│   ├── layout/            # MainLayout + Sidebar + TopBar
-│   └── ui/                # button, card, dialog, input (shadcn)
+│   ├── calendar-view.tsx        FullCalendar wrapper, 4 views, sticky chrome
+│   ├── task-dialog.tsx          create / edit task
+│   ├── homework-dialog.tsx      subtask under an academic task
+│   ├── command-palette.tsx      Cmd/Ctrl+K with tag search
+│   ├── accent-picker.tsx        32-color Theme Studio dialog
+│   ├── theme-picker.tsx         light / dark / system segmented
+│   ├── language-picker.tsx      VI / EN segmented
+│   ├── timezone-picker.tsx      IANA dropdown with search
+│   ├── voice-mic.tsx            Web Speech + Whisper compound mic
+│   ├── tip-banner.tsx           rotating sticky tip strip
+│   ├── duplicate-banner.tsx     auto-clean duplicate detector
+│   ├── confirm-dialog.tsx       replaces window.confirm / prompt
+│   ├── first-run-welcome.tsx    onboarding modal
+│   ├── mini-calendar.tsx        sidebar dot-calendar
+│   ├── layout/
+│   │   ├── main-layout.tsx      topbar + sidebar + bottom tab bar
+│   │   ├── sidebar.tsx          desktop primary nav
+│   │   └── mobile-tab-bar.tsx   < md bottom navigation
+│   └── ui/                      shadcn primitives
 ├── hooks/
-│   └── use-tasks.tsx      # context + reducer + localStorage + reminders
-└── lib/
-    ├── utils.ts           # bucketByDate, subjectColor, tagStats, NL parser, auto-classifier
-    ├── schedule-parser.ts # text/ICS/HTML → ParsedClass[]
-    ├── ics.ts             # ICS exporter
-    ├── cli-bridge.ts      # detect window.__CLEARMIND_CLI__ + REST helpers
-    └── bookmarklet.ts
+│   └── use-tasks.tsx            context + reducer + storage adapter + reminders
+├── lib/
+│   ├── utils.ts                 tz-aware date helpers, subject color hash, NL parser
+│   ├── i18n.tsx                 VI / EN dictionary (~1400 keys)
+│   ├── schedule-parser.ts       text / ICS / HTML → ParsedClass[]
+│   ├── ics.ts                   ICS exporter
+│   ├── cli-bridge.ts            host detection + REST helpers + SSE client
+│   ├── horizontal-wheel.ts      global vertical→horizontal wheel for tab strips
+│   ├── error-log.ts             local error capture
+│   └── whisper.ts               lazy Whisper worker manager
+└── workers/
+    └── whisper.worker.ts        offline STT via @huggingface/transformers
+
+cli/                              Node host (optional)
+├── cli.js                        entry: args + detached spawn + single-instance probe
+├── menu.js                       9router-style arrow-key TTY menu
+├── server.js                     HTTP server + REST + SSE + marker injection
+├── storage.js                    atomic write + rolling history + sanitize + tmp suffix
+├── notifications.js              PowerShell+WinRT on Windows, node-notifier elsewhere
+├── toast.ps1                     Windows toast script (UTF-16 env-var bridge)
+├── tray.js                       systray2 menu
+├── autostart.js                  VBS hidden-window writer for Windows Startup
+├── single-instance.js            lockfile + PID liveness + port probe
+├── icon.js                       programmatic ICO generation (no asset shipped)
+├── url-scheme.js                 register clearmind:// for toast snooze actions
+├── url-handler.js                handle clearmind:// snooze / done callbacks
+└── open-browser.js               cross-platform start / open / xdg-open
 ```
 
-## Notable design decisions
+---
 
-- **Local-first**: tất cả state nằm trong `localStorage` (`clearmind_tasks`). Không backend, không sync. Settings page có export/import JSON để backup.
-- **Subject colors hash**: tên môn (3 từ đầu) hash → 1 trong 8 màu palette. Cùng môn = cùng màu trên toàn app. Non-academic dùng màu fixed theo type.
-- **Event color phân cấp**: trong calendar, academic = subject hash (Toán xanh, Lý cam, ...), còn lại = fixed type color. Vừa scan nhanh theo loại, vừa phân biệt môn trong cùng loại Học.
-- **Day view tier system**: event card render theo độ dài event để tránh tràn nội dung (≤ 30 phút = 1 dòng compact, 31-75 = title 2 dòng + location/tags, ≥ 76 phút = + description).
-- **Free-slots heuristic**: quét timed events trong ngày (default 1h mỗi event nếu thiếu end), tìm gap ≥ 30 phút trong khung 08:00–21:00, suggest top 4. Hôm nay bỏ giờ đã qua.
-- **Recurrence policy**: complete một task lặp → spawn instance kế tiếp (nếu chưa qua `recurrenceEndAt` và chưa tồn tại — tránh nhân đôi khi user import lịch tuần sau). Roll-forward gom toàn bộ task lặp overdue về buổi kế tiếp.
-- **Tag aggregation**: pure function `tagStats(tasks)` trả `{ name, count, openCount }`. Dùng chung bởi sidebar tag cloud, tasks page filter, calendar tag chip, TagInput autocomplete.
+## Development scripts
+
+| Command               | Purpose                                          |
+| --------------------- | ------------------------------------------------ |
+| `npm install`         | Install SPA dependencies                         |
+| `npm run dev`         | Vite dev server at <http://localhost:5173>       |
+| `npm run build`       | TypeScript check + production build              |
+| `npm run lint`        | ESLint                                            |
+| `npm run preview`     | Preview production build                         |
+| `npm run cli:install` | Install desktop host dependencies                |
+| `npm run cli`         | Run host (server + tray)                         |
+| `npm run cli:tray`    | Host in background tray-only mode                |
+| `npm run cli:dev`     | Host without tray (debug, foreground)            |
+
+---
+
+## Troubleshooting
+
+**`clearmind: command not found` after `npm link`.** Make sure your npm global bin is on `PATH`. On Windows: `%APPDATA%\npm`. Run `npm prefix -g` to confirm the directory.
+
+**Tray icon doesn't appear.** systray2 needs a GUI session. Headless / SSH sessions: use `--no-tray`.
+
+**Toast notifications don't fire.** On Windows, check Settings → System → Notifications → Clearmind is allowed and Focus Assist is off. The host logs `Toast fired` only when PowerShell exits cleanly — it doesn't mean the user saw it (Focus Assist can silently swallow toasts).
+
+**Browser keeps loading the old UI after a rebuild.** Hard refresh (`Ctrl+Shift+R`). The Service Worker has been removed; if you previously had one cached, the self-destruct shim should clean it up on next load. If not, clear site data once.
+
+**Browser-mode (`npm run dev`) and desktop-mode data look different.** They are independent — localStorage at `localhost:5173` is a separate "universe" from disk JSON at `localhost:20129`. Use Settings → Data → Export to move between them.
+
+---
+
+## License
+
+Not yet licensed. Treat as source-available for review purposes.
