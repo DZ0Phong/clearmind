@@ -216,46 +216,13 @@
   color: var(--accent-foreground);
 }
 
-/* Popover that opens when user clicks "+N more". Default FC styling has
-   no background → opens as a ghost panel overlapping day cells. Give it
-   proper card chrome so it reads as a distinct surface. */
+/* "+N more" no longer opens FullCalendar's native popover — clicking the
+   link opens our own DayOverviewDialog instead (moreLinkClick → setSelectedDate,
+   same as a day-cell click). FC still renders its popover element, so hide it
+   outright; otherwise it shows behind our dialog (the "half-popover" the user
+   disliked). */
 .fc .fc-popover {
-  background: var(--popover);
-  color: var(--popover-foreground);
-  border: 1px solid var(--border);
-  border-radius: 0.75rem;
-  box-shadow: 0 10px 30px -10px color-mix(in srgb, var(--foreground) 25%, transparent),
-              0 4px 12px -4px color-mix(in srgb, var(--foreground) 15%, transparent);
-  z-index: 50;
-  overflow: hidden;
-  min-width: 220px;
-  max-width: 320px;
-}
-.fc .fc-popover-header {
-  background: var(--muted);
-  color: var(--foreground);
-  padding: 8px 12px;
-  font-size: 0.8125rem;
-  font-weight: 600;
-  border-bottom: 1px solid var(--border);
-}
-.fc .fc-popover-close {
-  color: var(--muted-foreground);
-  opacity: 0.7;
-  font-size: 1rem;
-  padding: 0 4px;
-}
-.fc .fc-popover-close:hover {
-  opacity: 1;
-  color: var(--foreground);
-}
-.fc .fc-popover-body {
-  padding: 4px;
-  max-height: 260px;
-  overflow-y: auto;
-}
-.fc .fc-popover-body .fc-event {
-  margin: 2px 0;
+  display: none !important;
 }
 
 /* Events — chip tint rõ + viền trái 4px màu chủ đề. textColor saturated. */

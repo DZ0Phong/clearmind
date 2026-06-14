@@ -31,7 +31,6 @@ import {
   MapPin,
   Pencil,
   Plus,
-  RotateCcw,
   Sparkles,
   Trash2,
   X,
@@ -184,7 +183,12 @@ interface FcEventReceiveArg {
 }
 interface FcDatesSetArg {
   startStr: string;
-  view: { type: string };
+  start: Date;
+  end: Date;
+  view: { type: string; title: string };
+}
+interface FcMoreLinkArg {
+  date: Date;
 }
 
 /* ───── Main component ──────────────────────────────────────────── */
@@ -194,6 +198,7 @@ export function CalendarView({ initialDate }: CalendarViewProps = {}) {
   const { openEdit, openCreate } = useTaskCommands();
   const navigate = useNavigate();
   const t = useT();
+  const localeTag = useLocaleTag();
   const { lang } = useI18n();
   // Mobile detection — drives FC config (column header format, title
   // format, max events per cell) and hides the Tuần/Week view button.
@@ -257,8 +262,23 @@ export function CalendarView({ initialDate }: CalendarViewProps = {}) {
     if (isMobile && view === "week") setView("agenda");
   }, [isMobile, view]);
   const [activeTag, setActiveTag] = useState<string | null>(null);
-  const [selectedDate, setSelectedDate] = useState<string | null>(null);
   const [selectedEventId, setSelectedEventId] = useState<string | null>(null);
+  // Day picked in month view — by clicking a day cell OR a "+N more" link.
+  // Both open the clean DayOverviewDialog listing that day's tasks. (The user
+  // wants this popup; what they disliked was FC's native half-popover that the
+  // more-link used to trigger — so we suppress that and reuse this dialog.)
+  const [selectedDate, setSelectedDate] = useState<string | null>(null);
+  // Current FullCalendar period title (e.g. "tháng 6 năm 2026", "15 – 21 thg
+  // 6, 2026"), captured from datesSet so the unified toolbar can render it in
+  // place of FC's own (now-disabled) header toolbar.
+  const [fcTitle, setFcTitle] = useState("");
+  // Visible date range of the mounted time-grid (week/day), captured from
+  // datesSet. Drives dynamic slotMinTime/slotMaxTime so the grid trims empty
+  // leading/trailing hours and reveals events outside the old fixed 06–22h
+  // window.
+  const [gridRange, setGridRange] = useState<{ start: Date; end: Date } | null>(
+    null
+  );
   const [homeworkParent, setHomeworkParent] = useState<string | null>(null);
   // Tracks the day currently shown by timeGridDay so the side panel stays in sync.
   const [dayDateIso, setDayDateIso] = useState<string>(
@@ -342,6 +362,42 @@ export function CalendarView({ initialDate }: CalendarViewProps = {}) {
     },
     [triggerNavAnim]
   );
+
+  // Signed whole-day offset of the day-view date from today (negative = past).
+  // Drives the "back to today" jump and the day's relative chip.
+  const daysFromToday = useMemo(() => {
+    const d = new Date(dayDateIso + "T12:00:00");
+    const now = new Date();
+    const a = Date.UTC(d.getFullYear(), d.getMonth(), d.getDate());
+    const b = Date.UTC(now.getFullYear(), now.getMonth(), now.getDate());
+    return Math.round((a - b) / 86_400_000);
+  }, [dayDateIso]);
+
+  // Unified prev / next / today, dispatched to the active view's own
+  // navigation primitive. The single top toolbar drives every view, so FC's
+  // built-in header toolbar (and the separate agenda toolbar) are gone.
+  const goPrev = useCallback(() => {
+    if (view === "agenda") navigateAgenda(-1);
+    else if (view === "day") navigateDay(-1);
+    else navigateMonthWeek(-1);
+  }, [view, navigateAgenda, navigateDay, navigateMonthWeek]);
+  const goNext = useCallback(() => {
+    if (view === "agenda") navigateAgenda(1);
+    else if (view === "day") navigateDay(1);
+    else navigateMonthWeek(1);
+  }, [view, navigateAgenda, navigateDay, navigateMonthWeek]);
+  const goToday = useCallback(() => {
+    if (view === "agenda") {
+      if (agendaOffset !== 0) {
+        triggerNavAnim(agendaOffset > 0 ? "prev" : "next");
+        setAgendaOffset(0);
+      }
+    } else if (view === "day") {
+      if (daysFromToday !== 0) navigateDay(-daysFromToday);
+    } else {
+      monthWeekFcRef.current?.getApi().today();
+    }
+  }, [view, agendaOffset, daysFromToday, navigateDay, triggerNavAnim]);
 
   // Swipe gestures on touch viewports. Skips mouse pointers (would
   // steal text-selection on desktop), so this stays a mobile-only
@@ -683,6 +739,64 @@ export function CalendarView({ initialDate }: CalendarViewProps = {}) {
     [filteredTasks]
   );
 
+  // ── Dynamic time-grid bounds ───────────────────────────────────────
+  // Week/Day time-grids used a fixed 06:00–22:00 window, which both wasted
+  // vertical space (empty morning/evening rows) AND silently hid events
+  // outside it (a 23:00 match, a 02:00 fixture). Instead, scan the events
+  // that actually fall in the currently-visible range and fit the grid to
+  // them: first event's hour → last event's end hour. `count` lets the body
+  // show an empty-state hint when a whole week/day has no timed events.
+  const rangeInfo = useMemo(() => {
+    if ((view !== "week" && view !== "day") || !gridRange)
+      return { min: null as number | null, max: null as number | null, count: 0 };
+    const rs = gridRange.start.getTime();
+    const re = gridRange.end.getTime();
+    let min = 24;
+    let max = -1;
+    let count = 0;
+    for (const tk of filteredTasks) {
+      if (!tk.deadline) continue;
+      const d = new Date(tk.deadline);
+      if (Number.isNaN(d.getTime())) continue;
+      let active: boolean;
+      if (!tk.recurrence) {
+        const tt = d.getTime();
+        active = tt >= rs && tt < re;
+      } else {
+        // Recurring: active if its recurrence window overlaps the range. The
+        // time-of-day (and thus the hour bound it contributes) is constant
+        // across occurrences, so the first occurrence's hours suffice.
+        const sT = d.getTime();
+        const eT = tk.recurrenceEndAt
+          ? new Date(tk.recurrenceEndAt).getTime()
+          : Infinity;
+        active = sT < re && eT >= rs;
+      }
+      if (!active) continue;
+      count++;
+      if (!tk.deadline.includes("T")) continue; // all-day → no hour bound
+      const sh = d.getHours();
+      if (sh < min) min = sh;
+      const endStr = extractEndTime(tk.description);
+      let eh: number;
+      if (endStr) {
+        const [eH, eM] = endStr.split(":").map(Number);
+        eh = eH + (eM > 0 ? 1 : 0);
+      } else {
+        eh = sh + 1;
+      }
+      if (eh > max) max = eh;
+    }
+    return { min: max < 0 ? null : min, max: max < 0 ? null : max, count };
+  }, [view, gridRange, filteredTasks]);
+
+  // When events exist, fit tightly; when the range is empty fall back to a
+  // compact daytime window (so an empty week isn't a wall of blank hours).
+  const slotMinTime =
+    rangeInfo.min != null ? `${pad(Math.max(0, rangeInfo.min))}:00:00` : "08:00:00";
+  const slotMaxTime =
+    rangeInfo.max != null ? `${pad(Math.min(24, rangeInfo.max))}:00:00` : "18:00:00";
+
   /* ----- Interaction handlers ----------------------------------- */
 
   const handleDrop = (info: FcDropArg) => {
@@ -712,16 +826,22 @@ export function CalendarView({ initialDate }: CalendarViewProps = {}) {
     setSelectedEventId(info.event.id);
 
   const handleDatesSet = (info: FcDatesSetArg) => {
-    if (info.view.type !== "timeGridDay") return;
-    const iso = info.startStr.slice(0, 10);
-    if (iso !== dayDateIso) setDayDateIso(iso);
-  };
-
-  const createForSelectedDate = () => {
-    if (!selectedDate) return;
-    const iso = `${selectedDate}T09:00`;
-    setSelectedDate(null);
-    setTimeout(() => openCreate({ deadline: iso }), 50);
+    // GUARD every setState: datesSet fires on each FC render, and changing
+    // slotMinTime/slotMaxTime (derived from gridRange) makes FC re-fire it.
+    // Returning the previous value when nothing changed lets React bail out,
+    // breaking what would otherwise be an infinite render loop (React #185).
+    setFcTitle((prev) => (prev === info.view.title ? prev : info.view.title));
+    setGridRange((prev) =>
+      prev &&
+      prev.start.getTime() === info.start.getTime() &&
+      prev.end.getTime() === info.end.getTime()
+        ? prev
+        : { start: info.start, end: info.end }
+    );
+    if (info.view.type === "timeGridDay") {
+      const iso = info.startStr.slice(0, 10);
+      if (iso !== dayDateIso) setDayDateIso(iso);
+    }
   };
 
   /* ----- Derived selections ------------------------------------- */
@@ -738,6 +858,50 @@ export function CalendarView({ initialDate }: CalendarViewProps = {}) {
           t.deadline && t.deadline.slice(0, 10) === selectedDate.slice(0, 10)
       )
     : [];
+
+  const createForSelectedDate = () => {
+    if (!selectedDate) return;
+    const iso = `${selectedDate}T09:00`;
+    setSelectedDate(null);
+    setTimeout(() => openCreate({ deadline: iso }), 50);
+  };
+
+  // Period title for the unified toolbar. Month/week/desktop-day read FC's
+  // computed title (via datesSet); agenda shows its 14-day range; mobile day
+  // has no FC instance so we format the date directly.
+  const periodTitle = useMemo(() => {
+    if (view === "agenda") {
+      const s = agendaStart.toLocaleDateString(localeTag, {
+        day: "2-digit",
+        month: "short",
+      });
+      const e = agendaEnd.toLocaleDateString(localeTag, {
+        day: "2-digit",
+        month: "short",
+        year: "numeric",
+      });
+      return `${s} — ${e}`;
+    }
+    if (view === "day" && isMobile) {
+      const d = new Date(dayDateIso + "T12:00:00");
+      return d.toLocaleDateString(localeTag, {
+        day: "numeric",
+        month: "long",
+        year: "numeric",
+      });
+    }
+    return fcTitle;
+  }, [view, isMobile, dayDateIso, fcTitle, agendaStart, agendaEnd, localeTag]);
+
+  // True when the visible range already contains today. Drives the "today"
+  // button: lit (primary) when you've navigated AWAY to another period,
+  // disabled when you're already on the current one.
+  const atCurrentPeriod = useMemo(() => {
+    if (view === "agenda") return agendaOffset === 0;
+    if (!gridRange) return true;
+    const now = Date.now();
+    return now >= gridRange.start.getTime() && now < gridRange.end.getTime();
+  }, [view, agendaOffset, gridRange]);
 
   /* ----- Render ------------------------------------------------- */
 
@@ -774,11 +938,18 @@ export function CalendarView({ initialDate }: CalendarViewProps = {}) {
             chrome visibility for the user, but they get to it again
             with one scroll-up — a worthwhile trade for not having to
             offset the sticky-top by the topbar+tipbanner height. */}
-        <div className="cm-cal-chrome relative md:sticky md:top-0 z-20 shrink-0 bg-card/95 backdrop-blur-sm border-b border-border/60 px-3 md:px-4 py-3 flex flex-col gap-2.5">
+        <div className="cm-cal-chrome relative md:sticky md:top-0 z-20 shrink-0 bg-card/95 backdrop-blur-sm border-b border-border/60 px-3 md:px-4 py-2.5 flex flex-col gap-2.5">
           <CalendarToolbar
             view={view}
             onViewChange={persistView}
             isMobile={isMobile}
+            title={periodTitle}
+            todayLabel={todayButtonLabel(view, t)}
+            agendaCount={view === "agenda" ? agendaTotal : undefined}
+            onPrev={goPrev}
+            onNext={goNext}
+            onToday={goToday}
+            atCurrent={atCurrentPeriod}
             filtersOpen={filtersOpen}
             onToggleFilters={() => setFiltersOpen((v) => !v)}
             activeFilters={{
@@ -814,22 +985,6 @@ export function CalendarView({ initialDate }: CalendarViewProps = {}) {
             />
           )}
 
-          {view === "agenda" && (
-            <AgendaToolbar
-              offset={agendaOffset}
-              onPrev={() => navigateAgenda(-1)}
-              onNext={() => navigateAgenda(1)}
-              onJump={() => {
-                if (agendaOffset === 0) return;
-                const dir = agendaOffset > 0 ? "prev" : "next";
-                setAgendaOffset(0);
-                triggerNavAnim(dir);
-              }}
-              start={agendaStart}
-              end={agendaEnd}
-              total={agendaTotal}
-            />
-          )}
         </div>
 
         {/* Body. Agenda flows in this scroll container; month/week/day
@@ -853,33 +1008,47 @@ export function CalendarView({ initialDate }: CalendarViewProps = {}) {
             />
           </div>
         ) : view === "day" ? (
-          <div className="px-3 md:px-4 py-3 grid lg:grid-cols-[minmax(0,1fr)_320px] gap-4 md:flex-1 md:min-h-0">
-            {/* Hide the hour-by-hour time grid on mobile — at 375 px it
-                shrinks to ~50 px wide and the user reported "99% data
-                hidden". DaySidePanel below carries the full schedule as
-                a vertical list, which is more legible on phones. */}
-            {!isMobile && (
-            <div className="min-h-0 lg:order-1 order-2">
+          isMobile ? (
+            // Mobile day view: the hour-by-hour time-grid is unreadable at
+            // 375px, so render the vertical schedule list instead. Day
+            // navigation now lives in the unified top toolbar.
+            <div className="px-3 py-3">
+              <DaySidePanel
+                dateIso={dayDateIso}
+                tasks={filteredTasks}
+                onPickEvent={setSelectedEventId}
+                onCreate={(iso) => openCreate({ deadline: iso })}
+              />
+            </div>
+          ) : (
+            // Desktop day view: time-grid + a contextual right rail (date +
+            // progress, next-up highlight, free-slot suggestions, untimed
+            // reminders). The rail's old date-nav strip is gone — the unified
+            // toolbar owns nav now — so the redundancy is removed while the
+            // genuinely useful info comes back (the view no longer feels bare).
+            <div className="px-3 md:px-4 py-3 grid lg:grid-cols-[minmax(0,1fr)_320px] gap-4 md:flex-1 md:min-h-0">
+              <div className="relative min-w-0 min-h-0">
               <FullCalendar
                 ref={dayFcRef}
                 key={`day-${fcLocale}`}
                 plugins={[dayGridPlugin, timeGridPlugin, interactionPlugin]}
                 initialView="timeGridDay"
-                initialDate={initialDate}
+                initialDate={dayDateIso}
                 locales={[enGbLocale, viLocale]}
                 locale={fcLocale}
                 timeZone={fcTimeZone}
                 firstDay={1}
-                buttonText={{ today: todayButtonLabel(view, t) }}
-                headerToolbar={{ left: "prev,next today", center: "title", right: "" }}
+                headerToolbar={false}
+                allDayText={t("common.allDay")}
+                titleFormat={{ day: "numeric", month: "long", year: "numeric" }}
                 events={fcEvents}
                 height="100%"
                 expandRows
                 stickyHeaderDates
                 nowIndicator
-                slotMinTime="06:00:00"
-                slotMaxTime="22:00:00"
-                scrollTime="07:00:00"
+                slotMinTime={slotMinTime}
+                slotMaxTime={slotMaxTime}
+                scrollTime={slotMinTime}
                 droppable
                 drop={handleDrop}
                 editable
@@ -894,20 +1063,32 @@ export function CalendarView({ initialDate }: CalendarViewProps = {}) {
                 eventContent={renderFcEvent}
                 datesSet={handleDatesSet}
               />
-            </div>
-            )}
-            <div className="lg:order-2 order-1 lg:min-h-0">
+              {rangeInfo.count === 0 && (
+                <EmptyGridHint label={t("calendar.emptyRangeHint")} />
+              )}
+              </div>
               <DaySidePanel
                 dateIso={dayDateIso}
                 tasks={filteredTasks}
                 onPickEvent={setSelectedEventId}
                 onCreate={(iso) => openCreate({ deadline: iso })}
-                onNavigateDay={navigateDay}
               />
             </div>
-          </div>
+          )
         ) : (
-          <div className="px-3 md:px-4 py-3 md:flex-1 md:min-h-0">
+          // Week (desktop, xl+) gets a right rail (week summary + upcoming);
+          // Month stays full-width. The inner wrapper is `contents` for month
+          // (FC fills the flex-1 parent directly) and a real grid cell for
+          // week (stretches alongside the rail).
+          <div
+            className={cn(
+              "px-3 md:px-4 py-3 md:flex-1 md:min-h-0",
+              view === "week"
+                ? "grid xl:grid-cols-[minmax(0,1fr)_300px] gap-4"
+                : "relative"
+            )}
+          >
+            <div className={view === "week" ? "relative min-w-0 min-h-0" : "contents"}>
             <FullCalendar
               ref={monthWeekFcRef}
               key={`${view}-${fcLocale}-${isMobile ? "m" : "d"}`}
@@ -918,9 +1099,8 @@ export function CalendarView({ initialDate }: CalendarViewProps = {}) {
               locale={fcLocale}
               timeZone={fcTimeZone}
               firstDay={1}
-              buttonText={{ today: todayButtonLabel(view, t) }}
+              headerToolbar={false}
               allDayText={t("common.allDay")}
-              headerToolbar={{ left: "prev,next today", center: "title", right: "" }}
               // Compact column header on mobile — "narrow" gives single
               // letters (M T W T F S S) instead of "Th 2 / Th 3" which
               // wrapped to 2 lines per cell at 375px. Desktop keeps
@@ -949,9 +1129,9 @@ export function CalendarView({ initialDate }: CalendarViewProps = {}) {
               expandRows
               stickyHeaderDates
               nowIndicator
-              slotMinTime="06:00:00"
-              slotMaxTime="22:00:00"
-              scrollTime="07:00:00"
+              slotMinTime={slotMinTime}
+              slotMaxTime={slotMaxTime}
+              scrollTime={slotMinTime}
               droppable
               drop={handleDrop}
               editable
@@ -972,8 +1152,29 @@ export function CalendarView({ initialDate }: CalendarViewProps = {}) {
                 isMobile && view === "month" ? 0 : view === "month" ? 3 : false
               }
               moreLinkText={(n) => t("calendar.moreLinkText", { n })}
+              moreLinkClick={(arg: FcMoreLinkArg) => {
+                // "+N more" → open the clean day-overview dialog (same as a
+                // day-cell click). Returning nothing suppresses FC's native
+                // half-popover (the behaviour the user disliked).
+                setSelectedDate(dayKey(arg.date, rawTz));
+              }}
               eventContent={renderFcEvent}
+              datesSet={handleDatesSet}
             />
+            {view === "week" && rangeInfo.count === 0 && (
+              <EmptyGridHint label={t("calendar.emptyRangeHint")} />
+            )}
+            </div>
+            {view === "week" && gridRange && (
+              <aside className="hidden xl:block xl:min-h-0 xl:overflow-y-auto">
+                <WeekRail
+                  tasks={filteredTasks}
+                  start={gridRange.start}
+                  end={gridRange.end}
+                  onPickEvent={setSelectedEventId}
+                />
+              </aside>
+            )}
           </div>
         )}
         </div>
@@ -1040,6 +1241,13 @@ interface CalendarToolbarProps {
   view: ViewMode;
   onViewChange: (v: ViewMode) => void;
   isMobile: boolean;
+  title: string;
+  todayLabel: string;
+  agendaCount?: number;
+  onPrev: () => void;
+  onNext: () => void;
+  onToday: () => void;
+  atCurrent: boolean;
   filtersOpen: boolean;
   onToggleFilters: () => void;
   activeFilters: {
@@ -1056,6 +1264,13 @@ function CalendarToolbar({
   view,
   onViewChange,
   isMobile,
+  title,
+  todayLabel,
+  agendaCount,
+  onPrev,
+  onNext,
+  onToday,
+  atCurrent,
   filtersOpen,
   onToggleFilters,
   activeFilters,
@@ -1072,41 +1287,85 @@ function CalendarToolbar({
     (activeFilters.activeTag ? 1 : 0) +
     (activeFilters.hideDone ? 1 : 0);
   return (
-    // flex-row flex-wrap on every viewport — keeps view tabs + Bộ lọc on
-    // the same row at 375 px mobile. Active filter pills wrap below if
-    // they don't fit. Previously this was flex-col sm:flex-row, which
-    // forced a separate row for the Filters button on phones.
-    <div className="flex flex-row flex-wrap items-center gap-2 shrink-0">
-      {/* View switcher */}
-      <div
-        className="cm-seg-track max-w-full overflow-x-auto"
-        role="tablist"
-        aria-label={t("calendar.viewSwitcher")}
-      >
-        {visibleViews.map(({ key, labelKey, icon: Icon }) => {
-          const active = view === key;
-          return (
-            <button
-              key={key}
-              type="button"
-              role="tab"
-              aria-selected={active}
-              data-active={active}
-              onClick={() => onViewChange(key)}
-              className="cm-seg-item cm-seg-item-sm cm-press"
-            >
-              <Icon className="h-3.5 w-3.5" />
-              {t(labelKey)}
-            </button>
-          );
-        })}
+    // ONE control row, two groups. LEFT = prev/next/today + period title;
+    // RIGHT = view switcher + active filter pills + Bộ lọc. justify-between
+    // spreads them across one line when they fit; when the window narrows they
+    // wrap to two lines and BOTH align left — no orphaned bottom-right cluster.
+    <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
+      <div className="flex items-center gap-2 min-w-0">
+        <div className="flex items-center gap-1 shrink-0">
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            onClick={onPrev}
+            aria-label={t("calendar.navPrev")}
+            title={t("calendar.navPrev")}
+          >
+            <ChevronLeft className="h-4 w-4" />
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            onClick={onNext}
+            aria-label={t("calendar.navNext")}
+            title={t("calendar.navNext")}
+          >
+            <ChevronRight className="h-4 w-4" />
+          </Button>
+          {/* Lights up (primary) when the visible range is NOT the current
+              period; disabled when you're already on it — mirrors FC's
+              convention + the app's active-state styling. */}
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={onToday}
+            disabled={atCurrent}
+            className={cn(
+              "h-8",
+              !atCurrent &&
+                "border-primary/50 bg-primary/5 text-primary hover:bg-primary/10 hover:text-primary"
+            )}
+          >
+            {todayLabel}
+          </Button>
+        </div>
+
+        <h2 className="text-base sm:text-lg font-bold tracking-tight capitalize leading-tight min-w-0 truncate">
+          {title}
+          {typeof agendaCount === "number" && (
+            <span className="ml-2 text-xs font-normal text-muted-foreground">
+              {t("calendar.eventCount", { n: agendaCount })}
+            </span>
+          )}
+        </h2>
       </div>
 
-      {/* Active filter pills + Bộ lọc button — ml-auto pushes them to
-          the right at any width. Pills wrap to next row if they don't
-          fit (e.g. multiple types hidden). Bộ lọc shows icon-only on
-          phones so it always fits next to the view tabs. */}
-      <div className="flex items-center gap-1.5 flex-wrap ml-auto">
+      {/* Right cluster — view switcher + active filter pills + Bộ lọc. */}
+      <div className="flex items-center gap-1.5 flex-wrap">
+        <div
+          className="cm-seg-track max-w-full overflow-x-auto"
+          role="tablist"
+          aria-label={t("calendar.viewSwitcher")}
+        >
+          {visibleViews.map(({ key, labelKey, icon: Icon }) => {
+            const active = view === key;
+            return (
+              <button
+                key={key}
+                type="button"
+                role="tab"
+                aria-selected={active}
+                data-active={active}
+                onClick={() => onViewChange(key)}
+                className="cm-seg-item cm-seg-item-sm cm-press"
+              >
+                <Icon className="h-3.5 w-3.5" />
+                {t(labelKey)}
+              </button>
+            );
+          })}
+        </div>
+
         {activeFilters.types.map((typeKey) => {
           const label = t(`type.${typeKey}`);
           return (
@@ -1196,6 +1455,19 @@ function todayButtonLabel(view: ViewMode, t: ReturnType<typeof useT>): string {
   if (view === "month") return t("calendar.thisMonth");
   if (view === "week") return t("calendar.thisWeek");
   return t("calendar.todayJump");
+}
+
+/* Centered overlay shown over an empty week/day time-grid so a range with no
+   timed events reads as intentional, not broken/blank. pointer-events-none so
+   clicks still reach the grid beneath (drag-create a slot). */
+function EmptyGridHint({ label }: { label: string }) {
+  return (
+    <div className="pointer-events-none absolute inset-x-0 top-1/3 flex justify-center px-4">
+      <div className="rounded-xl border bg-card/90 px-4 py-3 text-center text-sm text-muted-foreground shadow-sm backdrop-blur-sm">
+        {label}
+      </div>
+    </div>
+  );
 }
 
 /* ───── Filters panel (collapsed by default) ────────────────────── */
@@ -1733,6 +2005,9 @@ interface DayOverviewDialogProps {
   onCreate: () => void;
 }
 
+// Clean per-day task list, opened by clicking a day cell OR a "+N more" link
+// in month view. Replaces FullCalendar's native more-link popover (which the
+// user disliked — it half-overlapped the grid and expanded oddly).
 function DayOverviewDialog({
   date,
   tasks,
@@ -1874,68 +2149,6 @@ const DayTaskRow = memo(function DayTaskRow({
 });
 
 /* ───── Agenda view (vertical timeline) ─────────────────────────── */
-
-interface AgendaToolbarProps {
-  offset: number;
-  onPrev: () => void;
-  onNext: () => void;
-  onJump: () => void;
-  start: Date;
-  end: Date;
-  total: number;
-}
-
-// Sticky-chrome companion to AgendaView. State lives in CalendarView so
-// this row can stack with the view switcher and filter chips in a single
-// sticky container, sharing the same window with the day list below.
-// Navigation goes through callbacks (not setOffset directly) so the
-// parent can pair each click with the slide animation it kicks off for
-// touch swipes.
-function AgendaToolbar({ offset: _offset, onPrev, onNext, onJump, start, end, total }: AgendaToolbarProps) {
-  const t = useT();
-  const localeTag = useLocaleTag();
-  return (
-    <div className="flex items-center justify-between gap-2 flex-wrap">
-      <div className="flex items-center gap-1">
-        <Button
-          variant="outline"
-          size="icon-sm"
-          onClick={onPrev}
-          title={t("calendar.prev14days")}
-        >
-          <ChevronLeft className="h-4 w-4" />
-        </Button>
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={onJump}
-        >
-          {t("calendar.agendaJump")}
-        </Button>
-        <Button
-          variant="outline"
-          size="icon-sm"
-          onClick={onNext}
-          title={t("calendar.next14days")}
-        >
-          <ChevronRight className="h-4 w-4" />
-        </Button>
-      </div>
-      <p className="text-xs sm:text-sm font-semibold text-foreground/80 leading-tight">
-        {start.toLocaleDateString(localeTag, { day: "2-digit", month: "short" })}
-        {" — "}
-        {end.toLocaleDateString(localeTag, {
-          day: "2-digit",
-          month: "short",
-          year: "numeric",
-        })}
-        <span className="ml-2 text-[10px] sm:text-xs text-muted-foreground font-normal">
-          {t("calendar.eventCount", { n: total })}
-        </span>
-      </p>
-    </div>
-  );
-}
 
 interface AgendaViewProps {
   tasks: Task[];
@@ -2183,6 +2396,145 @@ const AgendaItem = memo(function AgendaItem({
   );
 });
 
+/* ───── Week view side rail ─────────────────────────────────────── */
+
+interface WeekRailProps {
+  tasks: Task[];
+  start: Date; // week start (Monday)
+  end: Date; // exclusive end (next Monday)
+  onPickEvent: (id: string) => void;
+}
+
+// Contextual companion to the week time-grid — fills what used to be empty
+// space with info the grid DOESN'T surface well: a week-level progress
+// summary and a scannable upcoming/this-week list. Concrete-date (one-off)
+// events only, matching AgendaView's "events are the unit" model; recurring
+// classes still render in the grid itself.
+function WeekRail({ tasks, start, end, onPickEvent }: WeekRailProps) {
+  const t = useT();
+  const localeTag = useLocaleTag();
+  const now = useTickingNow();
+
+  const weekEvents = useMemo(() => {
+    const s = start.getTime();
+    const e = end.getTime();
+    return tasks
+      .filter((tk) => tk.deadline)
+      .map((tk) => ({ tk, d: new Date(tk.deadline!) }))
+      .filter(
+        ({ d }) => !Number.isNaN(d.getTime()) && d.getTime() >= s && d.getTime() < e
+      )
+      .sort((a, b) => a.d.getTime() - b.d.getTime());
+  }, [tasks, start, end]);
+
+  const stats = useMemo(() => {
+    const total = weekEvents.length;
+    const done = weekEvents.filter(({ tk }) => tk.status === "done").length;
+    const urgent = weekEvents.filter(
+      ({ tk }) => tk.priority === "high" && tk.status !== "done"
+    ).length;
+    return { total, done, urgent, progress: total ? done / total : 0 };
+  }, [weekEvents]);
+
+  const isCurrentWeek =
+    now.getTime() >= start.getTime() && now.getTime() < end.getTime();
+  const list = useMemo(() => {
+    const base = isCurrentWeek
+      ? weekEvents.filter(
+          ({ d, tk }) => d.getTime() >= now.getTime() && tk.status !== "done"
+        )
+      : weekEvents;
+    return base.slice(0, 8);
+  }, [weekEvents, isCurrentWeek, now]);
+
+  return (
+    <aside className="h-full lg:overflow-y-auto pr-1 space-y-3">
+      <div className="rounded-xl border bg-card p-3.5">
+        <p className="text-[10px] uppercase tracking-wider font-semibold text-muted-foreground">
+          {t("calendar.weekSummary")}
+        </p>
+        <h3 className="text-2xl font-bold tracking-tight mt-0.5">
+          {t("calendar.eventCount", { n: stats.total })}
+        </h3>
+        {stats.total > 0 ? (
+          <>
+            <div className="flex items-center justify-between text-xs mt-3">
+              <span className="text-muted-foreground">
+                {t("calendar.tasksComplete", { n: `${stats.done}/${stats.total}` })}
+                {stats.urgent > 0 && (
+                  <span className="ml-1.5 text-destructive font-semibold">
+                    {t("calendar.urgentCount", { n: stats.urgent })}
+                  </span>
+                )}
+              </span>
+              <span className="font-bold tabular-nums">
+                {Math.round(stats.progress * 100)}%
+              </span>
+            </div>
+            <div className="h-1.5 rounded-full bg-muted mt-1.5 overflow-hidden">
+              <div
+                className="h-full bg-primary transition-all"
+                style={{ width: `${stats.progress * 100}%` }}
+              />
+            </div>
+          </>
+        ) : (
+          <p className="text-xs text-muted-foreground mt-2">
+            {t("calendar.weekEmpty")}
+          </p>
+        )}
+      </div>
+
+      {list.length > 0 && (
+        <SidePanelCard
+          icon={Clock}
+          title={isCurrentWeek ? t("calendar.upcomingTitle") : t("calendar.weekEventsTitle")}
+          count={list.length}
+        >
+          <div className="space-y-1.5">
+            {list.map(({ tk, d }) => {
+              const time = `${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
+              const day = d.toLocaleDateString(localeTag, { weekday: "short" });
+              const isDone = tk.status === "done";
+              const color = subjectColor(tk.title);
+              return (
+                <button
+                  key={tk.id}
+                  onClick={() => onPickEvent(tk.id)}
+                  className="w-full text-left px-2.5 py-2 rounded-lg flex items-center gap-2.5 border bg-background/40 hover:bg-accent transition-colors"
+                >
+                  <span className="w-11 shrink-0 leading-none">
+                    <span className="block text-[10px] font-semibold capitalize text-muted-foreground">
+                      {day}
+                    </span>
+                    <span className="block text-xs font-bold tabular-nums mt-0.5">
+                      {time}
+                    </span>
+                  </span>
+                  <span
+                    className={cn("w-0.5 h-7 rounded-full shrink-0", color.dot)}
+                  />
+                  <span
+                    className={cn(
+                      "flex-1 min-w-0 text-sm font-medium leading-tight truncate",
+                      isDone && "line-through text-muted-foreground"
+                    )}
+                  >
+                    {tk.title}
+                  </span>
+                  {tk.priority === "high" && !isDone && (
+                    <Flame className="h-3 w-3 text-destructive shrink-0" />
+                  )}
+                </button>
+              );
+            })}
+          </div>
+        </SidePanelCard>
+      )}
+    </aside>
+  );
+}
+
 /* ───── Day view side panel ─────────────────────────────────────── */
 
 interface DaySidePanelProps {
@@ -2190,8 +2542,6 @@ interface DaySidePanelProps {
   tasks: Task[];
   onPickEvent: (id: string) => void;
   onCreate: (deadlineIso: string) => void;
-  /** Step ±1 day. Wired by parent — desktop FC's gotoDate mirrors via parent. */
-  onNavigateDay: (delta: number) => void;
 }
 
 function DaySidePanel({
@@ -2199,7 +2549,6 @@ function DaySidePanel({
   tasks,
   onPickEvent,
   onCreate,
-  onNavigateDay,
 }: DaySidePanelProps) {
   const t = useT();
   const now = useTickingNow();
@@ -2307,14 +2656,6 @@ function DaySidePanel({
         isToday={isToday}
         daysFromToday={daysFromToday}
         stats={stats}
-        onPrevDay={() => onNavigateDay(-1)}
-        onNextDay={() => onNavigateDay(1)}
-        onJumpToday={() => {
-          if (daysFromToday === 0) return;
-          // daysFromToday is signed: positive = future, negative = past.
-          // To return to today we step by -daysFromToday.
-          onNavigateDay(-daysFromToday);
-        }}
       />
 
       {/* Lịch ngày — full chronological list of timed tasks. Each row
@@ -2455,9 +2796,6 @@ interface DayHeroCardProps {
   isToday: boolean;
   daysFromToday: number;
   stats: { done: number; total: number; urgent: number; progress: number };
-  onPrevDay: () => void;
-  onNextDay: () => void;
-  onJumpToday: () => void;
 }
 
 function DayHeroCard({
@@ -2465,9 +2803,6 @@ function DayHeroCard({
   isToday,
   daysFromToday,
   stats,
-  onPrevDay,
-  onNextDay,
-  onJumpToday,
 }: DayHeroCardProps) {
   const t = useT();
   const localeTag = useLocaleTag();
@@ -2503,55 +2838,6 @@ function DayHeroCard({
         isToday && "border-primary/40 ring-1 ring-primary/30 bg-primary/5"
       )}
     >
-      {/* Navigation strip — prev / today / next day.
-          When on today: middle slot is a dim "HÔM NAY" label
-            (decorative, no border) — the strip's purpose then is the
-            two arrows / swipe gesture.
-          When off today: middle slot becomes a real outlined Button
-            "Quay về hôm nay" with a RotateCcw glyph — clearly tappable,
-            re-syncs the day view to current. This was previously a
-            small text button that looked the same as the disabled
-            today-state, so users (rightly) didn't realise it did
-            anything. */}
-      <div className="flex items-center justify-between gap-1 mb-2">
-        <Button
-          variant="ghost"
-          size="icon-sm"
-          onClick={onPrevDay}
-          aria-label={t("calendar.prevDay")}
-          title={t("calendar.prevDay")}
-        >
-          <ChevronLeft className="h-4 w-4" />
-        </Button>
-        {isToday ? (
-          <span
-            className="text-[10px] uppercase tracking-wider font-semibold text-primary px-3 py-1"
-            data-testid="day-nav-today-label"
-          >
-            {t("calendar.todayLabel")}
-          </span>
-        ) : (
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={onJumpToday}
-            className="gap-1.5 h-8 px-3 text-xs"
-            data-testid="day-nav-jump"
-          >
-            <RotateCcw className="h-3 w-3" />
-            {t("calendar.jumpToToday")}
-          </Button>
-        )}
-        <Button
-          variant="ghost"
-          size="icon-sm"
-          onClick={onNextDay}
-          aria-label={t("calendar.nextDay")}
-          title={t("calendar.nextDay")}
-        >
-          <ChevronRight className="h-4 w-4" />
-        </Button>
-      </div>
       <p className="text-[10px] uppercase tracking-wider font-semibold flex items-center gap-2">
         <span className={isToday ? "text-primary" : "text-muted-foreground"}>
           {weekday}
