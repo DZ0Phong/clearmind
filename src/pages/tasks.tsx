@@ -34,6 +34,7 @@ import {
 import { QuickCapture } from "@/components/tasks/task-dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Select } from "@/components/ui/select";
 import { useT, useDateFns, DOW_KEYS_SUN_FIRST } from "@/lib/i18n";
 import { HomeworkDialog } from "@/components/tasks/homework-dialog";
 import {
@@ -626,21 +627,17 @@ export function TasksPage() {
         {/* Sort dropdown — collapses to icon-only on mobile so it never
             pushes the filter pills off-row. The select is invisible but
             still receives clicks (absolute inset-0). */}
-        <div className="relative inline-flex items-center ml-auto sm:ml-0">
-          <ArrowUpDown className="absolute left-2 h-3.5 w-3.5 text-muted-foreground pointer-events-none" />
-          <select
+        <div className="ml-auto sm:ml-0 w-[150px] shrink-0">
+          <Select
+            size="sm"
             value={sortMode}
-            onChange={(e) => setSortMode(e.target.value as SortMode)}
-            aria-label={t("tasks.sortLabel")}
-            className="h-8 pl-7 pr-7 rounded-md border border-input bg-background text-xs shadow-xs appearance-none cursor-pointer outline-none transition-[color,box-shadow] hover:bg-accent/30 focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50"
-          >
-            {(["deadline", "priority", "recent"] as SortMode[]).map((m) => (
-              <option key={m} value={m}>
-                {t(`tasks.sort.${m}`)}
-              </option>
-            ))}
-          </select>
-          <ChevronDown className="absolute right-2 h-3.5 w-3.5 text-muted-foreground pointer-events-none" />
+            onChange={(v) => setSortMode(v as SortMode)}
+            ariaLabel={t("tasks.sortLabel")}
+            leftIcon={<ArrowUpDown className="h-3.5 w-3.5" />}
+            options={(["deadline", "priority", "recent"] as SortMode[]).map(
+              (m) => ({ value: m, label: t(`tasks.sort.${m}`) })
+            )}
+          />
         </div>
 
         {/* Clean-duplicates — icon-only button. The DuplicateBanner runs

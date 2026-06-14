@@ -1,3 +1,4 @@
+import { useId } from "react";
 import { cn } from "@/lib/utils";
 
 interface Props {
@@ -6,10 +7,17 @@ interface Props {
 }
 
 export function Logo({ className, withGlow = true }: Props) {
-  // Unique gradient id per render to avoid collisions when multiple Logos
-  // appear on the page.
-  const gid = "cmLogoBg";
-  const glow = "cmLogoGlow";
+  // UNIQUE gradient ids per instance. This used to be a constant ("cmLogoBg"),
+  // so every Logo on the page shared one id — and `url(#cmLogoBg)` resolves to
+  // the FIRST match in the document. On mobile the sidebar's Logo (defined
+  // first) lives in a `display:none` subtree, so the topbar Logo's rect fill
+  // resolved to a non-painting gradient → the indigo square vanished and only
+  // the white star remained (invisible on a light background). useId() gives
+  // each instance its own ids; sanitised because useId() emits ":r0:" which is
+  // invalid inside an SVG id / url(#…) reference.
+  const uid = useId().replace(/[^a-zA-Z0-9]/g, "");
+  const gid = `cmLogoBg-${uid}`;
+  const glow = `cmLogoGlow-${uid}`;
   return (
     <svg
       viewBox="0 0 32 32"

@@ -917,10 +917,15 @@ export function CalendarView({ initialDate }: CalendarViewProps = {}) {
   // disabled when you're already on the current one.
   const atCurrentPeriod = useMemo(() => {
     if (view === "agenda") return agendaOffset === 0;
+    // Day view keys off the shown day, NOT gridRange: on mobile the day view
+    // has no FullCalendar instance, so gridRange never updates (stays stale
+    // from the last week/month) — which made the "Hôm nay" button enable/
+    // disable at random as you paged across months ("lúc được lúc không").
+    if (view === "day") return daysFromToday === 0;
     if (!gridRange) return true;
     const now = Date.now();
     return now >= gridRange.start.getTime() && now < gridRange.end.getTime();
-  }, [view, agendaOffset, gridRange]);
+  }, [view, agendaOffset, daysFromToday, gridRange]);
 
   /* ----- Render ------------------------------------------------- */
 

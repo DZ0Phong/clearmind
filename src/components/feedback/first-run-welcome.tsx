@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { Link } from "react-router-dom";
-import { Bell, Power, Upload, Check, X } from "lucide-react";
+import { Bell, BookOpen, Power, Upload, Check, X } from "lucide-react";
 import { Logo } from "@/components/logo";
 import { Button } from "@/components/ui/button";
 import { useTasks } from "@/hooks/use-tasks";
@@ -163,6 +163,27 @@ export function FirstRunWelcome() {
               </p>
               <p className="text-xs text-muted-foreground mt-0.5 leading-tight">
                 {t("welcome.import.hint")}
+              </p>
+            </div>
+          </Link>
+
+          {/* Open the full guide — the welcome covers first-time SETUP; the
+              guide explains every feature (and adapts to the platform). */}
+          <Link
+            to="/guide"
+            onClick={dismiss}
+            data-testid="welcome-guide"
+            className="w-full flex items-center gap-3 p-3 rounded-lg border border-input bg-background hover:bg-accent hover:text-accent-foreground transition-colors text-left"
+          >
+            <div className="h-9 w-9 shrink-0 rounded-lg flex items-center justify-center bg-primary/10 text-primary">
+              <BookOpen className="h-4 w-4" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-semibold leading-tight">
+                {t("welcome.guide.cta")}
+              </p>
+              <p className="text-xs text-muted-foreground mt-0.5 leading-tight">
+                {t("welcome.guide.hint")}
               </p>
             </div>
           </Link>

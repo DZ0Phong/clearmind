@@ -9,7 +9,6 @@ import {
   Flame,
   CheckCircle2,
   AlertTriangle,
-  ChevronDown,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -26,6 +25,7 @@ import { AutoTextarea } from "@/components/ui/auto-textarea";
 import { TagInput } from "@/components/tasks/tag-input";
 import { VoiceMic } from "@/components/tasks/voice-mic";
 import { DateTimePicker } from "@/components/date-time-picker";
+import { Select } from "@/components/ui/select";
 import {
   useTasks,
   type Task,
@@ -442,43 +442,39 @@ export function TaskDialog(props: Mode) {
                 <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider flex items-center gap-1">
                   <Repeat className="h-3 w-3" /> {t("dialog.label.recurrence")}
                 </label>
-                <div className="relative mt-1.5">
-                  <select
+                <div className="mt-1.5">
+                  <Select
                     value={recurrence}
-                    onChange={(e) =>
-                      setRecurrence(e.target.value as RecurrenceRule | "")
-                    }
-                    className="w-full h-9 rounded-md border border-input bg-background pl-3 pr-8 text-sm shadow-xs appearance-none cursor-pointer outline-none transition-[color,box-shadow] hover:bg-accent/30 focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50"
-                  >
-                    <option value="">{t("recurrence.none")}</option>
-                    <option value="daily">{t("recurrence.daily")}</option>
-                    <option value="weekday">{t("recurrence.weekday")}</option>
-                    <option value="weekly">{t("recurrence.weekly")}</option>
-                    <option value="monthly">{t("recurrence.monthly")}</option>
-                  </select>
-                  <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
+                    onChange={(v) => setRecurrence(v as RecurrenceRule | "")}
+                    ariaLabel={t("dialog.label.recurrence")}
+                    options={[
+                      { value: "", label: t("recurrence.none") },
+                      { value: "daily", label: t("recurrence.daily") },
+                      { value: "weekday", label: t("recurrence.weekday") },
+                      { value: "weekly", label: t("recurrence.weekly") },
+                      { value: "monthly", label: t("recurrence.monthly") },
+                    ]}
+                  />
                 </div>
               </div>
               <div>
                 <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider flex items-center gap-1">
                   <Bell className="h-3 w-3" /> {t("dialog.label.notify")}
                 </label>
-                <div className="relative mt-1.5">
-                  <select
+                <div className="mt-1.5">
+                  <Select
                     value={notify}
-                    onChange={(e) =>
-                      setNotify(e.target.value as ReminderPref | "")
-                    }
-                    className="w-full h-9 rounded-md border border-input bg-background pl-3 pr-8 text-sm shadow-xs appearance-none cursor-pointer outline-none transition-[color,box-shadow] hover:bg-accent/30 focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50"
-                  >
-                    <option value="">{t("notify.none")}</option>
-                    <option value="at-time">{t("notify.atTime")}</option>
-                    <option value="5m">{t("notify.5m")}</option>
-                    <option value="15m">{t("notify.15m")}</option>
-                    <option value="1h">{t("notify.1h")}</option>
-                    <option value="1d">{t("notify.1d")}</option>
-                  </select>
-                  <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
+                    onChange={(v) => setNotify(v as ReminderPref | "")}
+                    ariaLabel={t("dialog.label.notify")}
+                    options={[
+                      { value: "", label: t("notify.none") },
+                      { value: "at-time", label: t("notify.atTime") },
+                      { value: "5m", label: t("notify.5m") },
+                      { value: "15m", label: t("notify.15m") },
+                      { value: "1h", label: t("notify.1h") },
+                      { value: "1d", label: t("notify.1d") },
+                    ]}
+                  />
                 </div>
               </div>
             </div>

@@ -137,6 +137,8 @@ export const EN: Dict = {
   "welcome.autostart.enabled": "Autostart enabled",
   "welcome.import.cta": "Import a calendar",
   "welcome.import.hint": "Paste timetable / ICS / Google Calendar — recurring tasks created automatically.",
+  "welcome.guide.cta": "Open the quick guide",
+  "welcome.guide.hint": "Every feature, gesture, and tip — tailored to your device.",
   "welcome.skip": "Skip for now",
   "welcome.done": "Get started",
   "welcome.dismiss": "Close",

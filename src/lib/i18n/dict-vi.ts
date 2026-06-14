@@ -136,6 +136,8 @@ export const VI: Dict = {
   "welcome.autostart.enabled": "Đã bật autostart",
   "welcome.import.cta": "Import lịch",
   "welcome.import.hint": "Paste TKB / ICS / Google Calendar — Clearmind tự tạo task hàng tuần.",
+  "welcome.guide.cta": "Xem hướng dẫn nhanh",
+  "welcome.guide.hint": "Mọi tính năng, thao tác và mẹo — theo đúng thiết bị bạn dùng.",
   "welcome.skip": "Bỏ qua",
   "welcome.done": "Bắt đầu dùng",
   "welcome.dismiss": "Đóng",
