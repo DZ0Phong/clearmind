@@ -2,6 +2,7 @@ import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useStat
 import { useNavigate } from "react-router-dom";
 import { useTickingNow } from "@/hooks/use-ticking-now";
 import { useIsMobile } from "@/hooks/use-media-query";
+import { useSwipeNav } from "@/hooks/use-swipe-nav";
 import FullCalendar from "@fullcalendar/react";
 import dayGridPlugin from "@fullcalendar/daygrid";
 import timeGridPlugin from "@fullcalendar/timegrid";
@@ -30,6 +31,7 @@ import {
   MapPin,
   Pencil,
   Plus,
+  RotateCcw,
   Sparkles,
   Trash2,
   X,
@@ -266,6 +268,98 @@ export function CalendarView({ initialDate }: CalendarViewProps = {}) {
   // can sit in the sticky chrome stack alongside the view switcher. ±1 per
   // click shifts the 14-day window by ±14 days; 0 = current week's Monday.
   const [agendaOffset, setAgendaOffset] = useState(0);
+
+  // ── FullCalendar instance refs ────────────────────────────────────
+  // Two FC instances live in this component (one for month/week, one
+  // for day's time-grid). Refs let the swipe-nav handlers call
+  // .getApi().next() / .prev() / .gotoDate() without round-tripping
+  // through React state. Day view's mobile branch has no FC instance
+  // (the time-grid is hidden < md); that branch updates dayDateIso
+  // state directly.
+  const monthWeekFcRef = useRef<FullCalendar | null>(null);
+  const dayFcRef = useRef<FullCalendar | null>(null);
+  // Swipe container — wraps all three view branches (month/week, day,
+  // agenda). Single stable element so useSwipeNav's effect doesn't have
+  // to re-bind listeners when the user flips between views.
+  const swipeBodyRef = useRef<HTMLDivElement>(null);
+
+  // Direction-aware slide animation. Each navigation bumps `navTick`;
+  // `navDirRef` records which way to animate. The useEffect below uses
+  // the classic reflow-trick to re-fire the keyframe each time even
+  // though the class name on the wrapper stays the same shape.
+  const [navTick, setNavTick] = useState(0);
+  const navDirRef = useRef<"prev" | "next" | null>(null);
+  const triggerNavAnim = useCallback((dir: "prev" | "next") => {
+    navDirRef.current = dir;
+    setNavTick((t) => t + 1);
+  }, []);
+  useEffect(() => {
+    if (navTick === 0) return;
+    const el = swipeBodyRef.current;
+    if (!el) return;
+    const cls =
+      navDirRef.current === "next" ? "cm-cal-flip-next" : "cm-cal-flip-prev";
+    el.classList.remove("cm-cal-flip-next", "cm-cal-flip-prev");
+    // Force a reflow so the browser re-evaluates the animation
+    // declaration even though we're toggling the same set of classes.
+    void el.offsetWidth;
+    el.classList.add(cls);
+  }, [navTick]);
+
+  // Day navigation helper — used by both swipe gestures and the
+  // prev/next-day buttons on DayHeroCard. Updates dayDateIso state
+  // and, when the desktop FC time-grid is mounted, mirrors via
+  // gotoDate so the rendering matches the side panel.
+  // Multi-step jumps (e.g. "Quay về hôm nay" from +5 days) collapse
+  // into a single anim direction — positive delta = "next" slide.
+  const navigateDay = useCallback(
+    (delta: number) => {
+      if (delta === 0) return;
+      const cur = new Date(dayDateIso + "T12:00:00");
+      cur.setDate(cur.getDate() + delta);
+      const iso = dayKey(cur, rawTz);
+      setDayDateIso(iso);
+      const api = dayFcRef.current?.getApi();
+      if (api) api.gotoDate(iso);
+      triggerNavAnim(delta > 0 ? "next" : "prev");
+    },
+    [dayDateIso, rawTz, triggerNavAnim]
+  );
+  const navigateMonthWeek = useCallback(
+    (delta: number) => {
+      const api = monthWeekFcRef.current?.getApi();
+      if (!api) return;
+      if (delta > 0) api.next();
+      else api.prev();
+      triggerNavAnim(delta > 0 ? "next" : "prev");
+    },
+    [triggerNavAnim]
+  );
+  const navigateAgenda = useCallback(
+    (delta: number) => {
+      setAgendaOffset((o) => o + delta);
+      triggerNavAnim(delta > 0 ? "next" : "prev");
+    },
+    [triggerNavAnim]
+  );
+
+  // Swipe gestures on touch viewports. Skips mouse pointers (would
+  // steal text-selection on desktop), so this stays a mobile-only
+  // affordance even though we don't gate it on `isMobile` — the hook
+  // self-filters by pointerType. Each view dispatches to its own
+  // navigation primitive (which now also triggers the slide anim).
+  useSwipeNav(swipeBodyRef, {
+    onNext: () => {
+      if (view === "agenda") navigateAgenda(1);
+      else if (view === "day") navigateDay(1);
+      else navigateMonthWeek(1);
+    },
+    onPrev: () => {
+      if (view === "agenda") navigateAgenda(-1);
+      else if (view === "day") navigateDay(-1);
+      else navigateMonthWeek(-1);
+    },
+  });
 
   // ── Scroll preservation ────────────────────────────────────────────
   // The card body is the single scroll container. Saving scrollTop on
@@ -668,14 +762,19 @@ export function CalendarView({ initialDate }: CalendarViewProps = {}) {
       <div
         ref={scrollRef}
         onScroll={onBodyScroll}
-        className="flex-1 min-h-0 flex flex-col overflow-y-auto"
+        className="flex flex-col md:flex-1 md:min-h-0 md:overflow-y-auto"
       >
-        {/* Sticky chrome — every control the user asked to keep visible
-            while scrolling lives here. Stacks: view switcher + type
-            chips + Hide Done, tag filter row (when any tags), and the
-            agenda paging bar (only in agenda view). All bg-card so the
-            scrolling content behind reads cleanly. */}
-        <div className="cm-cal-chrome sticky top-0 z-20 shrink-0 bg-card/95 backdrop-blur-sm border-b border-border/60 px-3 md:px-4 py-3 flex flex-col gap-2.5">
+        {/* Sticky chrome — view switcher + type chips + Hide Done,
+            tag filter row, agenda paging bar (agenda only). bg-card
+            so the scrolling content behind reads cleanly.
+            On desktop the chrome sticks inside the card's own scroll
+            container; on mobile the card itself doesn't scroll (the
+            page does via main-layout), so the chrome scrolls with
+            content. Letting it scroll on mobile costs ~150px of
+            chrome visibility for the user, but they get to it again
+            with one scroll-up — a worthwhile trade for not having to
+            offset the sticky-top by the topbar+tipbanner height. */}
+        <div className="cm-cal-chrome relative md:sticky md:top-0 z-20 shrink-0 bg-card/95 backdrop-blur-sm border-b border-border/60 px-3 md:px-4 py-3 flex flex-col gap-2.5">
           <CalendarToolbar
             view={view}
             onViewChange={persistView}
@@ -718,7 +817,14 @@ export function CalendarView({ initialDate }: CalendarViewProps = {}) {
           {view === "agenda" && (
             <AgendaToolbar
               offset={agendaOffset}
-              setOffset={setAgendaOffset}
+              onPrev={() => navigateAgenda(-1)}
+              onNext={() => navigateAgenda(1)}
+              onJump={() => {
+                if (agendaOffset === 0) return;
+                const dir = agendaOffset > 0 ? "prev" : "next";
+                setAgendaOffset(0);
+                triggerNavAnim(dir);
+              }}
               start={agendaStart}
               end={agendaEnd}
               total={agendaTotal}
@@ -728,7 +834,15 @@ export function CalendarView({ initialDate }: CalendarViewProps = {}) {
 
         {/* Body. Agenda flows in this scroll container; month/week/day
             occupy the remaining height and let FullCalendar own the
-            internal scroll. */}
+            internal scroll.
+
+            The wrapping `<div ref>` is a layout-passthrough container
+            for the swipe-nav listener — same flex direction as the
+            parent so it doesn't introduce a new sizing constraint.
+            (An earlier `display: contents` variant ate touch events
+            on some Chromium builds — pointer events need a hit-test
+            box. Plain block wrapper avoids that.) */}
+        <div ref={swipeBodyRef} className="flex flex-col md:flex-1 md:min-h-0">
         {view === "agenda" ? (
           <div className="px-3 md:px-4 py-3 space-y-3">
             <AgendaView
@@ -739,7 +853,7 @@ export function CalendarView({ initialDate }: CalendarViewProps = {}) {
             />
           </div>
         ) : view === "day" ? (
-          <div className="flex-1 min-h-0 px-3 md:px-4 py-3 grid lg:grid-cols-[minmax(0,1fr)_320px] gap-4">
+          <div className="px-3 md:px-4 py-3 grid lg:grid-cols-[minmax(0,1fr)_320px] gap-4 md:flex-1 md:min-h-0">
             {/* Hide the hour-by-hour time grid on mobile — at 375 px it
                 shrinks to ~50 px wide and the user reported "99% data
                 hidden". DaySidePanel below carries the full schedule as
@@ -747,6 +861,7 @@ export function CalendarView({ initialDate }: CalendarViewProps = {}) {
             {!isMobile && (
             <div className="min-h-0 lg:order-1 order-2">
               <FullCalendar
+                ref={dayFcRef}
                 key={`day-${fcLocale}`}
                 plugins={[dayGridPlugin, timeGridPlugin, interactionPlugin]}
                 initialView="timeGridDay"
@@ -787,12 +902,14 @@ export function CalendarView({ initialDate }: CalendarViewProps = {}) {
                 tasks={filteredTasks}
                 onPickEvent={setSelectedEventId}
                 onCreate={(iso) => openCreate({ deadline: iso })}
+                onNavigateDay={navigateDay}
               />
             </div>
           </div>
         ) : (
-          <div className="flex-1 min-h-0 px-3 md:px-4 py-3">
+          <div className="px-3 md:px-4 py-3 md:flex-1 md:min-h-0">
             <FullCalendar
+              ref={monthWeekFcRef}
               key={`${view}-${fcLocale}-${isMobile ? "m" : "d"}`}
               plugins={[dayGridPlugin, timeGridPlugin, interactionPlugin]}
               initialView={FC_VIEW[view as Exclude<ViewMode, "agenda">]}
@@ -822,7 +939,13 @@ export function CalendarView({ initialDate }: CalendarViewProps = {}) {
                     : { month: "short", day: "numeric", year: "numeric" }
               }
               events={fcEvents}
-              height="100%"
+              // On desktop, height="100%" fills the flex-1 parent so
+              // the time-grid scrolls inside the card. On mobile the
+              // parent has no defined height (page-level scroll
+              // strategy), so FC sizes to its own content — Month
+              // renders ~6 rows naturally, Week is hidden anyway via
+              // the toolbar's mobile filter.
+              height={isMobile ? "auto" : "100%"}
               expandRows
               stickyHeaderDates
               nowIndicator
@@ -853,6 +976,7 @@ export function CalendarView({ initialDate }: CalendarViewProps = {}) {
             />
           </div>
         )}
+        </div>
       </div>
 
       <EventDetailDialog
@@ -1753,7 +1877,9 @@ const DayTaskRow = memo(function DayTaskRow({
 
 interface AgendaToolbarProps {
   offset: number;
-  setOffset: React.Dispatch<React.SetStateAction<number>>;
+  onPrev: () => void;
+  onNext: () => void;
+  onJump: () => void;
   start: Date;
   end: Date;
   total: number;
@@ -1762,7 +1888,10 @@ interface AgendaToolbarProps {
 // Sticky-chrome companion to AgendaView. State lives in CalendarView so
 // this row can stack with the view switcher and filter chips in a single
 // sticky container, sharing the same window with the day list below.
-function AgendaToolbar({ offset: _offset, setOffset, start, end, total }: AgendaToolbarProps) {
+// Navigation goes through callbacks (not setOffset directly) so the
+// parent can pair each click with the slide animation it kicks off for
+// touch swipes.
+function AgendaToolbar({ offset: _offset, onPrev, onNext, onJump, start, end, total }: AgendaToolbarProps) {
   const t = useT();
   const localeTag = useLocaleTag();
   return (
@@ -1771,7 +1900,7 @@ function AgendaToolbar({ offset: _offset, setOffset, start, end, total }: Agenda
         <Button
           variant="outline"
           size="icon-sm"
-          onClick={() => setOffset((o) => o - 1)}
+          onClick={onPrev}
           title={t("calendar.prev14days")}
         >
           <ChevronLeft className="h-4 w-4" />
@@ -1779,14 +1908,14 @@ function AgendaToolbar({ offset: _offset, setOffset, start, end, total }: Agenda
         <Button
           variant="outline"
           size="sm"
-          onClick={() => setOffset(0)}
+          onClick={onJump}
         >
-          {t("calendar.today")}
+          {t("calendar.agendaJump")}
         </Button>
         <Button
           variant="outline"
           size="icon-sm"
-          onClick={() => setOffset((o) => o + 1)}
+          onClick={onNext}
           title={t("calendar.next14days")}
         >
           <ChevronRight className="h-4 w-4" />
@@ -2061,6 +2190,8 @@ interface DaySidePanelProps {
   tasks: Task[];
   onPickEvent: (id: string) => void;
   onCreate: (deadlineIso: string) => void;
+  /** Step ±1 day. Wired by parent — desktop FC's gotoDate mirrors via parent. */
+  onNavigateDay: (delta: number) => void;
 }
 
 function DaySidePanel({
@@ -2068,6 +2199,7 @@ function DaySidePanel({
   tasks,
   onPickEvent,
   onCreate,
+  onNavigateDay,
 }: DaySidePanelProps) {
   const t = useT();
   const now = useTickingNow();
@@ -2113,6 +2245,14 @@ function DaySidePanel({
     date.getDate() === now.getDate();
   const isPastDate =
     !isToday && date.getTime() < new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+  // Whole-day offset from today, in calendar days. UTC midnight comparison
+  // avoids DST creep around the boundary. Drives DayHeroCard's contextual
+  // label ("Hôm qua", "Ngày mai", "3 ngày sau", etc.).
+  const daysFromToday = useMemo(() => {
+    const a = Date.UTC(date.getFullYear(), date.getMonth(), date.getDate());
+    const b = Date.UTC(now.getFullYear(), now.getMonth(), now.getDate());
+    return Math.round((a - b) / 86_400_000);
+  }, [date, now]);
 
   const nextUp = useMemo(() => {
     if (!isToday) return null;
@@ -2165,7 +2305,16 @@ function DaySidePanel({
       <DayHeroCard
         date={date}
         isToday={isToday}
+        daysFromToday={daysFromToday}
         stats={stats}
+        onPrevDay={() => onNavigateDay(-1)}
+        onNextDay={() => onNavigateDay(1)}
+        onJumpToday={() => {
+          if (daysFromToday === 0) return;
+          // daysFromToday is signed: positive = future, negative = past.
+          // To return to today we step by -daysFromToday.
+          onNavigateDay(-daysFromToday);
+        }}
       />
 
       {/* Lịch ngày — full chronological list of timed tasks. Each row
@@ -2304,10 +2453,22 @@ function DaySidePanel({
 interface DayHeroCardProps {
   date: Date;
   isToday: boolean;
+  daysFromToday: number;
   stats: { done: number; total: number; urgent: number; progress: number };
+  onPrevDay: () => void;
+  onNextDay: () => void;
+  onJumpToday: () => void;
 }
 
-function DayHeroCard({ date, isToday, stats }: DayHeroCardProps) {
+function DayHeroCard({
+  date,
+  isToday,
+  daysFromToday,
+  stats,
+  onPrevDay,
+  onNextDay,
+  onJumpToday,
+}: DayHeroCardProps) {
   const t = useT();
   const localeTag = useLocaleTag();
   const weekday = date.toLocaleDateString(localeTag, { weekday: "long" });
@@ -2315,6 +2476,26 @@ function DayHeroCard({ date, isToday, stats }: DayHeroCardProps) {
     day: "numeric",
     month: "long",
   });
+
+  // Contextual relative-time chip — adapts as user swipes / steps
+  // through days. "Hôm nay", "Hôm qua", "Ngày mai", or "N ngày
+  // trước/sau" for anything further out. The chip's tone shifts too:
+  // primary for today, muted for past, foreground for future — so a
+  // glance at the colour tells the user where they are in time.
+  const relativeLabel = useMemo(() => {
+    if (daysFromToday === 0) return t("calendar.relative.today");
+    if (daysFromToday === -1) return t("calendar.relative.yesterday");
+    if (daysFromToday === 1) return t("calendar.relative.tomorrow");
+    if (daysFromToday < 0)
+      return t("calendar.relative.daysAgo", { n: Math.abs(daysFromToday) });
+    return t("calendar.relative.daysAhead", { n: daysFromToday });
+  }, [daysFromToday, t]);
+  const relativeTone = isToday
+    ? "text-primary"
+    : daysFromToday < 0
+      ? "text-muted-foreground"
+      : "text-foreground";
+
   return (
     <div
       className={cn(
@@ -2322,14 +2503,60 @@ function DayHeroCard({ date, isToday, stats }: DayHeroCardProps) {
         isToday && "border-primary/40 ring-1 ring-primary/30 bg-primary/5"
       )}
     >
-      <p
-        className={cn(
-          "text-[10px] uppercase tracking-wider font-semibold",
-          isToday ? "text-primary" : "text-muted-foreground"
+      {/* Navigation strip — prev / today / next day.
+          When on today: middle slot is a dim "HÔM NAY" label
+            (decorative, no border) — the strip's purpose then is the
+            two arrows / swipe gesture.
+          When off today: middle slot becomes a real outlined Button
+            "Quay về hôm nay" with a RotateCcw glyph — clearly tappable,
+            re-syncs the day view to current. This was previously a
+            small text button that looked the same as the disabled
+            today-state, so users (rightly) didn't realise it did
+            anything. */}
+      <div className="flex items-center justify-between gap-1 mb-2">
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          onClick={onPrevDay}
+          aria-label={t("calendar.prevDay")}
+          title={t("calendar.prevDay")}
+        >
+          <ChevronLeft className="h-4 w-4" />
+        </Button>
+        {isToday ? (
+          <span
+            className="text-[10px] uppercase tracking-wider font-semibold text-primary px-3 py-1"
+            data-testid="day-nav-today-label"
+          >
+            {t("calendar.todayLabel")}
+          </span>
+        ) : (
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={onJumpToday}
+            className="gap-1.5 h-8 px-3 text-xs"
+            data-testid="day-nav-jump"
+          >
+            <RotateCcw className="h-3 w-3" />
+            {t("calendar.jumpToToday")}
+          </Button>
         )}
-      >
-        {weekday}
-        {isToday && t("calendar.todayBadge")}
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          onClick={onNextDay}
+          aria-label={t("calendar.nextDay")}
+          title={t("calendar.nextDay")}
+        >
+          <ChevronRight className="h-4 w-4" />
+        </Button>
+      </div>
+      <p className="text-[10px] uppercase tracking-wider font-semibold flex items-center gap-2">
+        <span className={isToday ? "text-primary" : "text-muted-foreground"}>
+          {weekday}
+        </span>
+        <span className={cn("font-bold", relativeTone)}>· {relativeLabel}</span>
       </p>
       <h3 className="text-xl font-bold tracking-tight mt-0.5">{main}</h3>
 

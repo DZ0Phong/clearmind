@@ -17,6 +17,9 @@ import { TipBanner } from "@/components/feedback/tip-banner";
 import { DuplicateBanner } from "@/components/tasks/duplicate-banner";
 
 export function MainLayout({ children }: { children: ReactNode }) {
+  // RoutedShell (in App.tsx) already wraps children with
+  // `cm-page-enter` keyed on pathname — re-applying it here was
+  // doubling the animation and stacking an extra DOM layer.
   // Root locked to exactly viewport height (h-dvh handles mobile address-bar
   // changes). Without this lock the body itself was scrolling whenever a page
   // had tall content — which dragged the calendar's sticky chrome up with the
@@ -48,8 +51,21 @@ export function MainLayout({ children }: { children: ReactNode }) {
         <TopBar />
         <TipBanner />
         <DuplicateBanner />
-        <div className="p-4 md:p-6 lg:p-8 cm-mobile-content-pad flex flex-col flex-1 min-h-0">
-          <div className="max-w-[1600px] w-full mx-auto flex-1 flex flex-col min-h-0">
+        {/* Container architecture:
+            - DESKTOP (md+): full flex-1 chain so h-full pages (Calendar)
+              can lock to viewport and FC's height="100%" works.
+            - MOBILE: NO flex-1. The container grows with its children,
+              and `cm-mobile-content-pad` reserves real space below the
+              last child. With flex-1 the container was capped at the
+              viewport height and any extra content overflowed past
+              its box — padding-bottom only lives INSIDE the box, so
+              overflowed content (last cards on long pages) hid behind
+              the bottom-tab bar. Measured at 167px overlap before
+              this fix on a 375x667 dashboard.
+            Two `flex-1`s appear as `md:flex-1` so desktop keeps its
+            chain; mobile uses block flow + the padding works. */}
+        <div className="p-4 md:p-6 lg:p-8 cm-mobile-content-pad md:flex md:flex-col md:flex-1 md:min-h-0">
+          <div className="max-w-[1600px] w-full mx-auto md:flex-1 md:flex md:flex-col md:min-h-0">
             {children}
           </div>
         </div>

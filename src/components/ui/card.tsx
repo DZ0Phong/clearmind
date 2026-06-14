@@ -19,8 +19,12 @@ function CardHeader({ className, ...props }: React.ComponentProps<"div">) {
   return (
     <div
       data-slot="card-header"
+      // Responsive horizontal padding — px-4 on phones so card titles
+      // + descriptions get more breathing room next to the 16px viewport
+      // edge (was px-6 = 24px on every breakpoint, which crowded text on
+      // 375px viewports). Matches the page-level p-4 md:p-6 lg:p-8 scale.
       className={cn(
-        "@container/card-header grid auto-rows-min grid-rows-[auto_auto] items-start gap-2 px-6 has-data-[slot=card-action]:grid-cols-[1fr_auto] [.border-b]:pb-6",
+        "@container/card-header grid auto-rows-min grid-rows-[auto_auto] items-start gap-2 px-4 sm:px-6 has-data-[slot=card-action]:grid-cols-[1fr_auto] [.border-b]:pb-6",
         className
       )}
       {...props}
@@ -65,7 +69,7 @@ function CardContent({ className, ...props }: React.ComponentProps<"div">) {
   return (
     <div
       data-slot="card-content"
-      className={cn("px-6", className)}
+      className={cn("px-4 sm:px-6", className)}
       {...props}
     />
   )
@@ -75,7 +79,7 @@ function CardFooter({ className, ...props }: React.ComponentProps<"div">) {
   return (
     <div
       data-slot="card-footer"
-      className={cn("flex items-center px-6 [.border-t]:pt-6", className)}
+      className={cn("flex items-center px-4 sm:px-6 [.border-t]:pt-6", className)}
       {...props}
     />
   )

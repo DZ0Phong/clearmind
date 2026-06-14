@@ -892,8 +892,20 @@ input[type="number"] {
    Things 3 density) but the tappable rectangle extends to
    WCAG 2.5.5 AAA / iOS HIG 44pt minimum. Apply to icon-sm /
    icon-xs buttons and dense chips. The ::before is invisible
-   (no bg / border) — purely a hit zone expander. */
-.cm-touch-44 {
+   (no bg / border) — purely a hit zone expander.
+
+   `:where(.cm-touch-44)` drops the selector's specificity to 0
+   so Tailwind's positioning utilities (.absolute / .fixed /
+   .sticky / .relative — specificity 0,1,0) win. Otherwise our
+   `position: relative` here flat-out beats Tailwind's `absolute`
+   when source order resolves in our favour, which silently
+   moved every DialogContent close-X button out of its absolute
+   top-3/right-3 corner and into the grid flow at the bottom of
+   the dialog. The Tailwind utility wins on positioned elements;
+   for unpositioned elements (sidebar nav links, dense icon
+   buttons), the rule still applies because there's no competing
+   utility. ::before stays absolute regardless. */
+:where(.cm-touch-44) {
   position: relative;
 }
 .cm-touch-44::before {
@@ -949,9 +961,14 @@ input[type="number"] {
 
 /* Mobile content padding — reserves room for the bottom-tab
    bar so the last list item / FAB doesn't hide behind it.
+   3rem (not 1-2rem like earlier passes): iOS Safari momentum-
+   bounce can hide the last row behind the fixed bar by ~50px
+   at terminal velocity. 3rem is cheap insurance — extra space
+   below the last card reads as intentional breathing room on
+   short pages and life-saving clearance on long-scroll pages.
    Auto-collapses on ≥ md. */
 .cm-mobile-content-pad {
-  padding-bottom: calc(var(--mobile-tabbar-h) + var(--safe-bottom) + 1rem);
+  padding-bottom: calc(var(--mobile-tabbar-h) + var(--safe-bottom) + 3rem);
 }
 @media (min-width: 768px) {
   .cm-mobile-content-pad { padding-bottom: 0; }
@@ -988,17 +1005,33 @@ input[type="number"] {
        viewport). Use `!important` to defeat the optimizer + keep the
        individual properties surviving minification. Concrete `0 0` /
        `0` / `1` values instead of `none` for the same reason: `none` is
-       a special keyword the optimizer is more likely to fold away. */
-    translate: 0 0 !important;
+       a special keyword the optimizer is more likely to fold away.
+
+       The Y coord of `translate` reads from the `--cm-sheet-drag-y`
+       inline var (default 0px from the fallback). The swipe-down hook
+       (use-sheet-swipe-down.ts) writes finger-deltaY into that var while
+       dragging — sheet follows the finger 1:1. On release the hook
+       either resets the var to 0px (snap back) or sets 100vh (dismiss
+       slide), then fires onDismiss after the slide settles. Keeping the
+       drag offset in `translate` (individual prop) leaves the keyframe
+       `transform: translateY()` for open/close untouched — no fight. */
+    translate: 0 var(--cm-sheet-drag-y, 0px) !important;
     rotate: 0 !important;
     scale: 1 !important;
-    transform: none !important;
     width: 100%;
     max-width: 100%;
     max-height: 92dvh;
     border-radius: 1rem 1rem 0 0;
     padding-bottom: max(1.5rem, calc(var(--safe-bottom) + 1rem));
     overflow-y: auto;
+    /* Hint browser to keep the sheet on its own compositor layer so the
+       60fps follow-finger feel doesn't paint-thrash neighboring DOM. */
+    will-change: translate;
+    /* Prevent the browser swallowing the down-drag as a page-pull-to-
+       refresh on mobile Chrome. The dialog itself is the scroll
+       container; we handle dismiss explicitly. */
+    overscroll-behavior-y: contain;
+    touch-action: pan-y;
   }
   [data-slot="dialog-content"].cm-sheet-mobile::before {
     content: "";
@@ -1024,10 +1057,104 @@ input[type="number"] {
   from { transform: translateY(0);    opacity: 1; }
   to   { transform: translateY(100%); opacity: 0; }
 }
+
+/* Calendar swipe / navigation slide. Re-fired on every prev/next via
+   the reflow-trick in calendar-view.tsx — class is removed, layout is
+   forced, class is re-added, animation plays again. Short + subtle:
+   200ms, 10px slide + opacity fade. Direction-aware so a forward swipe
+   slides content in from the right and a backward swipe from the left. */
+@keyframes cm-cal-flip-next {
+  from { opacity: 0.5; transform: translateX(14px); }
+  to   { opacity: 1;   transform: translateX(0); }
+}
+@keyframes cm-cal-flip-prev {
+  from { opacity: 0.5; transform: translateX(-14px); }
+  to   { opacity: 1;   transform: translateX(0); }
+}
+.cm-cal-flip-next {
+  animation: cm-cal-flip-next 200ms var(--ease-out-quart);
+}
+.cm-cal-flip-prev {
+  animation: cm-cal-flip-prev 200ms var(--ease-out-quart);
+}
+@media (prefers-reduced-motion: reduce) {
+  .cm-cal-flip-next, .cm-cal-flip-prev { animation: none !important; }
+}
 @media (prefers-reduced-motion: reduce) {
   [data-slot="dialog-content"].cm-sheet-mobile[data-state="open"],
   [data-slot="dialog-content"].cm-sheet-mobile[data-state="closed"] {
     animation: none !important;
+  }
+}
+
+/* ─────────────────────────────────────────────────────────────
+   Horizontal-scroll affordance: visible scrollbar on desktop,
+   fade-edge gradient on mobile (where the scrollbar is hidden
+   under pointer:coarse but the user still needs a hint that
+   "there's more sideways"). Apply `cm-scroll-x-visible` to any
+   element that uses overflow-x-auto for an opt-in.
+   ───────────────────────────────────────────────────────────── */
+.cm-scroll-x-visible {
+  overflow-x: auto;
+  /* Slim purposeful scrollbar — thin enough to not visually compete
+     with small chrome above (tab pill labels ~12px, color swatches
+     36px). Was 8px which felt clunky next to the dense tab text in
+     Theme Studio. 4px is enough to read as "there's scroll here"
+     without dominating the strip. Firefox-specific via
+     `scrollbar-width: thin`; WebKit chains follow below. */
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in srgb, var(--muted-foreground) 45%, transparent) transparent;
+}
+.cm-scroll-x-visible::-webkit-scrollbar {
+  height: 4px;
+}
+.cm-scroll-x-visible::-webkit-scrollbar-track {
+  background: transparent;
+}
+.cm-scroll-x-visible::-webkit-scrollbar-thumb {
+  background-color: color-mix(in srgb, var(--muted-foreground) 35%, transparent);
+  border-radius: 9999px;
+  transition: background-color 150ms ease;
+}
+.cm-scroll-x-visible:hover::-webkit-scrollbar-thumb {
+  background-color: color-mix(in srgb, var(--muted-foreground) 60%, transparent);
+}
+.cm-scroll-x-visible::-webkit-scrollbar-thumb:hover {
+  background-color: var(--muted-foreground);
+}
+
+/* Mobile (touch) — scrollbar invisible by spec, so paint fade
+   gradients on the leading + trailing edges to whisper "more
+   content sideways". The fades are toggled via the `data-fade-left`
+   / `data-fade-right` attributes that the wrapper component sets
+   on scroll, so a scroll at the start hides the left fade and a
+   scroll at the end hides the right one. Pure CSS — no JS
+   intersection observer. */
+@media (pointer: coarse) {
+  .cm-scroll-x-visible {
+    /* Hide the bar but keep the scroll. */
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+    /* Mask fades both edges by default; opt-out by adding
+       data-fade-left="off" / data-fade-right="off" via JS once
+       the user has actually reached an edge. The mask graceful-
+       degrades — older browsers just see the content with no
+       fade, which is also fine. */
+    -webkit-mask-image: linear-gradient(90deg,
+      transparent 0,
+      black 1.5rem,
+      black calc(100% - 1.5rem),
+      transparent 100%
+    );
+    mask-image: linear-gradient(90deg,
+      transparent 0,
+      black 1.5rem,
+      black calc(100% - 1.5rem),
+      transparent 100%
+    );
+  }
+  .cm-scroll-x-visible::-webkit-scrollbar {
+    display: none;
   }
 }
 

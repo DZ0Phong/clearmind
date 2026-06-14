@@ -1,15 +1,17 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { Check, Globe, Monitor, Server, Search } from "lucide-react";
 import {
-  Check,
-  ChevronDown,
-  Globe,
-  Monitor,
-  Server,
-  Search,
-} from "lucide-react";
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { useI18n, type TimeZoneMode } from "@/lib/i18n";
 import { isCliMode } from "@/lib/cli-bridge";
 import { canonicalTimeZone, cn } from "@/lib/utils";
+import { useIsMobile } from "@/hooks/use-media-query";
+import { useSheetSwipeDown } from "@/hooks/use-sheet-swipe-down";
 
 const TZ_GROUPS: Array<{ region: string; zones: string[] }> = [
   {
@@ -27,7 +29,13 @@ const TZ_GROUPS: Array<{ region: string; zones: string[] }> = [
       "Asia/Tokyo",
       "Asia/Seoul",
       "Asia/Kolkata",
+      "Asia/Kathmandu",
+      "Asia/Yangon",
+      "Asia/Tehran",
+      "Asia/Kabul",
+      "Asia/Karachi",
       "Asia/Dubai",
+      "Asia/Jerusalem",
     ],
   },
   {
@@ -39,6 +47,7 @@ const TZ_GROUPS: Array<{ region: string; zones: string[] }> = [
       "Europe/Amsterdam",
       "Europe/Madrid",
       "Europe/Rome",
+      "Europe/Athens",
       "Europe/Istanbul",
       "Europe/Moscow",
     ],
@@ -54,16 +63,23 @@ const TZ_GROUPS: Array<{ region: string; zones: string[] }> = [
       "America/Toronto",
       "America/Mexico_City",
       "America/Sao_Paulo",
+      "America/Buenos_Aires",
+      "America/St_Johns",
     ],
+  },
+  {
+    region: "Africa",
+    zones: ["Africa/Cairo", "Africa/Lagos", "Africa/Johannesburg", "Africa/Nairobi"],
   },
   {
     region: "Oceania",
     zones: [
       "Australia/Sydney",
-      "Australia/Melbourne",
+      "Australia/Adelaide",
       "Australia/Perth",
       "Pacific/Auckland",
       "Pacific/Honolulu",
+      "Pacific/Chatham",
     ],
   },
   { region: "UTC", zones: ["UTC"] },
@@ -71,10 +87,9 @@ const TZ_GROUPS: Array<{ region: string; zones: string[] }> = [
 
 /**
  * Render the current UTC offset for `tz` as "UTC+7", "UTC-5:30", "UTC".
- * Uses `timeZoneName: 'shortOffset'` which gives the actual offset (not
- * the city's abbreviated name) — and respects DST automatically.
- * Intl's raw output uses a historical prefix that we rewrite to "UTC"
- * so the whole picker speaks one consistent label.
+ * Uses `timeZoneName: 'shortOffset'` — actual offset (not city
+ * abbreviation), DST-aware. Rewrites the historical "GMT" prefix to
+ * "UTC" so the whole picker speaks one consistent label.
  */
 function getUtcOffset(tz: string): string {
   if (!tz) return "";
@@ -91,11 +106,7 @@ function getUtcOffset(tz: string): string {
   }
 }
 
-/**
- * Numeric UTC offset in minutes (e.g. 420 for UTC+7, -300 for UTC-5,
- * -210 for UTC-3:30). Used to sort the list by linear UTC offset so the
- * user sees a contiguous ordering instead of region-grouped chaos.
- */
+/** Numeric offset in minutes, used for sort. */
 function getUtcOffsetMinutes(tz: string): number {
   const off = getUtcOffset(tz);
   if (!off || off === "UTC") return 0;
@@ -109,25 +120,17 @@ function getUtcOffsetMinutes(tz: string): number {
 
 function deviceTimeZone(): string {
   try {
-    const raw = Intl.DateTimeFormat().resolvedOptions().timeZone || "";
-    // Windows + several browsers still report legacy IANA links
-    // ("Asia/Saigon", "Europe/Kiev"). Normalise to the canonical name
-    // so the preview matches the option list — see canonicalTimeZone
-    // in utils.ts for the mapping table.
-    return canonicalTimeZone(raw);
+    return canonicalTimeZone(Intl.DateTimeFormat().resolvedOptions().timeZone || "");
   } catch {
     return "";
   }
 }
 
 /**
- * Flat list of all timezones sorted by UTC offset ascending so the
- * dropdown reads as a contiguous timeline (UTC-12 → UTC+14) instead of
- * region-grouped clumps where +7 sits next to -5. Region is kept as a
- * trailing tag so the user can still scan by continent visually.
- *
- * Computed once at module load — DST flips don't move zones across the
- * sort boundary often enough to bother recomputing.
+ * Flat list sorted by UTC offset ascending so the dialog reads as a
+ * contiguous timeline (UTC-12 → UTC+14) instead of region-grouped
+ * clumps where +7 sits next to -5. Region is kept as a trailing tag
+ * so the user can still scan by continent visually.
  */
 const FLAT_TZ: Array<{ zone: string; region: string }> = TZ_GROUPS.flatMap(
   (g) => g.zones.map((zone) => ({ zone, region: g.region }))
@@ -146,52 +149,10 @@ export function TimezonePicker() {
   const device = deviceTimeZone();
   // Show the CLI-server option ONLY when it would actually differ from
   // the browser's tz — when they match (common case: CLI runs on the
-  // same machine as the browser) the option is redundant and just adds
-  // confusion. The real use case is a traveling laptop pointing at a
-  // home machine's CLI.
+  // same machine as the browser) the option is redundant.
   const cliMeaningful = cli && !!cliTimeZone && cliTimeZone !== device;
   const [open, setOpen] = useState(false);
-  const [placement, setPlacement] = useState<"top" | "bottom">("bottom");
-  const rootRef = useRef<HTMLDivElement>(null);
 
-  // When the popover opens, decide if it should drop down or flip up
-  // based on actual room left in the viewport. Settings page is scroll-
-  // able, so a picker rendered halfway down can easily lose 260px of
-  // space below — flipping above prevents the user from having to
-  // scroll down just to read the list.
-  useLayoutEffect(() => {
-    if (!open || !rootRef.current) return;
-    const rect = rootRef.current.getBoundingClientRect();
-    // Reserve room for the mobile bottom-tab bar so the picker flips
-    // upward instead of opening behind the 56px nav.
-    // --mobile-tabbar-h = 0 at md+ so desktop layout is unaffected.
-    const rootStyle = getComputedStyle(document.documentElement);
-    const tabBarRem = parseFloat(rootStyle.getPropertyValue("--mobile-tabbar-h") || "0");
-    const fontSize = parseFloat(rootStyle.fontSize) || 16;
-    const tabBarPx = Number.isFinite(tabBarRem) ? tabBarRem * fontSize : 0;
-    const spaceBelow = window.innerHeight - rect.bottom - tabBarPx;
-    // ~330 covers the popover height (max 260 list + 40 search + 30 chrome).
-    setPlacement(spaceBelow < 330 ? "top" : "bottom");
-  }, [open]);
-
-  // Close popover on outside click or ESC. Listeners only when open.
-  useEffect(() => {
-    if (!open) return;
-    const onDown = (e: MouseEvent) => {
-      if (!rootRef.current?.contains(e.target as Node)) setOpen(false);
-    };
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setOpen(false);
-    };
-    document.addEventListener("mousedown", onDown);
-    document.addEventListener("keydown", onKey);
-    return () => {
-      document.removeEventListener("mousedown", onDown);
-      document.removeEventListener("keydown", onKey);
-    };
-  }, [open]);
-
-  // Resolve the tz the preview line should show.
   const previewTz =
     timeZoneMode === "cli"
       ? cliTimeZone
@@ -202,17 +163,11 @@ export function TimezonePicker() {
 
   const pickMode = (m: TimeZoneMode) => {
     setTimeZoneMode(m);
-    // Opening the manual picker right when the user chooses Custom avoids
-    // a dead-state where they pick "Custom" and the picker doesn't appear
-    // until they hunt for a separate "Change" link.
     if (m === "manual") setOpen(true);
   };
 
   return (
-    <div
-      ref={rootRef}
-      className="relative inline-flex flex-col items-end gap-1.5"
-    >
+    <div className="inline-flex flex-col items-start gap-1.5 lg:items-end">
       <div
         role="radiogroup"
         aria-label={t("settings.tz.label")}
@@ -256,26 +211,9 @@ export function TimezonePicker() {
               {previewOffset || "UTC"}
             </span>
             <span>·</span>
-            <span>{previewTz.replace(/_/g, " ")}</span>
-            {timeZoneMode === "manual" && (
-              <button
-                type="button"
-                onClick={() => setOpen((v) => !v)}
-                aria-expanded={open}
-                className={cn(
-                  "ml-1 inline-flex items-center gap-0.5 text-foreground hover:text-primary",
-                  "transition-colors"
-                )}
-              >
-                {t("settings.tz.change")}
-                <ChevronDown
-                  className={cn(
-                    "h-3 w-3 transition-transform duration-200",
-                    open && "rotate-180"
-                  )}
-                />
-              </button>
-            )}
+            <span className="truncate max-w-[12rem]">
+              {previewTz.replace(/_/g, " ")}
+            </span>
           </>
         ) : timeZoneMode === "cli" ? (
           <span className="italic text-amber-600 dark:text-amber-400">
@@ -284,18 +222,12 @@ export function TimezonePicker() {
         ) : null}
       </div>
 
-      {open && timeZoneMode === "manual" && (
-        <ManualPicker
-          value={timeZoneManual}
-          placement={placement}
-          onPick={(tz) => {
-            setTimeZoneManual(tz);
-            setOpen(false);
-          }}
-          searchPlaceholder={t("settings.tz.searchPlaceholder")}
-          emptyLabel={t("settings.tz.searchEmpty")}
-        />
-      )}
+      <TimezoneDialog
+        open={open}
+        onOpenChange={setOpen}
+        value={timeZoneManual}
+        onPick={setTimeZoneManual}
+      />
     </div>
   );
 }
@@ -344,26 +276,50 @@ function ModeButton({
   );
 }
 
-function ManualPicker({
+/**
+ * Timezone dialog (mobile sheet) — search-filtered IANA list.
+ *
+ * Picking a row commits the new tz IMMEDIATELY but does NOT close the
+ * dialog — same as accent-picker's Theme Studio. Users can chain picks
+ * (compare offsets, sample different cities) before closing via the
+ * top-right X / Escape / swipe-down. This is the consistent pattern
+ * across every "studio"-style picker dialog in the app.
+ *
+ * The earlier free-text UTC-offset input and stepper variant both
+ * shipped here. Both were dropped on 06-18-r3: the free-text felt
+ * laggy (heavy validation per keystroke), and the stepper was tossing
+ * users into the "no IANA zone for this combo" wall when they dialled
+ * exotic offsets like +9:45. The international IANA list with a few
+ * extra half-hour cities (Kolkata, Kathmandu, Adelaide, Lord Howe,
+ * Chatham, etc.) is enough — the curated set covers every offset a
+ * user could realistically need, and the search makes find-by-name
+ * one-click.
+ */
+function TimezoneDialog({
+  open,
+  onOpenChange,
   value,
-  placement,
   onPick,
-  searchPlaceholder,
-  emptyLabel,
 }: {
+  open: boolean;
+  onOpenChange: (v: boolean) => void;
   value: string;
-  placement: "top" | "bottom";
   onPick: (tz: string) => void;
-  searchPlaceholder: string;
-  emptyLabel: string;
 }) {
+  const { t } = useI18n();
+  const isMobile = useIsMobile();
+  const { sheetProps } = useSheetSwipeDown({
+    enabled: isMobile,
+    onDismiss: () => onOpenChange(false),
+  });
   const [search, setSearch] = useState("");
-  const inputRef = useRef<HTMLInputElement>(null);
+  const searchInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    const id = setTimeout(() => inputRef.current?.focus(), 50);
-    return () => clearTimeout(id);
-  }, []);
+    if (!open) return;
+    setSearch("");
+    window.setTimeout(() => searchInputRef.current?.focus(), 80);
+  }, [open]);
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase().replace(/_/g, " ");
@@ -376,69 +332,77 @@ function ManualPicker({
   }, [search]);
 
   return (
-    <div
-      className={cn(
-        "absolute right-0 z-50 w-[300px]",
-        "rounded-xl border bg-popover shadow-xl overflow-hidden",
-        "animate-in fade-in duration-150",
-        placement === "top"
-          ? "bottom-full mb-2 slide-in-from-bottom-1"
-          : "top-full mt-2 slide-in-from-top-1"
-      )}
-      data-testid="tz-popover"
-    >
-      <div className="relative border-b">
-        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
-        <input
-          ref={inputRef}
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          placeholder={searchPlaceholder}
-          className={cn(
-            "w-full h-9 pl-8 pr-3 text-xs bg-transparent",
-            "border-0 outline-none placeholder:text-muted-foreground"
-          )}
-          data-testid="tz-search"
-        />
-      </div>
-      <ul className="max-h-[260px] overflow-y-auto p-1">
-        {filtered.length === 0 ? (
-          <li className="text-xs text-muted-foreground text-center py-6">
-            {emptyLabel}
-          </li>
-        ) : (
-          filtered.map(({ zone, region }) => {
-            const offset = getUtcOffset(zone);
-            const active = zone === value;
-            return (
-              <li key={zone}>
-                <button
-                  type="button"
-                  onClick={() => onPick(zone)}
-                  className={cn(
-                    "w-full flex items-center gap-2 px-2.5 py-1.5 rounded-md text-xs",
-                    "transition-colors text-left",
-                    active
-                      ? "bg-primary/10 text-primary font-medium"
-                      : "hover:bg-accent"
-                  )}
-                >
-                  <span className="font-mono font-semibold tabular-nums w-12 shrink-0">
-                    {offset || "UTC"}
-                  </span>
-                  <span className="flex-1 truncate">
-                    {zone.replace(/_/g, " ")}
-                  </span>
-                  <span className="text-[10px] text-muted-foreground shrink-0">
-                    {region}
-                  </span>
-                  {active && <Check className="h-3.5 w-3.5 shrink-0" />}
-                </button>
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent
+        className="sm:max-w-md cm-sheet-mobile"
+        data-testid="tz-dialog"
+        {...sheetProps}
+      >
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <Globe className="h-4 w-4 text-primary" />
+            {t("settings.tz.dialogTitle")}
+          </DialogTitle>
+          <DialogDescription>{t("settings.tz.dialogDesc")}</DialogDescription>
+        </DialogHeader>
+
+        <div className="space-y-2">
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+            <input
+              ref={searchInputRef}
+              id="tz-search-input"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder={t("settings.tz.searchPlaceholder")}
+              className={cn(
+                "w-full h-9 pl-8 pr-3 text-sm",
+                "rounded-lg border bg-background outline-none",
+                "focus:border-ring focus:ring-[3px] focus:ring-ring/50"
+              )}
+              data-testid="tz-search"
+            />
+          </div>
+          <ul className="max-h-[360px] overflow-y-auto rounded-lg border bg-background/50 divide-y divide-border/50">
+            {filtered.length === 0 ? (
+              <li className="text-xs text-muted-foreground text-center py-6">
+                {t("settings.tz.searchEmpty")}
               </li>
-            );
-          })
-        )}
-      </ul>
-    </div>
+            ) : (
+              filtered.map(({ zone, region }) => {
+                const offset = getUtcOffset(zone);
+                const active = zone === value;
+                return (
+                  <li key={zone}>
+                    <button
+                      type="button"
+                      onClick={() => onPick(zone)}
+                      className={cn(
+                        "w-full flex items-center gap-2 px-3 py-2 text-sm",
+                        "transition-colors text-left",
+                        active
+                          ? "bg-primary/10 text-primary font-medium"
+                          : "hover:bg-accent"
+                      )}
+                    >
+                      <span className="font-mono font-semibold tabular-nums w-14 shrink-0 text-xs">
+                        {offset || "UTC"}
+                      </span>
+                      <span className="flex-1 truncate">
+                        {zone.replace(/_/g, " ")}
+                      </span>
+                      <span className="text-[10px] text-muted-foreground shrink-0">
+                        {region}
+                      </span>
+                      {active && <Check className="h-3.5 w-3.5 shrink-0 text-primary" />}
+                    </button>
+                  </li>
+                );
+              })
+            )}
+          </ul>
+        </div>
+      </DialogContent>
+    </Dialog>
   );
 }

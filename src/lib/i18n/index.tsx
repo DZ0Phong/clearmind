@@ -60,7 +60,14 @@ const TZ_MANUAL_KEY = "clearmind_tz_manual";
 
 function deviceTimeZone(): string {
   try {
-    return Intl.DateTimeFormat().resolvedOptions().timeZone || "";
+    // Windows + several browsers still hand back legacy IANA links
+    // ("Asia/Saigon", "Asia/Calcutta", "Europe/Kiev") even though those
+    // were superseded by the canonical names ("Asia/Ho_Chi_Minh", …)
+    // years ago. Normalise here so every consumer downstream — clock,
+    // calendar, manual-picker preview, stored localStorage entry — sees
+    // a single canonical spelling. Was the source of the "Saigon vs
+    // Ho_Chi_Minh inconsistency" UI bug reported on 06-18.
+    return canonicalTimeZone(Intl.DateTimeFormat().resolvedOptions().timeZone || "");
   } catch {
     return "";
   }
@@ -114,7 +121,12 @@ export function I18nProvider({ children }: { children: React.ReactNode }) {
   });
   const [timeZoneManual, setTimeZoneManualState] = useState<string>(() => {
     try {
-      return localStorage.getItem(TZ_MANUAL_KEY) || deviceTimeZone();
+      // Canonicalise on read too — old installs may have stored a
+      // legacy alias before deviceTimeZone() / setTimeZoneManual were
+      // both made alias-aware. Cheap one-shot normalisation.
+      const raw = localStorage.getItem(TZ_MANUAL_KEY);
+      if (raw) return canonicalTimeZone(raw);
+      return deviceTimeZone();
     } catch {
       return deviceTimeZone();
     }
@@ -225,12 +237,16 @@ export function I18nProvider({ children }: { children: React.ReactNode }) {
     setTimeZoneModeState(m);
   }, []);
   const setTimeZoneManual = useCallback((tz: string) => {
+    // Canonicalise on write so the stored value never contains the
+    // legacy "Asia/Saigon" form, even if the caller (timezone-picker's
+    // list, an ICS import, …) hands one in.
+    const canonical = tz ? canonicalTimeZone(tz) : tz;
     try {
-      if (tz) localStorage.setItem(TZ_MANUAL_KEY, tz);
+      if (canonical) localStorage.setItem(TZ_MANUAL_KEY, canonical);
     } catch {
       /* ignore */
     }
-    setTimeZoneManualState(tz);
+    setTimeZoneManualState(canonical);
   }, []);
   const t = useMemo(
     () => (key: string, params?: Record<string, string | number>): string => {

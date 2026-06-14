@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Lightbulb, ChevronRight, X } from "lucide-react";
 import { isCliMode } from "@/lib/cli-bridge";
 import { useT } from "@/lib/i18n";
+import { useIsMobile } from "@/hooks/use-media-query";
 import { cn } from "@/lib/utils";
 
 /**
@@ -22,9 +23,12 @@ import { cn } from "@/lib/utils";
  * border) so it reads as the topbar's tail row rather than a separate
  * surface.
  *
- * Pool of 14 tips auto-cycles every 8 seconds. Tips marked `cliOnly` skip
+ * Pool of 30 tips auto-cycles every 8 seconds. Tips marked `cliOnly` skip
  * when the SPA isn't hosted by the CLI (tray icon, autostart, native
- * toast, history slots). `winOnly` tips skip on Mac/Linux.
+ * toast, history slots, daily backup). `winOnly` skips on Mac/Linux.
+ * `mobileOnly` shows only on touch-mobile viewports; `webOnly` shows
+ * only when NOT in CLI mode (so the PWA-install tip doesn't surface on
+ * a desktop user who already has the native tray app).
  *
  * z-[15] sits above main content (z-10) but below the topbar (z-20) and
  * any popover/dialog/toast (z-50/90/100), so transient surfaces still
@@ -38,12 +42,16 @@ interface TipDef {
   key: string;
   cliOnly?: boolean;
   winOnly?: boolean;
+  mobileOnly?: boolean;
+  webOnly?: boolean;
 }
 
 // Order matters — first tip shown on initial mount. Trayhint stays first
 // so the "look for Clearmind in the tray" hint remains the user's first
 // impression on a CLI Windows install (where the icon really is the
-// fastest path to Quick Capture / Focus / Backup).
+// fastest path to Quick Capture / Focus / Backup). The pool is 30 deep
+// so even a user who keeps the banner running for ~4 minutes will see
+// fresh content the whole time before any repeat (8s × 30 ≈ 4 min).
 const TIPS: TipDef[] = [
   { key: "tip.tray", cliOnly: true, winOnly: true },
   { key: "tip.cmdK" },
@@ -59,9 +67,28 @@ const TIPS: TipDef[] = [
   { key: "tip.autostart", cliOnly: true },
   { key: "tip.bookmarklet" },
   { key: "tip.history", cliOnly: true },
+  { key: "tip.accent" },
+  { key: "tip.timezone" },
+  { key: "tip.priority" },
+  { key: "tip.location" },
+  { key: "tip.recurring" },
+  { key: "tip.recurringEnd" },
+  { key: "tip.duplicateCheck" },
+  { key: "tip.smartParse" },
+  { key: "tip.icsImport" },
+  { key: "tip.icsExport" },
+  { key: "tip.backupDaily", cliOnly: true },
+  { key: "tip.weekProgress" },
+  { key: "tip.upNext" },
+  { key: "tip.bottomTab", mobileOnly: true },
+  { key: "tip.pwaInstall", webOnly: true },
+  { key: "tip.guide" },
 ];
 
-const DISMISS_KEY = "clearmind_tip_banner_dismissed";
+// Key includes the pool version — bumping it forces every previous
+// dismissal to lapse, so users who dismissed the v1 (14-tip) banner
+// see the new 30-tip pool. Cheap migration without server state.
+const DISMISS_KEY = "clearmind_tip_banner_dismissed_v2";
 const ROTATION_MS = 8_000;
 
 function isWindowsUA(): boolean {
@@ -73,6 +100,7 @@ function isWindowsUA(): boolean {
 
 export function TipBanner() {
   const t = useT();
+  const isMobile = useIsMobile();
   const [dismissed, setDismissed] = useState<boolean>(() => {
     try {
       return localStorage.getItem(DISMISS_KEY) === "1";
@@ -81,17 +109,19 @@ export function TipBanner() {
     }
   });
 
-  // Filter tips by environment. `useMemo` because navigator + isCliMode
-  // are stable across renders — no need to recompute every tick.
+  // Filter tips by environment. Recompute when `isMobile` flips so
+  // mobile-only / web-only tips appear/disappear on viewport changes.
   const filtered = useMemo(() => {
     const cli = isCliMode();
     const win = isWindowsUA();
     return TIPS.filter((tip) => {
       if (tip.cliOnly && !cli) return false;
       if (tip.winOnly && !win) return false;
+      if (tip.mobileOnly && !isMobile) return false;
+      if (tip.webOnly && cli) return false;
       return true;
     });
-  }, []);
+  }, [isMobile]);
 
   const [index, setIndex] = useState(0);
 

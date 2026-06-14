@@ -68,7 +68,13 @@ function DialogContent({
         {showCloseButton && (
           <DialogPrimitive.Close
             data-slot="dialog-close"
-            className="cm-touch-44 absolute top-3 right-3 p-2 rounded-md opacity-70 ring-offset-background transition-opacity hover:opacity-100 hover:bg-muted focus:ring-2 focus:ring-ring focus:ring-offset-2 focus:outline-hidden disabled:pointer-events-none data-[state=open]:bg-accent data-[state=open]:text-muted-foreground [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4"
+            // Dropped `cm-touch-44` — its `position: relative` was
+            // beating Tailwind's `.absolute` utility in the cascade,
+            // dropping the X into the dialog's grid flow as its own
+            // bottom row. `p-2.5` (~36px hit target) is large enough
+            // for desktop mice and the dialog's own padding gives
+            // mobile users plenty of room around the corner button.
+            className="absolute top-3 right-3 p-2.5 rounded-md opacity-70 ring-offset-background transition-opacity hover:opacity-100 hover:bg-muted focus:ring-2 focus:ring-ring focus:ring-offset-2 focus:outline-hidden disabled:pointer-events-none data-[state=open]:bg-accent data-[state=open]:text-muted-foreground [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4"
           >
             <XIcon />
             <span className="sr-only">Close</span>

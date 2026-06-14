@@ -571,16 +571,30 @@ function RowItem({
   icon?: typeof Settings;
   children: React.ReactNode;
 }) {
+  // Single-row layout always — title + hint shrink (truncate hint to
+  // 2 lines via line-clamp), the action stays on the right same row.
+  // The previous `flex-wrap` made every button drop to its own line on
+  // mobile, even when the row was a single tiny Switch or icon-button;
+  // that produced a visual ladder of stacked half-empty rows on
+  // 375px-wide phones. Linear / Things 3 keep description + action on
+  // one row by default, only wrap when REALLY tight (gap-3 keeps the
+  // minimum reading width visible).
   return (
-    <div className="flex items-center justify-between gap-4 flex-wrap p-4 rounded-xl border bg-background/50">
-      <div className="min-w-0">
-        <h3 className="font-medium flex items-center gap-2">
-          {Icon && <Icon className="h-4 w-4 text-muted-foreground" />}
-          {title}
+    <div className="flex items-center justify-between gap-3 sm:gap-4 p-3 sm:p-4 rounded-xl border bg-background/50">
+      <div className="min-w-0 flex-1">
+        <h3 className="font-medium text-sm sm:text-base flex items-center gap-2">
+          {Icon && (
+            <Icon className="h-4 w-4 text-muted-foreground shrink-0" />
+          )}
+          <span className="truncate">{title}</span>
         </h3>
-        {hint && <p className="text-sm text-muted-foreground mt-0.5">{hint}</p>}
+        {hint && (
+          <p className="text-xs sm:text-sm text-muted-foreground mt-0.5 leading-snug line-clamp-2">
+            {hint}
+          </p>
+        )}
       </div>
-      {children}
+      <div className="shrink-0 flex items-center gap-2">{children}</div>
     </div>
   );
 }

@@ -287,7 +287,7 @@ const TaskRow = memo(function TaskRow({
               variant="ghost"
               size="icon-sm"
               onClick={handleSnooze(DAY_MS, t("tasks.snoozeDayLabel"))}
-              className="text-muted-foreground hover:text-primary opacity-0 group-hover:opacity-100 transition-opacity"
+              className="text-muted-foreground hover:text-primary opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 focus-visible:opacity-100 transition-opacity"
               title={t("tasks.snoozeDay")}
               aria-label={t("tasks.snoozeDay")}
             >
@@ -297,7 +297,7 @@ const TaskRow = memo(function TaskRow({
               variant="ghost"
               size="icon-sm"
               onClick={handleSnooze(7 * DAY_MS, t("tasks.snoozeWeekLabel"))}
-              className="text-muted-foreground hover:text-primary opacity-0 group-hover:opacity-100 transition-opacity"
+              className="text-muted-foreground hover:text-primary opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 focus-visible:opacity-100 transition-opacity"
               title={t("tasks.snoozeWeek")}
               aria-label={t("tasks.snoozeWeek")}
             >
@@ -313,7 +313,7 @@ const TaskRow = memo(function TaskRow({
               e.stopPropagation();
               onHomework();
             }}
-            className="text-muted-foreground hover:text-primary opacity-0 group-hover:opacity-100 transition-opacity"
+            className="text-muted-foreground hover:text-primary opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 focus-visible:opacity-100 transition-opacity"
             title={t("tasks.addHomework")}
             aria-label={t("tasks.row.addHomeworkAria")}
           >
@@ -695,7 +695,13 @@ export function TasksPage() {
         />
       )}
 
-      <div className="flex-1 overflow-y-auto space-y-4">
+      {/* Removed inner `flex-1 overflow-y-auto` — it captured scroll
+          inside Tasks instead of letting main-layout's `<main>` own it,
+          and that inner container missed `cm-mobile-content-pad` so the
+          last subject-group card hid behind the bottom-tab bar on mobile.
+          Now Tasks scrolls with the page like every other route does;
+          consistent padding chain, last card has proper bottom clearance. */}
+      <div className="space-y-4">
         {/* Hôm nay có buổi học — chỉ hiện ở view "Việc cần làm" để user
             vẫn nắm được lịch mà không phải mở list buổi lớp. */}
         {view === "tasks" && todayClasses.length > 0 && (

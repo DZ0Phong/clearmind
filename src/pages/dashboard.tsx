@@ -32,16 +32,21 @@ import { FirstRunWelcome } from "@/components/feedback/first-run-welcome";
  * answers a single question — "what do I have today?". Stats, streaks,
  * heatmaps, recent activity, focus shortcuts all live in /review.
  *
- * Structure (3 sections):
+ * Structure (single-column flow, 5 sections):
  *
- *   1. Heading      — date + greeting + adaptive subline
- *   2. Today list   — agenda rows, no card wrapper, first upcoming
- *                     row highlighted (replaces the old UP NEXT hero)
- *   3. Tuần này     — compact 7-cell load strip
+ *   1. Heading          — date + greeting + adaptive subline
+ *   2. UP NEXT hero     — single most important task, focus CTA
+ *   3. Lịch hôm nay     — agenda rows for today (no card wrapper)
+ *   4. Sắp tới · 7 ngày — non-recurring deadlines next 7 days
+ *   5. Tuần này         — progress bar + 7-cell load strip
+ *   6. Tháng footer     — one-line month roll-up + link to /calendar
  *
- * Earlier this page had 8 cards (4 stat tiles + UP NEXT hero + Today
- * card + Week strip + Focus card + Recent done + Insight). All the
- * non-essential ones moved to /review where they belong.
+ * Layout history: v3 (3 sections) felt empty, v6 added Upcoming +
+ * Week + Month, v7 split into 2-col (main 2/3 + sidebar 1/3) which
+ * left a large empty rectangle below the shorter main column at
+ * 1080p+. Back to single column — Things 3 / Linear "My Issues"
+ * pattern — main-layout caps width at 1600px so long content stays
+ * readable.
  */
 export function Dashboard() {
   const { tasks } = useTasks();
@@ -211,14 +216,18 @@ export function Dashboard() {
         </p>
       </header>
 
-      {/* 2-column grid at lg+. Mobile stays single column.
-          Left main column (lg:col-span-2): UP NEXT hero + Lịch hôm nay.
-          Right sidebar column (lg:col-span-1): Sắp tới + Tiến độ tuần.
-          This stops the page running 875+ px tall on desktop and uses
-          the horizontal real estate the laptop screen gives. */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* ─── Main column ─────────────────────────────────────── */}
-        <div className="lg:col-span-2 flex flex-col gap-6">
+      {/* Single column flow (was 2-col 2/3 + 1/3 in v7 but that left a
+          large empty rectangle below the shorter main column at 1080p+
+          since sidebar genuinely had more vertical content). v6 single
+          column flows naturally — Things 3 / Linear "My Issues"
+          pattern — and main-layout already caps width at 1600px so
+          long content stays readable.
+
+          Section order top-to-bottom matches the natural action
+          narrative: priority → today → next-week deadlines → week
+          load overview → month context. Each section is a sibling of
+          the same wrapper so no column can "outgrow" the other. */}
+      <div className="flex flex-col gap-6">
       {/* UP NEXT hero — the SINGLE most important card on the page. The
           one task the user should act on right now. Promotes priority +
           time + place + a Focus shortcut. Only renders when there's a
@@ -316,10 +325,7 @@ export function Dashboard() {
           </div>
         )}
       </section>
-        </div>
 
-        {/* ─── Sidebar column ────────────────────────────────────── */}
-        <div className="lg:col-span-1 flex flex-col gap-6">
       {/* "Sắp tới · 7 ngày" — non-recurring deadlines in the next 7 days
           (today excluded — that's the section above). Unique to the
           dashboard: /calendar's Agenda view mixes deadlines with weekly
@@ -472,7 +478,6 @@ export function Dashboard() {
           {t("dash.weekFull")} <ChevronRight className="h-3 w-3 ml-0.5" />
         </Link>
       </section>
-        </div>
       </div>
     </div>
   );

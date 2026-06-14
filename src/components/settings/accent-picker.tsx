@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Check, Palette, Sparkles } from "lucide-react";
 import {
   Dialog,
@@ -9,6 +9,8 @@ import {
 } from "@/components/ui/dialog";
 import { useAccent, ACCENTS, type Accent } from "@/components/accent-provider";
 import { useT } from "@/lib/i18n";
+import { useIsMobile } from "@/hooks/use-media-query";
+import { useSheetSwipeDown } from "@/hooks/use-sheet-swipe-down";
 import { cn } from "@/lib/utils";
 
 // 6 popular picks pinned to the Settings row for one-click access. The
@@ -211,6 +213,14 @@ function AccentStudio({
   onHoverEnd: () => void;
 }) {
   const t = useT();
+  const isMobile = useIsMobile();
+  // Mobile: swipe the sheet downward to dismiss. Pulled out into a
+  // hook so the same gesture works on every cm-sheet-mobile we add
+  // later (timezone picker, etc.).
+  const { sheetProps } = useSheetSwipeDown({
+    enabled: isMobile,
+    onDismiss: () => onOpenChange(false),
+  });
 
   // Find the section that contains the committed accent so the tab
   // strip opens on the right group. If the user is on an inline pick
@@ -220,6 +230,7 @@ function AccentStudio({
     DIALOG_SECTIONS.find((s) => s.accents.includes(accent))?.key ??
     DIALOG_SECTIONS[0]?.key;
   const [activeKey, setActiveKey] = useState<string>(defaultSection);
+  const swatchStripRef = useRef<HTMLDivElement>(null);
 
   // Re-sync the tab when the committed accent moves into a different
   // group between opens (e.g. user picked from inline strip, then
@@ -229,6 +240,25 @@ function AccentStudio({
     const sec = DIALOG_SECTIONS.find((s) => s.accents.includes(accent));
     if (sec) setActiveKey(sec.key);
   }, [open, accent]);
+
+  // Wheel-to-horizontal scroll normaliser on the swatch strip — desktop
+  // users with a mouse wheel can flick through long palettes without
+  // grabbing the scrollbar. Vertical wheel deltaY converts to horizontal
+  // scrollLeft. Trackpad horizontal swipe (deltaX) already works
+  // natively; this only assists vertical-wheel hardware.
+  useEffect(() => {
+    const el = swatchStripRef.current;
+    if (!el) return;
+    const onWheel = (e: WheelEvent) => {
+      if (e.deltaY === 0 || Math.abs(e.deltaX) > Math.abs(e.deltaY)) return;
+      // Only intercept if there's actually horizontal overflow to scroll.
+      if (el.scrollWidth <= el.clientWidth) return;
+      e.preventDefault();
+      el.scrollLeft += e.deltaY;
+    };
+    el.addEventListener("wheel", onWheel, { passive: false });
+    return () => el.removeEventListener("wheel", onWheel);
+  }, [activeKey]);
 
   const activeSection = DIALOG_SECTIONS.find((s) => s.key === activeKey)
     ?? DIALOG_SECTIONS[0];
@@ -243,6 +273,7 @@ function AccentStudio({
       <DialogContent
         className="sm:max-w-2xl gap-4 cm-sheet-mobile"
         data-testid="accent-studio"
+        {...sheetProps}
       >
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
@@ -255,11 +286,13 @@ function AccentStudio({
         </DialogHeader>
 
         {/* Tab strip — one tab per category. Pill style matches the
-            Settings page tab nav so the affordance reads the same. */}
+            Settings page tab nav so the affordance reads the same.
+            cm-scroll-x-visible: 8px-tall styled bar on desktop, fade-
+            edge gradient on mobile (so user knows there's more). */}
         <div
           role="tablist"
           aria-label={t("settings.accent.label")}
-          className="cm-seg-track overflow-x-auto"
+          className="cm-seg-track cm-scroll-x-visible"
         >
           {DIALOG_SECTIONS.map((s) => {
             const active = activeKey === s.key;
@@ -280,10 +313,16 @@ function AccentStudio({
           })}
         </div>
 
-        {/* Swatch grid for the active tab. min-h locks the area so the
-            dialog doesn't jump as the user flips between tabs of
-            different sizes (Classic 10 vs Accessible 2). */}
-        <div className="min-h-[112px] flex flex-wrap gap-2 p-3 rounded-lg border bg-card">
+        {/* Swatch strip — single horizontal row per tab, scrolls when
+            the active tab has more swatches than fit (Classic 16 → 4
+            visible on a 375px viewport). Visible scrollbar on desktop;
+            mouse wheel scrolls horizontally too (wheel normaliser
+            above). min-h locks the strip height so the dialog doesn't
+            jump as the user flips between tabs of different sizes. */}
+        <div
+          ref={swatchStripRef}
+          className="cm-scroll-x-visible min-h-[72px] flex items-center gap-2.5 p-3 rounded-lg border bg-card"
+        >
           {activeSection?.accents.map((a) => (
             <Swatch
               key={a}
