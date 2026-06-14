@@ -64,7 +64,7 @@ const TIME_SINGLE_RE = /(\d{1,2})\s*[:hg](?:iờ|ờ)?\s*(\d{2})/;
 // "lab" prefix) to distinguish them from subject codes that look similar.
 // Matches: A1.404, B2-305, Lab C3.501, BE-207, AL-L307, H6-301
 const ROOM_SEP_RE =
-  /\b((?:lab\s+)?[A-Z]{1,4}\d*[.\-][A-Z]?\d+(?:[.\-]\d+)*[A-Za-z]?)\b/i;
+  /\b((?:lab\s+)?[A-Z]{1,4}\d*[.-][A-Z]?\d+(?:[.-]\d+)*[A-Za-z]?)\b/i;
 // Fallback for bare patterns like P401, P305 (single leading letter avoids
 // matching subject codes like PRU213 which are 3+ letters).
 const ROOM_BARE_RE = /\b([A-Z]\d{3,4}[A-Za-z]?|P\d{2,4})\b/;
@@ -77,7 +77,7 @@ const ROOM_VN_RE = /\b(?:phòng|phong)\s+([A-Z][A-Za-z0-9]*(?:\s+\d{1,3})?)/i;
 // lowercase variant suffix). Examples: PRU213, PRN222, SWD392, EXE101g.
 // Date pattern — require slash or dash separator only (not period — too
 // noisy with room codes like A1.404), refuse matches preceded by a letter.
-const DATE_RE = /(?<![A-Za-z])\b(\d{1,2})[\/\-](\d{1,2})(?:[\/\-](\d{2,4}))?\b/;
+const DATE_RE = /(?<![A-Za-z])\b(\d{1,2})[/-](\d{1,2})(?:[/-](\d{2,4}))?\b/;
 
 // Noise tokens from school portals that should never end up in subject:
 // "View Materials at", "Meet URL", "(attended)", "(Not yet)", "( )",
@@ -182,13 +182,13 @@ function extractSubjectAndRoom(input: string): SubjectAndRoom {
   // 4) Clean residue
   let residue = s
     .replace(/\b(?:tiết|tiet)\s*\d+\s*[-–—~]?\s*\d*/gi, " ")
-    .replace(/\b(?:phòng|phong|room|lớp|lop)\b[:\-]?\s*/gi, " ")
+    .replace(/\b(?:phòng|phong|room|lớp|lop)\b[:-]?\s*/gi, " ")
     .replace(
       /(?:thầy|cô|thay|co|teacher|gv|gvgd)\s+[a-zA-ZÀ-ỹĐđ]+(?:\s+[a-zA-ZÀ-ỹĐđ]+){0,4}/gi,
       " "
     )
     .replace(/[|│·•]+/g, " ")
-    .replace(/[\-–—]{1,}/g, " ")
+    .replace(/[-–—]{1,}/g, " ")
     .replace(/\s{2,}/g, " ")
     .replace(/^[\s,\-:.()]+|[\s,\-:.()]+$/g, "")
     .trim();

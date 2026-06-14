@@ -216,14 +216,10 @@
   color: var(--accent-foreground);
 }
 
-/* "+N more" no longer opens FullCalendar's native popover — clicking the
-   link opens our own DayOverviewDialog instead (moreLinkClick → setSelectedDate,
-   same as a day-cell click). FC still renders its popover element, so hide it
-   outright; otherwise it shows behind our dialog (the "half-popover" the user
-   disliked). */
-.fc .fc-popover {
-  display: none !important;
-}
+/* "+N more" is intercepted in the capture phase (see calendar-view.tsx) and
+   opens our DayOverviewDialog — FullCalendar's native popover never fires, so
+   no popover styling is needed here. (Hiding it via display:none here used to
+   crash FC's positioning: getBoundingClientRect on a no-layout element.) */
 
 /* Events — chip tint rõ + viền trái 4px màu chủ đề. textColor saturated. */
 .fc-event {

@@ -616,10 +616,10 @@ export function isRecurringClass(t: Task): boolean {
  * else — every consumer of this helper passes a value that flips with
  * the user's tz choice, and accepting tz here lets the hook return a
  * single stable shape rather than special-casing one duration function. */
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
 export function formatTimeAgoShort(
   deadline: string,
   now: Date = new Date(),
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   _tz?: string
 ): string | null {
   const d = new Date(deadline);

@@ -312,10 +312,8 @@ export const EN: Dict = {
   "calendar.navNext": "Next",
   "calendar.emptyRangeHint":
     "No timed events in this range — click a slot to add one.",
-  "calendar.weekSummary": "This week",
-  "calendar.weekEmpty": "No events this week yet.",
-  "calendar.upcomingTitle": "Upcoming",
-  "calendar.weekEventsTitle": "This week's events",
+  "calendar.nextUpTitle": "Up next",
+  "calendar.overdueCount": "{n} already past due",
   "calendar.allDay": "All day",
   "calendar.emptyDayDescription": "Empty. A peaceful day.",
   "calendar.tasksInDayDescription": "{n} tasks on this day.",

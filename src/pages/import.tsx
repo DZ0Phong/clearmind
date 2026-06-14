@@ -683,7 +683,6 @@ export function ImportPage() {
                       onClick={() => {
                         try {
                           const script = getBookmarkletBody(window.location.origin);
-                          // eslint-disable-next-line @typescript-eslint/no-implied-eval
                           new Function(script)();
                           toast({
                             title: t("import.toast.scriptRan.title"),
@@ -1393,9 +1392,10 @@ function PreviewRow({
           )}
         </div>
       ) : null}
-      <div className="flex items-center gap-1.5">
+      <div className="flex flex-wrap items-center gap-1.5">
         {/* Subject — shrinks first, has a sane max so it doesn't push the
-            time/location off-screen on wide rows. */}
+            time/location off-screen on wide rows. On narrow widths the row
+            wraps instead of overflowing horizontally. */}
         <Input
           value={item.subject}
           onChange={(e) => onChange({ subject: e.target.value })}

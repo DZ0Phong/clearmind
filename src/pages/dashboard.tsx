@@ -55,7 +55,7 @@ export function Dashboard() {
   const [searchParams, setSearchParams] = useSearchParams();
   const t = useT();
   const { lang } = useI18n();
-  const { isToday, dayKey, extractTimeLabel } = useDateFns();
+  const { isToday, extractTimeLabel } = useDateFns();
 
   // Deep-link: tray "Quick Capture" item opens /dashboard?capture=1.
   // Auto-open the create dialog, then strip the query so reload doesn't
@@ -80,7 +80,7 @@ export function Dashboard() {
       sortByTimeOfDay(
         tasks.filter((t) => t.status !== "done" && isToday(t.deadline))
       ),
-    [tasks]
+    [tasks, isToday]
   );
 
   // The "next up" — closest upcoming undone task. Used to highlight the
@@ -187,7 +187,7 @@ export function Dashboard() {
       if (task.status === "done") monthDone++;
     }
     return { overdue, doneToday, totalToday, monthTotal, monthDone };
-  }, [tasks, todayList, dayKey]);
+  }, [tasks, todayList, isToday]);
 
   const dateLabel = nowDate.toLocaleDateString(
     lang === "en" ? "en-US" : "vi-VN",
@@ -632,9 +632,10 @@ const AgendaRow = memo(function AgendaRow({
         </div>
       </div>
 
-      {/* "Next" badge — small visual reinforcement when isNext=true */}
+      {/* "Next" badge — small visual reinforcement when isNext=true.
+          Visible on mobile too (it's the only cue explaining the ring). */}
       {isNext && !overdue && (
-        <span className="hidden sm:inline-flex shrink-0 text-[10px] font-bold uppercase tracking-wider text-primary px-2 py-0.5 rounded-full bg-primary/10 border border-primary/20">
+        <span className="inline-flex shrink-0 text-[10px] font-bold uppercase tracking-wider text-primary px-2 py-0.5 rounded-full bg-primary/10 border border-primary/20">
           {t("dash.upnext")}
         </span>
       )}

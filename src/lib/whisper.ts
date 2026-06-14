@@ -102,12 +102,13 @@ function attachHandlers(w: Worker) {
     const msg = e.data;
     if (!msg || typeof msg !== "object") return;
     switch (msg.type) {
-      case "ready":
+      case "ready": {
         setState("ready");
         const loaders = pendingLoad;
         pendingLoad = [];
         for (const l of loaders) l.resolve();
         break;
+      }
       case "progress":
         emitProgress(msg.data as WhisperProgress);
         break;

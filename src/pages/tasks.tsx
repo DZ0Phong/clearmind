@@ -489,7 +489,6 @@ export function TasksPage() {
   const grouped = useMemo(() => {
     const g = groupByBucket(filtered);
     if (sortMode === "deadline") return g; // groupByBucket already sorts by deadline asc
-    // eslint-disable-next-line react-hooks/exhaustive-deps
     const cmpPriority = (a: Task, b: Task) => {
       const ap = PRIORITY_RANK[a.priority] ?? 99;
       const bp = PRIORITY_RANK[b.priority] ?? 99;
@@ -503,6 +502,8 @@ export function TasksPage() {
       g[k] = [...g[k]].sort(sortMode === "priority" ? cmpPriority : cmpRecent);
     }
     return g;
+    // groupByBucket is a stable module-level helper — intentionally not a dep.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [filtered, sortMode]);
 
   const overdueRecurringCount = useMemo(() => {

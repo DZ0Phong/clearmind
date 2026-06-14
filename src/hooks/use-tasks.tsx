@@ -335,7 +335,7 @@ export function TasksProvider({ children }: { children: React.ReactNode }) {
           headers: { "Content-Type": "application/json" },
           keepalive: true,
         });
-      } catch (_) { /* best-effort */ }
+      } catch { /* best-effort */ }
     };
     window.addEventListener("beforeunload", handler);
     return () => window.removeEventListener("beforeunload", handler);
@@ -361,7 +361,7 @@ export function TasksProvider({ children }: { children: React.ReactNode }) {
           lastSyncedRef.current = serialized;
           lastMtimeRef.current = mtimeMs;
         }
-      } catch (_) {}
+      } catch { /* ignore */ }
       finally { inFlight = false; }
     };
 

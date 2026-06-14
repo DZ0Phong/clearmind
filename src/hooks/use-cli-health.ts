@@ -34,7 +34,7 @@ export function useCliHealth(intervalMs: number = 30_000): {
         if (cancelled) return;
         setStatus("online");
         setPort(h.port);
-      } catch (_e) {
+      } catch {
         if (cancelled) return;
         setStatus("offline");
       }

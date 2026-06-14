@@ -187,9 +187,6 @@ interface FcDatesSetArg {
   end: Date;
   view: { type: string; title: string };
 }
-interface FcMoreLinkArg {
-  date: Date;
-}
 
 /* ───── Main component ──────────────────────────────────────────── */
 
@@ -513,6 +510,28 @@ export function CalendarView({ initialDate }: CalendarViewProps = {}) {
     fcScrollTopRef.current = 0;
     if (scrollRef.current) scrollRef.current.scrollTop = 0;
   }, [view]);
+
+  // Intercept month-view "+N more" clicks in the CAPTURE phase so they open
+  // our DayOverviewDialog instead of FullCalendar's native popover. Capturing
+  // + stopPropagation prevents FC's own (React-delegated) onClick from firing
+  // at all — so the popover never opens (it also crashed FC's positioning once
+  // hidden via CSS). The day is read from the cell's data-date attribute.
+  useEffect(() => {
+    const root = scrollRef.current;
+    if (!root) return;
+    const onCaptureClick = (e: MouseEvent) => {
+      const link = (e.target as HTMLElement | null)?.closest(
+        ".fc-daygrid-more-link"
+      );
+      if (!link) return;
+      e.preventDefault();
+      e.stopPropagation();
+      const date = link.closest(".fc-daygrid-day")?.getAttribute("data-date");
+      if (date) setSelectedDate(date);
+    };
+    root.addEventListener("click", onCaptureClick, true);
+    return () => root.removeEventListener("click", onCaptureClick, true);
+  }, []);
 
   const persistView = (v: ViewMode) => {
     setView(v);
@@ -1072,23 +1091,12 @@ export function CalendarView({ initialDate }: CalendarViewProps = {}) {
                 tasks={filteredTasks}
                 onPickEvent={setSelectedEventId}
                 onCreate={(iso) => openCreate({ deadline: iso })}
+                compact
               />
             </div>
           )
         ) : (
-          // Week (desktop, xl+) gets a right rail (week summary + upcoming);
-          // Month stays full-width. The inner wrapper is `contents` for month
-          // (FC fills the flex-1 parent directly) and a real grid cell for
-          // week (stretches alongside the rail).
-          <div
-            className={cn(
-              "px-3 md:px-4 py-3 md:flex-1 md:min-h-0",
-              view === "week"
-                ? "grid xl:grid-cols-[minmax(0,1fr)_300px] gap-4"
-                : "relative"
-            )}
-          >
-            <div className={view === "week" ? "relative min-w-0 min-h-0" : "contents"}>
+          <div className="relative px-3 md:px-4 py-3 md:flex-1 md:min-h-0">
             <FullCalendar
               ref={monthWeekFcRef}
               key={`${view}-${fcLocale}-${isMobile ? "m" : "d"}`}
@@ -1152,28 +1160,11 @@ export function CalendarView({ initialDate }: CalendarViewProps = {}) {
                 isMobile && view === "month" ? 0 : view === "month" ? 3 : false
               }
               moreLinkText={(n) => t("calendar.moreLinkText", { n })}
-              moreLinkClick={(arg: FcMoreLinkArg) => {
-                // "+N more" → open the clean day-overview dialog (same as a
-                // day-cell click). Returning nothing suppresses FC's native
-                // half-popover (the behaviour the user disliked).
-                setSelectedDate(dayKey(arg.date, rawTz));
-              }}
               eventContent={renderFcEvent}
               datesSet={handleDatesSet}
             />
             {view === "week" && rangeInfo.count === 0 && (
               <EmptyGridHint label={t("calendar.emptyRangeHint")} />
-            )}
-            </div>
-            {view === "week" && gridRange && (
-              <aside className="hidden xl:block xl:min-h-0 xl:overflow-y-auto">
-                <WeekRail
-                  tasks={filteredTasks}
-                  start={gridRange.start}
-                  end={gridRange.end}
-                  onPickEvent={setSelectedEventId}
-                />
-              </aside>
             )}
           </div>
         )}
@@ -2396,145 +2387,6 @@ const AgendaItem = memo(function AgendaItem({
   );
 });
 
-/* ───── Week view side rail ─────────────────────────────────────── */
-
-interface WeekRailProps {
-  tasks: Task[];
-  start: Date; // week start (Monday)
-  end: Date; // exclusive end (next Monday)
-  onPickEvent: (id: string) => void;
-}
-
-// Contextual companion to the week time-grid — fills what used to be empty
-// space with info the grid DOESN'T surface well: a week-level progress
-// summary and a scannable upcoming/this-week list. Concrete-date (one-off)
-// events only, matching AgendaView's "events are the unit" model; recurring
-// classes still render in the grid itself.
-function WeekRail({ tasks, start, end, onPickEvent }: WeekRailProps) {
-  const t = useT();
-  const localeTag = useLocaleTag();
-  const now = useTickingNow();
-
-  const weekEvents = useMemo(() => {
-    const s = start.getTime();
-    const e = end.getTime();
-    return tasks
-      .filter((tk) => tk.deadline)
-      .map((tk) => ({ tk, d: new Date(tk.deadline!) }))
-      .filter(
-        ({ d }) => !Number.isNaN(d.getTime()) && d.getTime() >= s && d.getTime() < e
-      )
-      .sort((a, b) => a.d.getTime() - b.d.getTime());
-  }, [tasks, start, end]);
-
-  const stats = useMemo(() => {
-    const total = weekEvents.length;
-    const done = weekEvents.filter(({ tk }) => tk.status === "done").length;
-    const urgent = weekEvents.filter(
-      ({ tk }) => tk.priority === "high" && tk.status !== "done"
-    ).length;
-    return { total, done, urgent, progress: total ? done / total : 0 };
-  }, [weekEvents]);
-
-  const isCurrentWeek =
-    now.getTime() >= start.getTime() && now.getTime() < end.getTime();
-  const list = useMemo(() => {
-    const base = isCurrentWeek
-      ? weekEvents.filter(
-          ({ d, tk }) => d.getTime() >= now.getTime() && tk.status !== "done"
-        )
-      : weekEvents;
-    return base.slice(0, 8);
-  }, [weekEvents, isCurrentWeek, now]);
-
-  return (
-    <aside className="h-full lg:overflow-y-auto pr-1 space-y-3">
-      <div className="rounded-xl border bg-card p-3.5">
-        <p className="text-[10px] uppercase tracking-wider font-semibold text-muted-foreground">
-          {t("calendar.weekSummary")}
-        </p>
-        <h3 className="text-2xl font-bold tracking-tight mt-0.5">
-          {t("calendar.eventCount", { n: stats.total })}
-        </h3>
-        {stats.total > 0 ? (
-          <>
-            <div className="flex items-center justify-between text-xs mt-3">
-              <span className="text-muted-foreground">
-                {t("calendar.tasksComplete", { n: `${stats.done}/${stats.total}` })}
-                {stats.urgent > 0 && (
-                  <span className="ml-1.5 text-destructive font-semibold">
-                    {t("calendar.urgentCount", { n: stats.urgent })}
-                  </span>
-                )}
-              </span>
-              <span className="font-bold tabular-nums">
-                {Math.round(stats.progress * 100)}%
-              </span>
-            </div>
-            <div className="h-1.5 rounded-full bg-muted mt-1.5 overflow-hidden">
-              <div
-                className="h-full bg-primary transition-all"
-                style={{ width: `${stats.progress * 100}%` }}
-              />
-            </div>
-          </>
-        ) : (
-          <p className="text-xs text-muted-foreground mt-2">
-            {t("calendar.weekEmpty")}
-          </p>
-        )}
-      </div>
-
-      {list.length > 0 && (
-        <SidePanelCard
-          icon={Clock}
-          title={isCurrentWeek ? t("calendar.upcomingTitle") : t("calendar.weekEventsTitle")}
-          count={list.length}
-        >
-          <div className="space-y-1.5">
-            {list.map(({ tk, d }) => {
-              const time = `${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
-              const day = d.toLocaleDateString(localeTag, { weekday: "short" });
-              const isDone = tk.status === "done";
-              const color = subjectColor(tk.title);
-              return (
-                <button
-                  key={tk.id}
-                  onClick={() => onPickEvent(tk.id)}
-                  className="w-full text-left px-2.5 py-2 rounded-lg flex items-center gap-2.5 border bg-background/40 hover:bg-accent transition-colors"
-                >
-                  <span className="w-11 shrink-0 leading-none">
-                    <span className="block text-[10px] font-semibold capitalize text-muted-foreground">
-                      {day}
-                    </span>
-                    <span className="block text-xs font-bold tabular-nums mt-0.5">
-                      {time}
-                    </span>
-                  </span>
-                  <span
-                    className={cn("w-0.5 h-7 rounded-full shrink-0", color.dot)}
-                  />
-                  <span
-                    className={cn(
-                      "flex-1 min-w-0 text-sm font-medium leading-tight truncate",
-                      isDone && "line-through text-muted-foreground"
-                    )}
-                  >
-                    {tk.title}
-                  </span>
-                  {tk.priority === "high" && !isDone && (
-                    <Flame className="h-3 w-3 text-destructive shrink-0" />
-                  )}
-                </button>
-              );
-            })}
-          </div>
-        </SidePanelCard>
-      )}
-    </aside>
-  );
-}
-
 /* ───── Day view side panel ─────────────────────────────────────── */
 
 interface DaySidePanelProps {
@@ -2542,6 +2394,10 @@ interface DaySidePanelProps {
   tasks: Task[];
   onPickEvent: (id: string) => void;
   onCreate: (deadlineIso: string) => void;
+  /** Desktop rail: COMPLEMENT the time-grid — skip the duplicate full
+   *  schedule list + untimed card, show only progress + a compact "next up"
+   *  + free-slot suggestions. Mobile (no grid) renders the full list. */
+  compact?: boolean;
 }
 
 function DaySidePanel({
@@ -2549,6 +2405,7 @@ function DaySidePanel({
   tasks,
   onPickEvent,
   onCreate,
+  compact = false,
 }: DaySidePanelProps) {
   const t = useT();
   const now = useTickingNow();
@@ -2658,13 +2515,11 @@ function DaySidePanel({
         stats={stats}
       />
 
-      {/* Lịch ngày — full chronological list of timed tasks. Each row
-          carries inline state: ring/tint highlight for "next up", red
-          stripe + "X late" badge for overdue, strikethrough for done.
-          Replaces the separate NextUp / OverdueToday cards on mobile so
-          the user sees the entire day's flow in one scroll-able list
-          rather than fragmented across multiple panels. */}
-      {timedAll.length > 0 && (
+      {/* Lịch ngày — full chronological list of timed tasks. Mobile only
+          (no grid there). On desktop the grid already shows this, so the
+          rail skips it and shows a compact "next up" instead — complement,
+          not duplicate. */}
+      {!compact && timedAll.length > 0 && (
         <SidePanelCard
           icon={Clock}
           title={t("calendar.dayScheduleTitle")}
@@ -2733,7 +2588,31 @@ function DaySidePanel({
         </SidePanelCard>
       )}
 
-      {untimed.length > 0 && (
+      {/* Desktop rail: a single highlighted "next up" (the grid carries the
+          full timeline). Plus a count of anything already past-due today. */}
+      {compact && nextUp && (
+        <SidePanelCard icon={Clock} title={t("calendar.nextUpTitle")}>
+          <button
+            onClick={() => onPickEvent(nextUp.id)}
+            className="w-full text-left px-2.5 py-2 rounded-lg border bg-primary/5 ring-1 ring-primary/20 hover:bg-primary/10 transition-colors"
+          >
+            <span className="text-sm font-bold tabular-nums text-primary">
+              {pad2(new Date(nextUp.deadline!).getHours())}:
+              {pad2(new Date(nextUp.deadline!).getMinutes())}
+            </span>
+            <p className="text-sm font-medium leading-snug break-words mt-0.5">
+              {nextUp.title}
+            </p>
+          </button>
+          {overdueToday.length > 0 && (
+            <p className="text-[11px] text-destructive font-medium mt-2">
+              {t("calendar.overdueCount", { n: overdueToday.length })}
+            </p>
+          )}
+        </SidePanelCard>
+      )}
+
+      {!compact && untimed.length > 0 && (
         <SidePanelCard
           icon={Clock4}
           title={t("calendar.untimed")}

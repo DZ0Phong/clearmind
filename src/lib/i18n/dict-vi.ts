@@ -311,10 +311,8 @@ export const VI: Dict = {
   "calendar.navNext": "Sau",
   "calendar.emptyRangeHint":
     "Khoảng này chưa có lịch theo giờ — bấm vào khung giờ để thêm.",
-  "calendar.weekSummary": "Tuần này",
-  "calendar.weekEmpty": "Tuần này chưa có sự kiện nào.",
-  "calendar.upcomingTitle": "Sắp tới",
-  "calendar.weekEventsTitle": "Sự kiện trong tuần",
+  "calendar.nextUpTitle": "Tiếp theo",
+  "calendar.overdueCount": "{n} việc đã trễ giờ",
   "calendar.allDay": "Cả ngày",
   "calendar.emptyDayDescription": "Trống trải. Một ngày yên bình.",
   "calendar.tasksInDayDescription": "{n} task trong ngày này.",

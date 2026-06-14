@@ -152,7 +152,7 @@ function playAlarmLoop({ volume = 0.32 }: { volume?: number } = {}): {
   safetyId = window.setTimeout(() => {
     active = false;
     if (timeoutId) clearTimeout(timeoutId);
-    try { ctx?.close(); } catch (_) {}
+    try { ctx?.close(); } catch { /* already closed */ }
   }, 90_000);
 
   return {
@@ -160,7 +160,7 @@ function playAlarmLoop({ volume = 0.32 }: { volume?: number } = {}): {
       active = false;
       if (timeoutId) clearTimeout(timeoutId);
       if (safetyId) clearTimeout(safetyId);
-      try { ctx?.close(); } catch (_) {}
+      try { ctx?.close(); } catch { /* already closed */ }
     },
   };
 }
@@ -313,7 +313,7 @@ export function FocusPage() {
       }
       setRemaining(0);
       if (!viaSkip && settings.sound) {
-        try { alarmRef.current?.stop(); } catch (_) { /* ignore */ }
+        try { alarmRef.current?.stop(); } catch { /* ignore */ }
         alarmRef.current = playAlarmLoop();
       }
       setRinging(!viaSkip);
@@ -333,7 +333,7 @@ export function FocusPage() {
   // User-explicit dismiss → stop the bell, advance to the next phase, and
   // surface a success toast summarising what just happened.
   const dismissAlarm = useCallback(() => {
-    try { alarmRef.current?.stop(); } catch (_) {}
+    try { alarmRef.current?.stop(); } catch { /* ignore */ }
     alarmRef.current = null;
     setRinging(false);
     if (mode === "work") {
@@ -372,7 +372,7 @@ export function FocusPage() {
   // Safety net: stop any lingering alarm on unmount (route change, F5…).
   useEffect(() => {
     return () => {
-      try { alarmRef.current?.stop(); } catch (_) {}
+      try { alarmRef.current?.stop(); } catch { /* ignore */ }
     };
   }, []);
 
