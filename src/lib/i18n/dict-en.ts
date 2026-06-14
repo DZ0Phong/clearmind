@@ -123,7 +123,7 @@ export const EN: Dict = {
   "dashboard.emptyAgendaTitle": "A clear day",
   "dashboard.emptyAgendaHint": "Nothing urgent — perfect time to add what matters. Press ⌘K or the button below.",
   "dashboard.emptyAgendaButton": "Add first task",
-  "dashboard.emptyAgendaImport": "Or import your timetable",
+  "dashboard.emptyAgendaImport": "Or import a calendar",
 
   // First-run welcome modal
   "welcome.title": "Welcome to Clearmind",
@@ -135,7 +135,7 @@ export const EN: Dict = {
   "welcome.autostart.cta": "Start with Windows",
   "welcome.autostart.hint": "Clearmind runs in the background on boot — no need to open it again.",
   "welcome.autostart.enabled": "Autostart enabled",
-  "welcome.import.cta": "Import your class schedule",
+  "welcome.import.cta": "Import a calendar",
   "welcome.import.hint": "Paste timetable / ICS / Google Calendar — recurring tasks created automatically.",
   "welcome.skip": "Skip for now",
   "welcome.done": "Get started",
@@ -646,6 +646,24 @@ export const EN: Dict = {
   "settings.tab.data": "Data",
   "settings.tab.system": "System",
   "settings.tab.advanced": "Advanced",
+  "settings.tab.help": "Help",
+
+  // Settings — Help / Support
+  "settings.help.title": "Guide & Help",
+  "settings.help.desc":
+    "Open the user guide, replay the welcome screen, or import your school timetable.",
+  "settings.help.guide.title": "User guide",
+  "settings.help.guide.hint":
+    "See every feature, gesture, and tip for using Clearmind on your platform.",
+  "settings.help.guide.button": "Open guide",
+  "settings.help.welcome.title": "Replay welcome screen",
+  "settings.help.welcome.hint":
+    "Show the first-run setup steps again — enable notifications, autostart, import.",
+  "settings.help.welcome.button": "Replay",
+  "settings.help.import.title": "Import a calendar",
+  "settings.help.import.hint":
+    "Paste a timetable, sports fixtures, an ICS file, or Google Calendar — Clearmind creates the tasks.",
+  "settings.help.import.button": "Open import",
 
   // Settings — Data card
   "settings.data.title": "Data & Backup",

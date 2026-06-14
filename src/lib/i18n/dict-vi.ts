@@ -8,7 +8,7 @@ export const VI: Dict = {
   "nav.tasks": "Task",
   "nav.focus": "Tập trung",
   "nav.review": "Tổng kết",
-  "nav.import": "Import lịch học",
+  "nav.import": "Import lịch",
   "nav.guide": "Hướng dẫn",
   "nav.settings": "Cài đặt",
   "nav.primary": "Điều hướng chính",
@@ -122,7 +122,7 @@ export const VI: Dict = {
   "dashboard.emptyAgendaTitle": "Một ngày trống lý tưởng",
   "dashboard.emptyAgendaHint": "Không có việc dí — đúng lúc thêm những thứ đáng làm. Bấm ⌘K hoặc nút dưới.",
   "dashboard.emptyAgendaButton": "Thêm task đầu tiên",
-  "dashboard.emptyAgendaImport": "Hoặc Import lịch học",
+  "dashboard.emptyAgendaImport": "Hoặc Import lịch",
 
   // First-run welcome modal
   "welcome.title": "Chào mừng đến Clearmind",
@@ -134,7 +134,7 @@ export const VI: Dict = {
   "welcome.autostart.cta": "Khởi động cùng Windows",
   "welcome.autostart.hint": "Clearmind tự chạy ngầm khi bạn bật máy — không cần mở lại.",
   "welcome.autostart.enabled": "Đã bật autostart",
-  "welcome.import.cta": "Import lịch học từ trường",
+  "welcome.import.cta": "Import lịch",
   "welcome.import.hint": "Paste TKB / ICS / Google Calendar — Clearmind tự tạo task hàng tuần.",
   "welcome.skip": "Bỏ qua",
   "welcome.done": "Bắt đầu dùng",
@@ -645,6 +645,24 @@ export const VI: Dict = {
   "settings.tab.data": "Dữ liệu",
   "settings.tab.system": "Hệ thống",
   "settings.tab.advanced": "Khác",
+  "settings.tab.help": "Trợ giúp",
+
+  // Settings — Trợ giúp / Hỗ trợ
+  "settings.help.title": "Hướng dẫn & Hỗ trợ",
+  "settings.help.desc":
+    "Mở hướng dẫn sử dụng, xem lại màn hình chào mừng hoặc nhập lịch học từ trường.",
+  "settings.help.guide.title": "Hướng dẫn sử dụng",
+  "settings.help.guide.hint":
+    "Xem đầy đủ tính năng, thao tác cử chỉ và mẹo dùng Clearmind cho nền tảng của bạn.",
+  "settings.help.guide.button": "Mở hướng dẫn",
+  "settings.help.welcome.title": "Xem lại màn hình chào mừng",
+  "settings.help.welcome.hint":
+    "Hiện lại các bước thiết lập ban đầu — bật thông báo, autostart, nhập lịch.",
+  "settings.help.welcome.button": "Xem lại",
+  "settings.help.import.title": "Nhập lịch",
+  "settings.help.import.hint":
+    "Dán thời khoá biểu, lịch thi đấu, file ICS hay Google Calendar — Clearmind tự tạo task.",
+  "settings.help.import.button": "Mở nhập lịch",
 
   // Settings — Data card
   "settings.data.title": "Dữ liệu & Backup",

@@ -1,6 +1,6 @@
 import { useMemo, type ReactNode } from "react";
 import { Link } from "react-router-dom";
-import { AlertCircle, Clock, Plus, Search, Settings, Power, PowerOff } from "lucide-react";
+import { AlertCircle, Clock, HelpCircle, Plus, Search, Settings, Power, PowerOff } from "lucide-react";
 import { Sidebar } from "./sidebar";
 import { MobileTabBar } from "./mobile-tab-bar";
 import { Logo } from "@/components/logo";
@@ -47,7 +47,7 @@ export function MainLayout({ children }: { children: ReactNode }) {
           Sidebar sits to the LEFT of main (no horizontal overlap), so
           z-10 served no layering purpose. Dropping it lets each popover
           stack on its own merit again. */}
-      <main className="flex-1 flex flex-col relative min-w-0 overflow-y-auto">
+      <main className="flex-1 flex flex-col relative min-w-0 overflow-y-auto overflow-x-hidden">
         <TopBar />
         <TipBanner />
         <DuplicateBanner />
@@ -132,21 +132,28 @@ function TopBar() {
         <Logo className="h-7 w-7" />
       </Link>
 
+      {/* Date/time pill — desktop, xl+ only. It's `shrink-0`, and below xl
+          the header gets tight once sidebar (240px) + search + the right
+          cluster (CLI badge / overdue / Add / toggles) are laid out, so this
+          label used to force the header WIDER than <main>, producing a
+          horizontal scroll + dead black gutter on the right at common laptop
+          widths (~1024–1230px). Gating it to xl and letting it shrink
+          (min-w-0 + truncate) keeps the header inside main at every width. */}
       <Link
         to="/dashboard"
         title={t("topbar.dashboardTooltip")}
-        className="hidden md:flex items-center gap-2 text-sm shrink-0 hover:text-primary transition-colors"
+        className="hidden xl:flex items-center gap-2 text-sm min-w-0 hover:text-primary transition-colors"
       >
-        <Clock className="h-4 w-4 text-muted-foreground" />
-        <span className="capitalize font-semibold">{dateLabel}</span>
-        <span className="text-muted-foreground tabular-nums">· {timeLabel}</span>
+        <Clock className="h-4 w-4 text-muted-foreground shrink-0" />
+        <span className="capitalize font-semibold truncate">{dateLabel}</span>
+        <span className="text-muted-foreground tabular-nums shrink-0">· {timeLabel}</span>
       </Link>
 
       <button
         onClick={openPalette}
         aria-label={t("common.search")}
         aria-keyshortcuts="Meta+K Control+K"
-        className="cm-touch-44 hidden sm:flex flex-1 lg:flex-initial lg:w-[380px] items-center gap-2 h-9 px-3 rounded-md border bg-muted/40 hover:bg-muted/60 hover:border-input text-sm text-muted-foreground transition-colors ml-auto lg:mx-auto outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50"
+        className="cm-touch-44 hidden sm:flex min-w-0 flex-1 lg:flex-initial lg:w-[380px] items-center gap-2 h-9 px-3 rounded-md border bg-muted/40 hover:bg-muted/60 hover:border-input text-sm text-muted-foreground transition-colors ml-auto lg:mx-auto outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50"
       >
         <Search className="h-4 w-4 shrink-0" />
         <span className="flex-1 text-left truncate">{t("topbar.searchPlaceholder")}</span>
@@ -185,13 +192,23 @@ function TopBar() {
           <Plus className="h-4 w-4" />
           <span className="hidden md:inline">{t("topbar.add")}</span>
         </Button>
-        {/* Mobile-only Settings shortcut. The bottom-tab bar carries the 5
+        {/* Mobile-only secondary nav. The bottom-tab bar carries the 5
             primary destinations (Dashboard/Calendar/Tasks/Focus/Review) but
             Settings/Import/Guide live in the desktop sidebar's footer — on
-            mobile that disappears, so this icon button is the discoverable
-            entry-point for theme/language/timezone/backup/etc. Goes to the
-            Appearance tab by default so first-touch lands somewhere visually
-            engaging instead of the dense System tab. */}
+            mobile that disappears. NN/g: keep help/guide a *visible* toolbar
+            entry, not buried in a menu — so Guide gets its own always-on
+            icon here (mirrors the sidebar's Guide item). Settings is the
+            second icon; it also hosts the "replay welcome" + import re-entry
+            (the Help tab). Goes to the Appearance tab by default so
+            first-touch lands somewhere visual, not the dense System tab. */}
+        <Link
+          to="/guide"
+          aria-label={t("nav.guide")}
+          title={t("nav.guide")}
+          className="cm-touch-44 md:hidden inline-flex items-center justify-center h-9 w-9 rounded-md text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+        >
+          <HelpCircle className="h-5 w-5" />
+        </Link>
         <Link
           to="/settings?tab=appearance"
           aria-label={t("nav.settings")}

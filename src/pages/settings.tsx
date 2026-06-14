@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useSearchParams } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import {
   Card,
   CardContent,
@@ -32,6 +32,9 @@ import {
   Hash,
   Database,
   SlidersHorizontal,
+  HelpCircle,
+  Sparkles,
+  CalendarPlus,
 } from "lucide-react";
 import { readErrorLog, clearErrorLog, type ErrorEntry } from "@/lib/error-log";
 import { useTasks } from "@/hooks/use-tasks";
@@ -55,7 +58,7 @@ import {
   type ScheduledNotification,
 } from "@/lib/cli-bridge";
 
-type Tab = "appearance" | "notifications" | "data" | "system" | "advanced";
+type Tab = "appearance" | "notifications" | "data" | "system" | "advanced" | "help";
 
 export function SettingsPage() {
   const {
@@ -77,7 +80,11 @@ export function SettingsPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const initialTab: Tab = (() => {
     const q = searchParams.get("tab");
-    return q === "notifications" || q === "data" || q === "system" || q === "advanced"
+    return q === "notifications" ||
+      q === "data" ||
+      q === "system" ||
+      q === "advanced" ||
+      q === "help"
       ? q
       : "appearance";
   })();
@@ -179,6 +186,7 @@ export function SettingsPage() {
     { id: "data", label: t("settings.tab.data"), icon: Database, show: true },
     { id: "system", label: t("settings.tab.system"), icon: SlidersHorizontal, show: true },
     { id: "advanced", label: t("settings.tab.advanced"), icon: Hash, show: true },
+    { id: "help", label: t("settings.tab.help"), icon: HelpCircle, show: true },
   ];
 
   return (
@@ -248,6 +256,8 @@ export function SettingsPage() {
         {tab === "system" && <SystemTab cli={cli} />}
 
         {tab === "advanced" && <AdvancedTab />}
+
+        {tab === "help" && <HelpTab />}
       </div>
     </div>
   );
@@ -552,6 +562,89 @@ function AdvancedTab() {
       <TagsCard />
       <ErrorLogCard />
     </>
+  );
+}
+
+/**
+ * Help / Support tab. Research-backed placement:
+ *  - NN/g advises a *persistent, visible* re-entry point for onboarding
+ *    rather than a one-time-only welcome, and warns against burying help
+ *    where users won't find it — so the primary Guide entry is the
+ *    always-on icon in the mobile topbar / desktop sidebar.
+ *  - But every comparable task app (Todoist / TickTick / Things 3) also
+ *    surfaces help + support *inside* Settings, which is where users look
+ *    to "replay the intro". This tab is that Settings-side companion.
+ * It also re-exposes the school-timetable Import flow, which otherwise has
+ * no discoverable entry point once the desktop sidebar is hidden on mobile.
+ */
+function HelpTab() {
+  const t = useT();
+  const navigate = useNavigate();
+
+  const replayWelcome = () => {
+    try {
+      // FirstRunWelcome only opens when this flag is unset, and it reads the
+      // flag on Dashboard mount (see first-run-welcome.tsx). Clearing it then
+      // routing to the dashboard re-triggers the welcome modal.
+      localStorage.removeItem("clearmind_welcome_seen");
+    } catch {
+      /* private mode — nothing to clear */
+    }
+    navigate("/dashboard");
+  };
+
+  return (
+    <Card className="md:col-span-2 border-primary/10 shadow-sm bg-card">
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2">
+          <HelpCircle className="h-5 w-5 text-primary" />
+          {t("settings.help.title")}
+        </CardTitle>
+        <CardDescription>{t("settings.help.desc")}</CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        <RowItem
+          title={t("settings.help.guide.title")}
+          hint={t("settings.help.guide.hint")}
+          icon={HelpCircle}
+        >
+          <Button
+            variant="outline"
+            onClick={() => navigate("/guide")}
+            className="gap-2"
+          >
+            <HelpCircle className="h-4 w-4" />
+            {t("settings.help.guide.button")}
+          </Button>
+        </RowItem>
+
+        <RowItem
+          title={t("settings.help.welcome.title")}
+          hint={t("settings.help.welcome.hint")}
+          icon={Sparkles}
+        >
+          <Button variant="outline" onClick={replayWelcome} className="gap-2">
+            <Sparkles className="h-4 w-4" />
+            {t("settings.help.welcome.button")}
+          </Button>
+        </RowItem>
+
+        <RowItem
+          title={t("settings.help.import.title")}
+          hint={t("settings.help.import.hint")}
+          icon={CalendarPlus}
+        >
+          <Button
+            variant="outline"
+            onClick={() => navigate("/import")}
+            className="gap-2"
+          >
+            <CalendarPlus className="h-4 w-4" />
+            {t("settings.help.import.button")}
+          </Button>
+        </RowItem>
+      </CardContent>
+    </Card>
   );
 }
 

@@ -726,75 +726,195 @@ export function computeFirstOccurrenceISO(
 //   01/07 23:30 Brazil vs Argentina @ Maracana
 //   02-07 15:00 — Pháp vs Bồ Đào Nha (Sân Wembley)
 //   Mon 30 Jun 21:00 Final match, Lusail Stadium
-const EVENT_LINE_RES: RegExp[] = [
-  // 1. Numeric date prefix: "30/06[/26] 21:00 Title [· @ - location]"
-  /^[\s•·*\-]*(\d{1,2})[\/\-](\d{1,2})(?:[\/\-](\d{2,4}))?[\s,]+(\d{1,2})[:h](\d{2})(?:\s*[-–—~]\s*\d{1,2}[:h]\d{2})?[\s\-–—:·@,]+(.+?)$/i,
-  // 2. ISO-style: "2026-06-30 21:00 Title"
-  /^[\s•·*\-]*(\d{4})-(\d{1,2})-(\d{1,2})[\sT,]+(\d{1,2})[:h](\d{2})(?:\s*[-–—~]\s*\d{1,2}[:h]\d{2})?[\s\-–—:·@,]+(.+?)$/i,
-];
+// Month names → number (English full + abbreviation). Vietnamese months are
+// numeric ("tháng 6") so they're handled by DATE_VN_RE below.
+const MONTHS: Record<string, number> = {
+  jan: 1, january: 1, feb: 2, february: 2, mar: 3, march: 3, apr: 4, april: 4,
+  may: 5, jun: 6, june: 6, jul: 7, july: 7, aug: 8, august: 8, sep: 9, sept: 9,
+  september: 9, oct: 10, october: 10, nov: 11, november: 11, dec: 12, december: 12,
+};
+const MONTH_WORD =
+  "(jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:t(?:ember)?)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)";
+// Date forms recognised anywhere in a line (event lists / sports fixtures):
+const DATE_ISO_RE = /\b(\d{4})-(\d{1,2})-(\d{1,2})\b/; //              2026-06-30
+const DATE_VN_RE = /\b(?:ngày\s*)?(\d{1,2})\s*tháng\s*(\d{1,2})\b(?:\s*(?:năm\s*)?(\d{4}))?/i; // 13 tháng 6 [năm 2026]
+const DATE_DMONTH_RE = new RegExp(`\\b(\\d{1,2})\\s+${MONTH_WORD}\\b(?:,?\\s+(\\d{4}))?`, "i"); // 13 June [2026]
+const DATE_MONTHD_RE = new RegExp(`\\b${MONTH_WORD}\\s+(\\d{1,2})\\b(?:,?\\s+(\\d{4}))?`, "i"); // June 13[, 2026]
+// Numeric slash/dot date (NOT bare dash — that collides with time ranges
+// "08:15-09:45" and team separators "Brazil - Ma Rốc"). Trailing ":" allowed
+// so "ngày 12/6: …" is recognised; trailing digit blocked.
+const DATE_NUM_RE = /(?<!\d)(\d{1,2})[/.](\d{1,2})(?:[/.](\d{2,4}))?(?!\d)/;
+// Dash form only when an explicit 4-digit year disambiguates it ("30-06-2026").
+const DATE_NUMDASH_RE = /(?<![\d-])(\d{1,2})-(\d{1,2})-(\d{4})(?!\d)/;
 
-// Split title from inline location markers "· @ - in at ở tại".
-const TITLE_LOCATION_SPLIT =
-  /^(.+?)\s*(?:\s[·@|]\s|\s[\-–—]\s|\s(?:at|in|tại|ở)\s|\s\(|\s\[)\s*(.+?)(?:[\)\]])?\s*$/i;
+// 12-hour am/pm ("6pm", "8:30 pm", "12am") — tried BEFORE 24h so "1pm" wins
+// over a parenthetical "(19:00 GMT)" on the same line.
+const TIME_AMPM_RE = /\b(\d{1,2})(?::(\d{2}))?\s*([ap])\.?\s?m\.?\b/i;
+// 24-hour ("21:00", "21h00").
+const TIME_24_EVENT_RE = /(?<!\d)(\d{1,2})\s*[:h]\s*(\d{2})\b/;
+// Timezone abbreviations + parenthetical clocks scrubbed from event titles.
+const TZ_RE = /\b(?:GMT|UTC|EST|EDT|CST|CDT|MST|MDT|PST|PDT|AEST|AEDT|BST|CET|CEST|ET|CT|MT|PT)\b/g;
+const PAREN_CLOCK_RE = /\(\s*\d{1,2}[:h]\d{2}\s*[A-Za-z ]*\)/g;
+// Venue split — STRONG separators only (en/em dash, @, |, ·, tại, ở). Plain
+// " - " and "vs" are intentionally excluded so two-team titles stay intact.
+const EVENT_VENUE_SPLIT = /^(.+?)\s*(?:\s[–—]\s|\s@\s|\s[|·]\s|\s(?:tại|ở)\s)\s*(.+?)$/i;
 
+interface EventDate { y: number; m: number; d: number; explicitYear: boolean; match: string; }
+interface EventTime { hh: number; mm: number; match: string; }
+
+/** First calendar date found anywhere in a line (ISO, month-name, numeric). */
+function extractEventDate(line: string): EventDate | null {
+  let mm: RegExpMatchArray | null;
+  if ((mm = line.match(DATE_ISO_RE))) {
+    const m = +mm[2], d = +mm[3];
+    if (m >= 1 && m <= 12 && d >= 1 && d <= 31)
+      return { y: +mm[1], m, d, explicitYear: true, match: mm[0] };
+  }
+  if ((mm = line.match(DATE_VN_RE))) {
+    const d = +mm[1], m = +mm[2];
+    if (m >= 1 && m <= 12 && d >= 1 && d <= 31)
+      return { y: mm[3] ? +mm[3] : 0, m, d, explicitYear: !!mm[3], match: mm[0] };
+  }
+  if ((mm = line.match(DATE_DMONTH_RE))) {
+    const d = +mm[1], m = MONTHS[mm[2].toLowerCase()];
+    if (m && d >= 1 && d <= 31)
+      return { y: mm[3] ? +mm[3] : 0, m, d, explicitYear: !!mm[3], match: mm[0] };
+  }
+  if ((mm = line.match(DATE_MONTHD_RE))) {
+    const m = MONTHS[mm[1].toLowerCase()], d = +mm[2];
+    if (m && d >= 1 && d <= 31)
+      return { y: mm[3] ? +mm[3] : 0, m, d, explicitYear: !!mm[3], match: mm[0] };
+  }
+  if ((mm = line.match(DATE_NUMDASH_RE))) {
+    const d = +mm[1], m = +mm[2];
+    if (m >= 1 && m <= 12 && d >= 1 && d <= 31)
+      return { y: +mm[3], m, d, explicitYear: true, match: mm[0] };
+  }
+  if ((mm = line.match(DATE_NUM_RE))) {
+    const d = +mm[1], m = +mm[2];
+    if (m >= 1 && m <= 12 && d >= 1 && d <= 31) {
+      const y = mm[3] ? (mm[3].length === 2 ? 2000 + +mm[3] : +mm[3]) : 0;
+      return { y, m, d, explicitYear: !!mm[3], match: mm[0] };
+    }
+  }
+  return null;
+}
+
+/**
+ * First time-of-day found anywhere in a line. We take the LEFT-MOST time so a
+ * range ("9:00 – 11:00pm") yields its start, and a kickoff before a
+ * parenthetical conversion ("1pm CST (19:00 GMT)") yields the local time. On a
+ * tie (same position, e.g. "8:30pm") the am/pm reading wins so the meridiem
+ * applies.
+ */
+function extractEventTime(line: string): EventTime | null {
+  const ap = line.match(TIME_AMPM_RE);
+  const t24 = line.match(TIME_24_EVENT_RE);
+
+  let apTime: EventTime | null = null;
+  if (ap) {
+    let hh = +ap[1];
+    const min = ap[2] ? +ap[2] : 0;
+    if (hh >= 1 && hh <= 12 && min < 60) {
+      const pm = ap[3].toLowerCase() === "p";
+      if (pm && hh !== 12) hh += 12;
+      if (!pm && hh === 12) hh = 0;
+      apTime = { hh, mm: min, match: ap[0] };
+    }
+  }
+  let t24Time: EventTime | null = null;
+  if (t24) {
+    const hh = +t24[1], min = +t24[2];
+    if (hh < 24 && min < 60) t24Time = { hh, mm: min, match: t24[0] };
+  }
+
+  if (apTime && t24Time) {
+    // left-most wins; tie → am/pm (it carries the meridiem)
+    return (ap!.index ?? 0) <= (t24!.index ?? 0) ? apTime : t24Time;
+  }
+  return apTime || t24Time;
+}
+
+/** Strip date/time/tz/markers from a line, then split a trailing venue. */
+function eventTitleAndVenue(
+  line: string,
+  dateStr: string | null,
+  timeStr: string
+): { title: string; location?: string } {
+  let s = line.replace(PAREN_CLOCK_RE, " ").replace(timeStr, " ");
+  if (dateStr) s = s.replace(dateStr, " ");
+  // scrub a surviving second clock (e.g. the GMT value), tz tokens, weekday
+  s = s.replace(TIME_AMPM_RE, " ").replace(TIME_24_EVENT_RE, " ").replace(TZ_RE, " ");
+  for (const [re] of DAY_PATTERNS) s = s.replace(re, " ");
+  s = s
+    .replace(/\b(?:ngày|lúc|vào|giờ|at|on|kickoff|ko)\b/gi, " ")
+    .replace(/^[\s•·*\-–—\d.):,\]]+/, " ")
+    .replace(/\s{2,}/g, " ")
+    .trim();
+
+  let title = s;
+  let location: string | undefined;
+  const split = title.match(EVENT_VENUE_SPLIT);
+  if (split) {
+    title = split[1].trim();
+    location = split[2].trim() || undefined;
+  }
+  title = title.replace(/^[\s,\-–—:·@()]+|[\s,\-–—:·@()]+$/g, "").trim();
+  return { title, location };
+}
+
+/**
+ * Parse a list of one-off events (sports fixtures, calendar invites, single
+ * meetings, deadline dumps). Handles two structures:
+ *   (A) self-contained — "30/06 21:00 Vietnam vs Thailand · Mỹ Đình"
+ *   (B) date-grouped   — a date header ("Saturday, June 13" / "ngày 13/6")
+ *       carried forward to the time-only lines beneath it.
+ */
 export function parseEventList(text: string): ParsedClass[] {
   if (!text || !text.trim()) return [];
   const out: ParsedClass[] = [];
   const now = new Date();
   const currentYear = now.getFullYear();
+  const monthAgo = new Date(now);
+  monthAgo.setMonth(monthAgo.getMonth() - 1);
   const lines = text.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
 
+  // Carries a date header forward to following time-only lines.
+  let ctx: { y: number; m: number; d: number } | null = null;
+
+  const resolveYear = (dh: EventDate) => {
+    let y = dh.explicitYear && dh.y ? dh.y : currentYear;
+    if (!dh.explicitYear) {
+      // No year given: if the date is >1 month in the past, it's next year's
+      // (e.g. importing a fixture list in December for a June tournament).
+      if (new Date(y, dh.m - 1, dh.d) < monthAgo) y += 1;
+    }
+    return y;
+  };
+
   for (const line of lines) {
-    let matched: { y: number; m: number; d: number; hh: number; mm: number; tail: string } | null = null;
+    const dateHit = extractEventDate(line);
+    const timeHit = extractEventTime(line);
 
-    // Try numeric DD/MM first
-    const m1 = line.match(EVENT_LINE_RES[0]);
-    if (m1) {
-      const d = parseInt(m1[1], 10);
-      const m = parseInt(m1[2], 10);
-      const yRaw = m1[3]
-        ? parseInt(m1[3].length === 2 ? "20" + m1[3] : m1[3], 10)
-        : currentYear;
-      const hh = parseInt(m1[4], 10);
-      const mm = parseInt(m1[5], 10);
-      if (d >= 1 && d <= 31 && m >= 1 && m <= 12 && hh < 24 && mm < 60) {
-        matched = { y: yRaw, m, d, hh, mm, tail: m1[6] };
-      }
+    // Date but no time → a header; remember it for the lines that follow.
+    if (dateHit && !timeHit) {
+      ctx = { y: resolveYear(dateHit), m: dateHit.m, d: dateHit.d };
+      continue;
     }
-    if (!matched) {
-      const m2 = line.match(EVENT_LINE_RES[1]);
-      if (m2) {
-        const y = parseInt(m2[1], 10);
-        const m = parseInt(m2[2], 10);
-        const d = parseInt(m2[3], 10);
-        const hh = parseInt(m2[4], 10);
-        const mm = parseInt(m2[5], 10);
-        if (m >= 1 && m <= 12 && d >= 1 && d <= 31 && hh < 24 && mm < 60) {
-          matched = { y, m, d, hh, mm, tail: m2[6] };
-        }
-      }
-    }
-    if (!matched) continue;
+    if (!timeHit) continue; // nothing actionable
 
-    let { y, m, d, hh, mm, tail } = matched;
-    // No-year ambiguity: if the resolved date is more than a month in the
-    // past relative to today, bump the year (likely "next year's WC fixture").
-    if (!line.match(/\b\d{4}\b/)) {
-      const candidate = new Date(y, m - 1, d);
-      const monthAgo = new Date(now);
-      monthAgo.setMonth(monthAgo.getMonth() - 1);
-      if (candidate < monthAgo) y += 1;
+    let y: number, m: number, d: number;
+    if (dateHit) {
+      y = resolveYear(dateHit);
+      m = dateHit.m;
+      d = dateHit.d;
+    } else if (ctx) {
+      ({ y, m, d } = ctx);
+    } else {
+      continue; // a time with no date anywhere — can't place it
     }
 
-    // Split tail into title + location
-    let title = tail.trim();
-    let location: string | undefined;
-    const split = title.match(TITLE_LOCATION_SPLIT);
-    if (split) {
-      title = split[1].trim();
-      location = split[2].trim() || undefined;
-    }
-    title = title.replace(/^[\s,\-–—:·@()]+|[\s,\-–—:·@()]+$/g, "");
+    const { title, location } = eventTitleAndVenue(line, dateHit?.match ?? null, timeHit.match);
     if (title.length < 2) continue;
 
     const date = new Date(y, m - 1, d);
@@ -802,7 +922,7 @@ export function parseEventList(text: string): ParsedClass[] {
       id: makeId(),
       subject: title,
       dayOfWeek: date.getDay(),
-      startTime: `${pad2(hh)}:${pad2(mm)}`,
+      startTime: `${pad2(timeHit.hh)}:${pad2(timeHit.mm)}`,
       startDate: `${y}-${pad2(m)}-${pad2(d)}`,
       location,
       oneOff: true,
@@ -813,24 +933,26 @@ export function parseEventList(text: string): ParsedClass[] {
 }
 
 /**
- * Heuristic: looks like an event-list (one-off events) if most non-empty
- * lines start with a date+time pattern AND there's no day-of-week header
- * structure (which would mark it as a timetable).
+ * Heuristic: looks like a list of one-off events if it carries at least one
+ * concrete calendar date AND at least one time, with most lines being date-
+ * or time-bearing. The concrete date is the key signal: a weekly timetable
+ * has weekday headers + times but NO specific calendar dates, so it returns
+ * false here and falls through to the timetable parser.
  */
 function looksLikeEventList(text: string): boolean {
   const lines = text.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
-  if (lines.length < 2) return false;
-  let hits = 0;
-  let dayHeaders = 0;
+  if (lines.length < 1) return false;
+  let dated = 0;
+  let timed = 0;
+  let useful = 0;
   for (const line of lines) {
-    if (EVENT_LINE_RES.some((re) => re.test(line))) hits++;
-    if (detectDay(line) !== null && !TIME_RANGE_RE.test(line) && !TIME_SINGLE_RE.test(line)) {
-      dayHeaders++;
-    }
+    const hasDate = extractEventDate(line) !== null;
+    const hasTime = extractEventTime(line) !== null;
+    if (hasDate) dated++;
+    if (hasTime) timed++;
+    if (hasDate || hasTime) useful++;
   }
-  // ≥50% of lines look like events AND no dominant day-headers (which would
-  // indicate a weekly timetable structure).
-  return hits / lines.length >= 0.5 && dayHeaders < hits;
+  return dated >= 1 && timed >= 1 && useful / lines.length >= 0.5;
 }
 
 /**
