@@ -2,6 +2,10 @@
 import type { Dict } from "./types";
 
 export const EN: Dict = {
+  "widget.today": "Today",
+  "widget.empty": "All clear today — nothing due!",
+  "widget.next": "Next up",
+  "widget.complete": "Mark done",
   // Nav
   "nav.dashboard": "Dashboard",
 

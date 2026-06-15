@@ -2,6 +2,10 @@
 import type { Dict } from "./types";
 
 export const VI: Dict = {
+  "widget.today": "Hôm nay",
+  "widget.empty": "Hôm nay rảnh — không có việc nào!",
+  "widget.next": "Kế tiếp",
+  "widget.complete": "Đánh dấu hoàn thành",
   // Nav
   "nav.dashboard": "Tổng quan",
   "nav.calendar": "Lịch",

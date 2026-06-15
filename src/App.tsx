@@ -13,6 +13,7 @@ import { ErrorBoundary } from "@/components/feedback/error-boundary";
 // Dashboard stays eager — it's the default route and the user's first
 // paint. Every other page is lazy so initial bundle stays small.
 import { Dashboard } from "@/pages/dashboard";
+import { WidgetView } from "@/components/widget/widget-view";
 
 // Wrap React.lazy() with a one-shot retry: after a deploy the SPA shell can
 // still reference a chunk hash that no longer exists, which throws a generic
@@ -117,7 +118,36 @@ function RoutedShell() {
   );
 }
 
+// The desktop app's floating widget window injects this global before the
+// page loads (see src-tauri/src/lib.rs). When present we mount a minimal
+// widget tree — no router, no full layout — on the SAME TasksProvider so it
+// stays live + writes through to the shared store.
+declare global {
+  interface Window {
+    __CLEARMIND_WIDGET__?: boolean;
+  }
+}
+const isWidgetWindow =
+  typeof window !== "undefined" && window.__CLEARMIND_WIDGET__ === true;
+
 function App() {
+  if (isWidgetWindow) {
+    return (
+      <ThemeProvider defaultTheme="system" storageKey="clearmind-theme">
+        <AccentProvider>
+          <I18nProvider>
+            <ErrorBoundary>
+              <ToastProvider>
+                <TasksProvider>
+                  <WidgetView />
+                </TasksProvider>
+              </ToastProvider>
+            </ErrorBoundary>
+          </I18nProvider>
+        </AccentProvider>
+      </ThemeProvider>
+    );
+  }
   return (
     <ThemeProvider defaultTheme="system" storageKey="clearmind-theme">
      <AccentProvider>
