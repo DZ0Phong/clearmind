@@ -39,3 +39,5 @@ cli/url-handler-launcher.vbs
 # Tauri / Rust build output (generated; Cargo.lock IS committed when present)
 src-tauri/target/
 src-tauri/gen/
+# Intermediate icon source — regenerated from cli/icon.js via `tauri icon`
+src-tauri/app-icon.png
