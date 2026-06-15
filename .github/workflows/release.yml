@@ -1,0 +1,45 @@
+name: release
+
+# Build the Windows desktop app and publish installers to a GitHub Release
+# whenever a version tag (e.g. v0.1.0) is pushed. Rust + the MSVC toolchain
+# live on the CI runner, so no local toolchain is needed to ship a build.
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch: {}
+
+jobs:
+  desktop:
+    permissions:
+      contents: write
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Rust build
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: "src-tauri -> target"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build & release Tauri app
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tagName: ${{ github.ref_name }}
+          releaseName: "Clearmind ${{ github.ref_name }}"
+          releaseBody: "Clearmind cho Windows. Tải file `.exe` (bản cài NSIS) hoặc `.msi` ở mục Assets bên dưới."
+          releaseDraft: false
+          prerelease: false

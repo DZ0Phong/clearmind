@@ -35,3 +35,7 @@ cli/url-handler-launcher.vbs
 
 # Live-view CDP driver + its screenshots — local dev tooling (see NOTES.md)
 .cm-*
+
+# Tauri / Rust build output (generated; Cargo.lock IS committed when present)
+src-tauri/target/
+src-tauri/gen/
