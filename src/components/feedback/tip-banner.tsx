@@ -153,10 +153,13 @@ export function TipBanner() {
     <div
       data-testid="tip-banner"
       className={cn(
-        // Pin to topbar's effective height. Reads --topbar-h (defined in
-        // index.css) so banner and topbar share one source of truth and
-        // can't drift on orientation change.
-        "sticky top-[calc(var(--topbar-h)+env(safe-area-inset-top,0px))] z-[15] shrink-0",
+        // DESKTOP: pin below the topbar (shares --topbar-h so they can't
+        // drift). MOBILE: NOT sticky — it scrolls away with content. The
+        // mobile scroll container is <main>, where a sticky tip banner sat at
+        // the same offset as the calendar's sticky toolbar and overlapped it
+        // ("the toolbar gets pushed up / hidden"). Letting the tip scroll off
+        // lets the calendar toolbar lock cleanly right below the topbar.
+        "relative md:sticky md:top-[calc(var(--topbar-h)+env(safe-area-inset-top,0px))] z-[15] shrink-0",
         // Accent-tinted frosted surface — differentiates from the topbar
         // (which uses `bg-background/60`) and follows the user's accent
         // pick because the tint comes from `--primary`. Strong backdrop
