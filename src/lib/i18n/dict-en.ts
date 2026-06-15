@@ -6,6 +6,46 @@ export const EN: Dict = {
   "widget.empty": "All clear today — nothing due!",
   "widget.next": "Next up",
   "widget.complete": "Mark done",
+  "widget.pin": "Pin on top",
+  "widget.unpin": "Unpin",
+  "widget.minimize": "Minimize (hide)",
+  "widget.openApp": "Open app",
+
+  // Desktop app — custom titlebar
+  "titlebar.minimize": "Minimize",
+  "titlebar.maximize": "Maximize",
+  "titlebar.restore": "Restore",
+  "titlebar.close": "Close",
+
+  // Desktop app — update prompt
+  "update.title": "Update available",
+  "update.body": "Clearmind {version} is ready to install.",
+  "update.notesLabel": "What's new",
+  "update.cta.update": "Update now",
+  "update.cta.later": "Later",
+  "update.cta.skip": "Skip this version",
+  "update.downloading": "Downloading update…",
+  "update.installing": "Installing — the app will restart…",
+  "update.error": "Update failed. Please try again later.",
+
+  // Desktop app settings card
+  "settings.desktop.title": "Desktop app",
+  "settings.desktop.desc": "App-only options for the native build: updates, start with Windows, and the today widget.",
+  "settings.desktop.version": "Version",
+  "settings.desktop.newAvailable": "v{version} available",
+  "settings.desktop.checkUpdate": "Check for updates",
+  "settings.desktop.updateNow": "Update now",
+  "settings.desktop.upToDate": "You're on the latest version.",
+  "settings.desktop.autostart.title": "Start app with Windows",
+  "settings.desktop.autostart.hint": "Clearmind opens with the tray icon every time your PC boots.",
+  "settings.desktop.widgetShow.title": "Today widget",
+  "settings.desktop.widgetShow.hint": "A floating sticky note with today's tasks on your screen.",
+  "settings.desktop.widgetShow.button": "Show widget",
+  "settings.desktop.widgetStartup.title": "Show widget on launch",
+  "settings.desktop.widgetStartup.hint": "Reveal the floating note each time Clearmind starts.",
+  "settings.desktop.widgetPin.title": "Pin widget on top",
+  "settings.desktop.widgetPin.hint": "Keep the note above all other windows.",
+  "settings.desktop.hotkey": "Tip: press Ctrl + Alt + C to toggle the widget from anywhere.",
   // Nav
   "nav.dashboard": "Dashboard",
 

@@ -18,12 +18,25 @@ const HOST_URL: &str = "http://localhost:20129/";
 /// false — the widget is a normal movable window by default, not floating.
 static WIDGET_PINNED: AtomicBool = AtomicBool::new(false);
 
-/// Fast probe for a running Clearmind host (400ms timeout keeps launch snappy).
+/// Probe for a running Clearmind CLI host. Retries briefly because the app and
+/// the CLI tray often launch together at boot — without the retry the app can
+/// lose the race, fall back to the bundled SPA, and then miss cross-client
+/// sync (theme / language / tasks) for the entire session. ~1.5s worst case,
+/// and only when the host is genuinely absent (first probe wins otherwise).
 fn host_is_running() -> bool {
-    let Ok(mut addrs) = "127.0.0.1:20129".to_socket_addrs() else {
-        return false;
-    };
-    addrs.any(|addr| TcpStream::connect_timeout(&addr, Duration::from_millis(400)).is_ok())
+    for attempt in 0..6 {
+        if let Ok(mut addrs) = "127.0.0.1:20129".to_socket_addrs() {
+            if addrs
+                .any(|addr| TcpStream::connect_timeout(&addr, Duration::from_millis(250)).is_ok())
+            {
+                return true;
+            }
+        }
+        if attempt < 5 {
+            std::thread::sleep(Duration::from_millis(250));
+        }
+    }
+    false
 }
 
 /// Sync mode when the host is up; standalone bundled SPA otherwise.
@@ -65,7 +78,8 @@ fn open_dashboard() {
     let _ = std::process::Command::new("xdg-open").arg(url).spawn();
 }
 
-/// Pin / unpin the widget on top (tray menu — the single place to toggle it).
+/// Pin / unpin the widget on top (tray menu — mirrors the widget's own pin
+/// button; either may be used).
 fn toggle_widget_pin(app: &AppHandle) {
     let pinned = !WIDGET_PINNED.load(Ordering::Relaxed);
     WIDGET_PINNED.store(pinned, Ordering::Relaxed);
@@ -76,7 +90,8 @@ fn toggle_widget_pin(app: &AppHandle) {
     }
 }
 
-/// Toggle "start with Windows" for the desktop app (tray menu).
+/// Toggle "start with Windows" for the desktop app (tray menu — mirrors the
+/// Settings → Desktop app switch).
 #[cfg(desktop)]
 fn toggle_autostart(app: &AppHandle) {
     use tauri_plugin_autostart::ManagerExt;
@@ -89,28 +104,6 @@ fn toggle_autostart(app: &AppHandle) {
 }
 #[cfg(not(desktop))]
 fn toggle_autostart(_app: &AppHandle) {}
-
-/// Silent auto-update: ask the configured endpoint (GitHub Releases'
-/// `latest.json`) whether a newer *signed* build exists; if so, download +
-/// install it and relaunch into the new version. Best-effort — every error
-/// (offline, no update, signature mismatch) is swallowed so launch is never
-/// blocked or broken by the check.
-#[cfg(desktop)]
-async fn try_update(app: AppHandle) {
-    use tauri_plugin_updater::UpdaterExt;
-    let Ok(updater) = app.updater() else {
-        return;
-    };
-    if let Ok(Some(update)) = updater.check().await {
-        if update
-            .download_and_install(|_chunk, _total| {}, || {})
-            .await
-            .is_ok()
-        {
-            app.restart();
-        }
-    }
-}
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -134,6 +127,8 @@ pub fn run() {
         )
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .plugin(tauri_plugin_updater::Builder::new().build())
+        // `process` powers the SPA-driven "relaunch after update" step.
+        .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_autostart::init(
             tauri_plugin_autostart::MacosLauncher::LaunchAgent,
             None,
@@ -147,38 +142,38 @@ pub fn run() {
                 )?;
             }
 
-            // Check GitHub Releases for a newer signed build on launch and, if
-            // one exists, download + install it then relaunch into it. Runs off
-            // the main thread so it never blocks startup; no-ops on the common
-            // case (already latest) and on any network / updater error.
-            #[cfg(desktop)]
-            {
-                let handle = app.handle().clone();
-                tauri::async_runtime::spawn(async move {
-                    try_update(handle).await;
-                });
-            }
+            // Auto-update is now USER-DRIVEN from the SPA: a launch-time prompt
+            // (Update / Later / Skip) plus a manual checker in Settings →
+            // Desktop app, both via the updater plugin over IPC. We no longer
+            // silently auto-install on boot — the user asked to be asked first.
 
             let host = host_is_running();
 
-            // Primary window — the full app.
+            // Primary window — the full app. Frameless: the SPA paints its own
+            // titlebar (TitleBar.tsx) themed to match the app, and wires
+            // minimize / maximize / close / drag through the window API.
             WebviewWindowBuilder::new(app, "main", window_url(host))
                 .title("Clearmind")
                 .inner_size(1180.0, 800.0)
                 .min_inner_size(380.0, 520.0)
+                .decorations(false)
                 .build()?;
 
-            // "Today" widget — a normal movable window (title bar so it can be
-            // dragged, minimized and closed), shown in the taskbar, NOT forced
-            // on top (the user pins it on demand from the tray). The injected
-            // global tells the SPA to mount WidgetView (App.tsx).
+            // "Today" widget — a sticky-note style window: frameless (the SPA
+            // draws its own 3 controls: pin / minimize / open-app), NOT in the
+            // taskbar and NOT Alt-Tab-able (skip_taskbar), and NOT forced on
+            // top (the user pins it on demand). Starts hidden; the widget SPA
+            // shows itself on mount iff the user's "show on startup" pref is on
+            // (default on). The injected global tells the SPA to mount
+            // WidgetView (App.tsx).
             let widget = WebviewWindowBuilder::new(app, "widget", window_url(host))
                 .title("Clearmind — Hôm nay")
-                .inner_size(330.0, 460.0)
-                .min_inner_size(260.0, 300.0)
-                .decorations(true)
+                .inner_size(320.0, 460.0)
+                .min_inner_size(240.0, 300.0)
+                .decorations(false)
                 .always_on_top(false)
-                .skip_taskbar(false)
+                .skip_taskbar(true)
+                .visible(false)
                 .resizable(true)
                 .initialization_script("window.__CLEARMIND_WIDGET__=true;")
                 .build()?;
@@ -188,7 +183,7 @@ pub fn run() {
                 let size = monitor.size();
                 let scale = monitor.scale_factor();
                 let margin = (24.0 * scale) as i32;
-                let win_w = (330.0 * scale) as i32;
+                let win_w = (320.0 * scale) as i32;
                 let x = size.width as i32 - win_w - margin;
                 let y = margin + (40.0 * scale) as i32;
                 let _ = widget.set_position(tauri::PhysicalPosition::new(x.max(0), y.max(0)));
@@ -270,7 +265,7 @@ pub fn run() {
         })
         // Closing the main window hides it to the tray instead of quitting, so
         // the background (widget + tray + hotkey) keeps running. Quit from the
-        // tray menu. The frameless widget has no close button, so it's exempt.
+        // tray menu. The frameless widget likewise hides instead of closing.
         .on_window_event(|window, event| {
             if let WindowEvent::CloseRequested { api, .. } = event {
                 // Both windows hide-to-tray instead of quitting; the app stays

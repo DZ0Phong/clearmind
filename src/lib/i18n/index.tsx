@@ -111,6 +111,13 @@ export type DowKey = (typeof DOW_KEYS_SUN_FIRST)[number];
 export function I18nProvider({ children }: { children: React.ReactNode }) {
   const [lang, setLangState] = useState<Lang>(() => {
     try {
+      // CLI mode: the server-injected shared settings win (synced across the
+      // desktop app, browser, mobile) — same model as theme/accent. Fall back
+      // to localStorage, then VI.
+      if (isCliMode()) {
+        const l = inlineSettings()?.lang;
+        if (l === "en" || l === "vi") return l;
+      }
       const saved = localStorage.getItem(LANG_STORAGE_KEY);
       return saved === "en" ? "en" : "vi";
     } catch {
@@ -194,6 +201,10 @@ export function I18nProvider({ children }: { children: React.ReactNode }) {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ lang }),
     }).catch(() => {});
+    // Also push through the shared settings channel so language syncs across
+    // clients with the same focus-reconcile reliability as theme/accent (the
+    // /api/locale path only fans out to the tray + native notifications).
+    if (isCliMode()) cliPutSettings({ lang }).catch(() => {});
   }, [lang]);
 
   // Lazy-load the English string table the first time EN is selected. VI
@@ -294,6 +305,10 @@ export function I18nProvider({ children }: { children: React.ReactNode }) {
       if (typeof tz === "string" && tz) {
         setTimeZoneManualState(canonicalTimeZone(tz));
       }
+      // Language rides the shared settings channel too (see the [lang]
+      // effect). setLangState bails when unchanged, so echoes are no-ops.
+      const l = s.lang;
+      if (l === "en" || l === "vi") setLangState(l);
     });
   }, []);
 

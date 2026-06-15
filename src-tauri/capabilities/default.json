@@ -1,11 +1,38 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "enables the default permissions",
-  "windows": [
-    "main"
-  ],
+  "description": "Core + window controls, autostart, updater and process for BOTH the bundled SPA (tauri:// local) AND the remote CLI-host URL the windows normally load from (http://localhost:20129). The app falls back to the bundled SPA when the host is down, so the capability must cover both contexts.",
+  "local": true,
+  "windows": ["main", "widget"],
+  "remote": {
+    "urls": [
+      "http://localhost:20129",
+      "http://localhost:20129/*",
+      "http://127.0.0.1:20129",
+      "http://127.0.0.1:20129/*"
+    ]
+  },
   "permissions": [
-    "core:default"
+    "core:default",
+    "core:app:default",
+    "core:event:default",
+    "core:window:allow-minimize",
+    "core:window:allow-unminimize",
+    "core:window:allow-maximize",
+    "core:window:allow-unmaximize",
+    "core:window:allow-toggle-maximize",
+    "core:window:allow-is-maximized",
+    "core:window:allow-is-visible",
+    "core:window:allow-close",
+    "core:window:allow-hide",
+    "core:window:allow-show",
+    "core:window:allow-set-focus",
+    "core:window:allow-set-always-on-top",
+    "core:window:allow-start-dragging",
+    "autostart:allow-enable",
+    "autostart:allow-disable",
+    "autostart:allow-is-enabled",
+    "updater:default",
+    "process:default"
   ]
 }

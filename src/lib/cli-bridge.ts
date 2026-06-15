@@ -183,10 +183,45 @@ export async function cliPutSettings(partial: Record<string, unknown>): Promise<
   });
 }
 
+/** GET the current merged settings. Used to RECONCILE after a tab regains
+ *  focus or the SSE stream reconnects, so a dropped `settings-changed` event
+ *  can never leave two clients out of step (root cause of the "I changed the
+ *  theme in the app but the browser didn't update" report). */
+export async function cliGetSettings(): Promise<Record<string, unknown> | null> {
+  if (!isCliMode()) return null;
+  try {
+    const j = await apiJson<{ settings?: Record<string, unknown> }>("/api/settings");
+    return j && typeof j.settings === "object" && j.settings ? j.settings : null;
+  } catch {
+    return null;
+  }
+}
+
+/** GET the current shared UI language. Same reconcile role as cliGetSettings. */
+export async function cliGetLocale(): Promise<"vi" | "en" | null> {
+  if (!isCliMode()) return null;
+  try {
+    const j = await apiJson<{ lang?: string }>("/api/locale");
+    return j.lang === "en" ? "en" : j.lang === "vi" ? "vi" : null;
+  } catch {
+    return null;
+  }
+}
+
 // One shared EventSource for `settings-changed`, fanned out to every
-// subscribing provider (theme, accent, timezone) so we don't open three.
+// subscribing provider (theme, accent, timezone, language) so we don't open
+// three. Plus focus/visibility/reconnect RECONCILIATION so a missed SSE event
+// (tab was asleep/backgrounded) self-heals the moment the client wakes up.
 let settingsES: EventSource | null = null;
+let reconcileWired = false;
 const settingsHandlers = new Set<(s: Record<string, unknown>) => void>();
+
+/** Re-pull settings from the server and fan them out to every subscriber. */
+async function reconcileSettings(): Promise<void> {
+  const s = await cliGetSettings();
+  if (s) for (const h of settingsHandlers) h(s);
+}
+
 export function subscribeSettings(
   fn: (s: Record<string, unknown>) => void
 ): () => void {
@@ -203,9 +238,25 @@ export function subscribeSettings(
           /* ignore malformed payload */
         }
       });
+      // The browser fires `open` on every (re)connect — re-pull current
+      // settings then, so a client that was offline/asleep when an update
+      // was broadcast still catches up on reconnect.
+      settingsES.addEventListener("open", () => void reconcileSettings());
     } catch {
       settingsES = null;
     }
+  }
+  // Reconcile when the window regains focus / becomes visible / comes back
+  // online. This is the key reliability fix: SSE delivers the live case, this
+  // covers the "tab was in the background when the other client changed it".
+  if (!reconcileWired) {
+    reconcileWired = true;
+    const wake = () => void reconcileSettings();
+    window.addEventListener("focus", wake);
+    window.addEventListener("online", wake);
+    document.addEventListener("visibilitychange", () => {
+      if (document.visibilityState === "visible") wake();
+    });
   }
   return () => {
     settingsHandlers.delete(fn);

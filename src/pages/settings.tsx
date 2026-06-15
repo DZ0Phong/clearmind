@@ -35,6 +35,10 @@ import {
   HelpCircle,
   Sparkles,
   CalendarPlus,
+  Monitor,
+  RefreshCw,
+  AppWindow,
+  Pin,
 } from "lucide-react";
 import { readErrorLog, clearErrorLog, type ErrorEntry } from "@/lib/error-log";
 import { useTasks } from "@/hooks/use-tasks";
@@ -57,6 +61,21 @@ import {
   type HistorySlot,
   type ScheduledNotification,
 } from "@/lib/cli-bridge";
+import {
+  isTauri,
+  appVersion,
+  checkForUpdate,
+  downloadAndInstallUpdate,
+  getAppAutostart,
+  setAppAutostart,
+  setWidgetVisible,
+  setWidgetAlwaysOnTop,
+  getWidgetPref,
+  setWidgetPref,
+  WIDGET_PINNED_KEY,
+  WIDGET_SHOW_ON_STARTUP_KEY,
+  type UpdateInfo,
+} from "@/lib/desktop-bridge";
 
 type Tab = "appearance" | "notifications" | "data" | "system" | "advanced" | "help";
 
@@ -521,6 +540,8 @@ function SystemTab({ cli }: { cli: boolean }) {
   const t = useT();
   return (
     <>
+      {isTauri() && <DesktopAppCard />}
+
       {cli && <CliStatusCard />}
 
       <Card className="md:col-span-2 border-primary/10 shadow-sm bg-card">
@@ -562,6 +583,196 @@ function AdvancedTab() {
       <TagsCard />
       <ErrorLogCard />
     </>
+  );
+}
+
+/**
+ * Desktop-app-only controls (System tab, shown when running inside Tauri):
+ *  • current version + manual "check for updates" → "update now" with a
+ *    progress bar (the launch-time prompt lives in UpdatePrompt);
+ *  • "start the app with Windows" (the app's OWN autostart, distinct from the
+ *    CLI host's autostart in CliStatusCard);
+ *  • the sticky-note widget: show it now, show-on-startup, pin-on-top.
+ * All wired through the core/plugin bridge (src/lib/desktop-bridge.ts).
+ */
+function DesktopAppCard() {
+  const t = useT();
+  const { toast } = useToast();
+  const [version, setVersion] = useState("");
+  const [autostart, setAutostart] = useState(false);
+  const [showOnStartup, setShowOnStartup] = useState(() =>
+    getWidgetPref(WIDGET_SHOW_ON_STARTUP_KEY, true)
+  );
+  const [pinned, setPinned] = useState(() =>
+    getWidgetPref(WIDGET_PINNED_KEY, false)
+  );
+  const [checking, setChecking] = useState(false);
+  const [update, setUpdate] = useState<UpdateInfo | null>(null);
+  const [installing, setInstalling] = useState(false);
+  const [progress, setProgress] = useState(0);
+
+  useEffect(() => {
+    appVersion().then(setVersion);
+    getAppAutostart().then(setAutostart);
+  }, []);
+
+  const onCheck = async () => {
+    setChecking(true);
+    const r = await checkForUpdate();
+    setUpdate(r);
+    setChecking(false);
+    if (!r.available) toast({ title: t("settings.desktop.upToDate") });
+  };
+
+  const onInstall = async () => {
+    setInstalling(true);
+    setProgress(0);
+    const ok = await downloadAndInstallUpdate(setProgress);
+    if (!ok) {
+      setInstalling(false);
+      toast({ title: t("update.error"), variant: "destructive" });
+    }
+  };
+
+  const onToggleAutostart = async (next: boolean) => {
+    const result = await setAppAutostart(next);
+    setAutostart(result);
+    toast({
+      title: result
+        ? t("settings.cli.autostart.toastOnTitle")
+        : t("settings.cli.autostart.toastOffTitle"),
+      variant: "success",
+    });
+  };
+
+  const onToggleShowStartup = (next: boolean) => {
+    setShowOnStartup(next);
+    setWidgetPref(WIDGET_SHOW_ON_STARTUP_KEY, next);
+  };
+
+  const onTogglePin = (next: boolean) => {
+    setPinned(next);
+    setWidgetPref(WIDGET_PINNED_KEY, next);
+    void setWidgetAlwaysOnTop(next);
+  };
+
+  return (
+    <Card className="md:col-span-2 border-primary/20 shadow-sm bg-card">
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2">
+          <Monitor className="h-5 w-5 text-primary" />
+          {t("settings.desktop.title")}
+        </CardTitle>
+        <CardDescription>{t("settings.desktop.desc")}</CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        {/* Version + updater */}
+        <div className="p-4 rounded-xl border bg-background/50 space-y-3">
+          <div className="flex items-center justify-between gap-3">
+            <div className="min-w-0">
+              <h3 className="font-medium text-sm">
+                {t("settings.desktop.version")}
+              </h3>
+              <p className="text-[12px] text-muted-foreground mt-0.5">
+                v{version || "…"}
+                {update?.available && update.version
+                  ? " · " +
+                    t("settings.desktop.newAvailable", {
+                      version: update.version,
+                    })
+                  : ""}
+              </p>
+            </div>
+            {update?.available ? (
+              <Button
+                size="sm"
+                onClick={onInstall}
+                disabled={installing}
+                className="gap-2 shrink-0"
+              >
+                <Download className="h-4 w-4" />
+                {installing ? `${progress}%` : t("settings.desktop.updateNow")}
+              </Button>
+            ) : (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={onCheck}
+                disabled={checking}
+                className="gap-2 shrink-0"
+              >
+                <RefreshCw className={cn("h-4 w-4", checking && "animate-spin")} />
+                {t("settings.desktop.checkUpdate")}
+              </Button>
+            )}
+          </div>
+          {installing && (
+            <div className="h-2 rounded-full bg-muted overflow-hidden">
+              <div
+                className="h-full bg-primary transition-all duration-200"
+                style={{ width: `${progress}%` }}
+              />
+            </div>
+          )}
+        </div>
+
+        <RowItem
+          title={t("settings.desktop.autostart.title")}
+          hint={t("settings.desktop.autostart.hint")}
+          icon={Power}
+        >
+          <Switch
+            checked={autostart}
+            onCheckedChange={onToggleAutostart}
+            aria-label={t("settings.desktop.autostart.title")}
+          />
+        </RowItem>
+
+        <RowItem
+          title={t("settings.desktop.widgetShow.title")}
+          hint={t("settings.desktop.widgetShow.hint")}
+          icon={AppWindow}
+        >
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => void setWidgetVisible(true)}
+            className="gap-2"
+          >
+            <AppWindow className="h-4 w-4" />
+            {t("settings.desktop.widgetShow.button")}
+          </Button>
+        </RowItem>
+
+        <RowItem
+          title={t("settings.desktop.widgetStartup.title")}
+          hint={t("settings.desktop.widgetStartup.hint")}
+          icon={Power}
+        >
+          <Switch
+            checked={showOnStartup}
+            onCheckedChange={onToggleShowStartup}
+            aria-label={t("settings.desktop.widgetStartup.title")}
+          />
+        </RowItem>
+
+        <RowItem
+          title={t("settings.desktop.widgetPin.title")}
+          hint={t("settings.desktop.widgetPin.hint")}
+          icon={Pin}
+        >
+          <Switch
+            checked={pinned}
+            onCheckedChange={onTogglePin}
+            aria-label={t("settings.desktop.widgetPin.title")}
+          />
+        </RowItem>
+
+        <p className="text-[11px] text-muted-foreground px-1 leading-relaxed">
+          {t("settings.desktop.hotkey")}
+        </p>
+      </CardContent>
+    </Card>
   );
 }
 

@@ -3,6 +3,8 @@ import { Link, useLocation } from "react-router-dom";
 import { AlertCircle, Clock, HelpCircle, Plus, Search, Settings, Power, PowerOff } from "lucide-react";
 import { Sidebar } from "./sidebar";
 import { MobileTabBar } from "./mobile-tab-bar";
+import { TitleBar } from "./title-bar";
+import { UpdatePrompt } from "@/components/feedback/update-prompt";
 import { Logo } from "@/components/logo";
 import { Button } from "@/components/ui/button";
 import { ModeToggle } from "@/components/settings/mode-toggle";
@@ -36,14 +38,18 @@ export function MainLayout({ children }: { children: ReactNode }) {
   // long-list cut-off behind the tab bar.
   const calRoute = useLocation().pathname.startsWith("/calendar");
   return (
-    <div
-      className="flex h-dvh overflow-hidden bg-background relative selection:bg-primary/30"
-      style={{
-        paddingLeft: "env(safe-area-inset-left, 0px)",
-        paddingRight: "env(safe-area-inset-right, 0px)",
-      }}
-    >
-      <Sidebar />
+    <div className="flex flex-col h-dvh overflow-hidden bg-background">
+      {/* Desktop app only: custom themed titlebar above everything (the
+          window is frameless). Renders null on web / mobile / CLI. */}
+      <TitleBar />
+      <div
+        className="flex flex-1 min-h-0 overflow-hidden relative selection:bg-primary/30"
+        style={{
+          paddingLeft: "env(safe-area-inset-left, 0px)",
+          paddingRight: "env(safe-area-inset-right, 0px)",
+        }}
+      >
+        <Sidebar />
       {/* No `z-10` here — `position:relative` + `z-10` formed a stacking
           context that capped every descendant popover (DateTimePicker,
           TimezonePicker, VoiceMic engine dropdown, Focus task picker,
@@ -84,7 +90,10 @@ export function MainLayout({ children }: { children: ReactNode }) {
           </div>
         </div>
       </main>
-      <MobileTabBar />
+        <MobileTabBar />
+      </div>
+      {/* Desktop app only: launch-time update prompt (Update / Later / Skip). */}
+      <UpdatePrompt />
     </div>
   );
 }
