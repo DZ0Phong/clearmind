@@ -49,6 +49,28 @@ fn toggle_widget(app: &AppHandle) {
     }
 }
 
+/// Silent auto-update: ask the configured endpoint (GitHub Releases'
+/// `latest.json`) whether a newer *signed* build exists; if so, download +
+/// install it and relaunch into the new version. Best-effort — every error
+/// (offline, no update, signature mismatch) is swallowed so launch is never
+/// blocked or broken by the check.
+#[cfg(desktop)]
+async fn try_update(app: AppHandle) {
+    use tauri_plugin_updater::UpdaterExt;
+    let Ok(updater) = app.updater() else {
+        return;
+    };
+    if let Ok(Some(update)) = updater.check().await {
+        if update
+            .download_and_install(|_chunk, _total| {}, || {})
+            .await
+            .is_ok()
+        {
+            app.restart();
+        }
+    }
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -60,6 +82,7 @@ pub fn run() {
         // Remember each window's size + position across restarts.
         .plugin(tauri_plugin_window_state::Builder::default().build())
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .setup(|app| {
             if cfg!(debug_assertions) {
                 app.handle().plugin(
@@ -67,6 +90,18 @@ pub fn run() {
                         .level(log::LevelFilter::Info)
                         .build(),
                 )?;
+            }
+
+            // Check GitHub Releases for a newer signed build on launch and, if
+            // one exists, download + install it then relaunch into it. Runs off
+            // the main thread so it never blocks startup; no-ops on the common
+            // case (already latest) and on any network / updater error.
+            #[cfg(desktop)]
+            {
+                let handle = app.handle().clone();
+                tauri::async_runtime::spawn(async move {
+                    try_update(handle).await;
+                });
             }
 
             let host = host_is_running();

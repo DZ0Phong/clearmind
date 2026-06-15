@@ -41,3 +41,5 @@ src-tauri/target/
 src-tauri/gen/
 # Intermediate icon source — regenerated from cli/icon.js via `tauri icon`
 src-tauri/app-icon.png
+# Updater signing PRIVATE key — NEVER commit; lives only as a GitHub Actions secret
+src-tauri/.updater-key*
