@@ -962,7 +962,7 @@ export function CalendarView({ initialDate }: CalendarViewProps = {}) {
             chrome visibility for the user, but they get to it again
             with one scroll-up — a worthwhile trade for not having to
             offset the sticky-top by the topbar+tipbanner height. */}
-        <div className="cm-cal-chrome relative md:sticky md:top-0 z-20 shrink-0 bg-card/95 backdrop-blur-sm border-b border-border/60 px-3 md:px-4 py-2.5 flex flex-col gap-2.5">
+        <div className="cm-cal-chrome z-20 shrink-0 bg-card/95 backdrop-blur-sm border-b border-border/60 px-3 md:px-4 py-2.5 flex flex-col gap-2.5">
           <CalendarToolbar
             view={view}
             onViewChange={persistView}
@@ -1140,7 +1140,7 @@ export function CalendarView({ initialDate }: CalendarViewProps = {}) {
               // the toolbar's mobile filter.
               height={isMobile ? "auto" : "100%"}
               expandRows
-              stickyHeaderDates
+              stickyHeaderDates={!isMobile}
               nowIndicator
               slotMinTime={slotMinTime}
               slotMaxTime={slotMaxTime}

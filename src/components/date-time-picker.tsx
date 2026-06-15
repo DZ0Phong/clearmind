@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import {
   Calendar as CalendarIcon,
   ChevronLeft,
@@ -171,8 +172,11 @@ export function DateTimePicker({
   const [selected, setSelected] = useState<Date | null>(initial.date);
   const [hour, setHour] = useState(initial.h);
   const [minute, setMinute] = useState(initial.m);
-  const [alignRight, setAlignRight] = useState(false);
-  const [openUpward, setOpenUpward] = useState(false);
+  const [coords, setCoords] = useState<{
+    left: number;
+    top: number;
+    maxHeight: number;
+  } | null>(null);
   const popRef = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
 
@@ -204,23 +208,51 @@ export function DateTimePicker({
     };
   }, [open]);
 
-  // Auto-flip when popover would overflow viewport edges
+  // Position the popover as a viewport-FIXED element (rendered through a
+  // portal to <body>) so it can never be clipped by an ancestor's overflow —
+  // the task dialog's scrollable body used to cut off the top of the panel
+  // when it opened upward. Pick whichever side of the trigger has more room
+  // and cap maxHeight to it, so the panel scrolls internally rather than
+  // overflowing the screen. Recomputes on scroll/resize to track the trigger.
   useEffect(() => {
-    if (!open || !triggerRef.current) return;
-    const POPOVER_W = 300;
-    const POPOVER_H = dateOnly ? 320 : 420;
-    const MARGIN = 12;
-    // Subtract the mobile tab-bar height so the picker flips upward when
-    // opening down would underlap the 56px bottom nav. --mobile-tabbar-h
-    // resolves to 0 at md+ so desktop behaviour is unchanged.
-    const rootStyle = getComputedStyle(document.documentElement);
-    const tabBarRem = parseFloat(rootStyle.getPropertyValue("--mobile-tabbar-h") || "0");
-    const fontSize = parseFloat(rootStyle.fontSize) || 16;
-    const tabBarPx = Number.isFinite(tabBarRem) ? tabBarRem * fontSize : 0;
-    const effectiveBottom = window.innerHeight - tabBarPx;
-    const rect = triggerRef.current.getBoundingClientRect();
-    setAlignRight(rect.left + POPOVER_W > window.innerWidth - MARGIN);
-    setOpenUpward(rect.bottom + POPOVER_H > effectiveBottom - MARGIN);
+    if (!open) return;
+    const compute = () => {
+      const trigger = triggerRef.current;
+      if (!trigger) return;
+      const W = 300;
+      const MARGIN = 8;
+      const PREF = dateOnly ? 340 : 440; // ideal full height
+      const vw = window.innerWidth;
+      // --mobile-tabbar-h reserves the bottom nav on mobile (0 at md+).
+      const rootStyle = getComputedStyle(document.documentElement);
+      const tabRem = parseFloat(
+        rootStyle.getPropertyValue("--mobile-tabbar-h") || "0"
+      );
+      const fontSize = parseFloat(rootStyle.fontSize) || 16;
+      const tabPx = Number.isFinite(tabRem) ? tabRem * fontSize : 0;
+      const bottomLimit = window.innerHeight - tabPx - MARGIN;
+      const rect = trigger.getBoundingClientRect();
+      const left = Math.min(Math.max(MARGIN, rect.left), vw - W - MARGIN);
+      const below = bottomLimit - rect.bottom - 6;
+      const above = rect.top - MARGIN - 6;
+      let top: number;
+      let maxHeight: number;
+      if (below >= PREF || below >= above) {
+        top = rect.bottom + 6;
+        maxHeight = Math.min(PREF, below);
+      } else {
+        maxHeight = Math.min(PREF, above);
+        top = rect.top - 6 - maxHeight;
+      }
+      setCoords({ left, top, maxHeight: Math.max(220, maxHeight) });
+    };
+    compute();
+    window.addEventListener("resize", compute);
+    window.addEventListener("scroll", compute, true);
+    return () => {
+      window.removeEventListener("resize", compute);
+      window.removeEventListener("scroll", compute, true);
+    };
   }, [open, dateOnly]);
 
   function commit(d: Date | null, h: number, m: number) {
@@ -342,15 +374,19 @@ export function DateTimePicker({
         )}
       </button>
 
-      {open && (
-        <div
-          ref={popRef}
-          className={cn(
-            "absolute z-50 w-[300px] rounded-xl border bg-popover shadow-2xl p-3 animate-in fade-in-0 zoom-in-95",
-            alignRight ? "right-0" : "left-0",
-            openUpward ? "bottom-full mb-1.5" : "top-full mt-1.5"
-          )}
-        >
+      {open && coords &&
+        createPortal(
+          <div
+            ref={popRef}
+            style={{
+              position: "fixed",
+              left: coords.left,
+              top: coords.top,
+              width: 300,
+              maxHeight: coords.maxHeight,
+            }}
+            className="z-[60] overflow-y-auto rounded-xl border bg-popover shadow-2xl p-3 animate-in fade-in-0 zoom-in-95"
+          >
           {/* Presets */}
           <div className="flex flex-wrap gap-1 mb-3">
             {presets.map(({ label, build }) => (
@@ -531,8 +567,9 @@ export function DateTimePicker({
               {t("common.done")}
             </Button>
           </div>
-        </div>
-      )}
+        </div>,
+          document.body
+        )}
     </div>
   );
 }

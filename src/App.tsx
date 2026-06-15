@@ -53,11 +53,10 @@ function lazyWithRetry<T extends ComponentType<unknown>>(
 }
 
 // Code-split every page below the dashboard. FullCalendar (Calendar) +
-// import wizard (linkedom + parsers) + Whisper/transformers (referenced
-// from voice-mic in TaskDialog) were already the heaviest; pages like
-// Settings (1k+ lines) + Review (heatmap synthesis) + Focus (audio synth)
-// also benefit. Result: main bundle ~30-40% smaller, dashboard paint
-// faster on first load.
+// import wizard (linkedom + parsers) are the heaviest; pages like Settings
+// (1k+ lines) + Review (heatmap synthesis) + Focus (audio synth) also
+// benefit. Result: main bundle ~30-40% smaller, dashboard paint faster on
+// first load.
 const CalendarPage = lazyWithRetry(() =>
   import("@/pages/calendar").then((m) => ({ default: m.CalendarPage }))
 );

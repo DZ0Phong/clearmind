@@ -24,7 +24,7 @@ export function CalendarPage() {
   // vertical space above the grid. Dropped — the card fills the viewport.
   return (
     <div className="flex flex-col pb-6 md:h-full md:pb-0 md:min-h-0">
-      <div className="bg-card rounded-2xl border shadow-sm flex flex-col overflow-hidden md:flex-1 md:min-h-0">
+      <div className="bg-card rounded-2xl border shadow-sm flex flex-col md:overflow-hidden md:flex-1 md:min-h-0">
         <CalendarView initialDate={initialDate} />
       </div>
     </div>

@@ -937,6 +937,23 @@ input[type="number"] {
   .cm-mobile-content-pad { padding-bottom: 0; }
 }
 
+/* Calendar toolbar (view tabs + date nav) stays pinned while the calendar
+   scrolls. On MOBILE the scroll container is <main> with the global topbar
+   sticky above it, so we offset by the topbar height (3.5rem + safe-area);
+   the calendar card must drop `overflow-hidden` on mobile (see calendar.tsx)
+   or sticky has no scroll context. On DESKTOP the card has its own scroller
+   so it pins at 0. Previously `relative` on mobile let the toolbar scroll
+   away entirely ("the header doesn't lock"). */
+.cm-cal-chrome {
+  position: sticky;
+  top: calc(3.5rem + env(safe-area-inset-top, 0px));
+}
+@media (min-width: 768px) {
+  .cm-cal-chrome {
+    top: 0;
+  }
+}
+
 /* Mobile dialog → bottom sheet swap.
    Default DialogContent is centered on desktop, but on phones
    centered modals fight the soft keyboard + waste vertical

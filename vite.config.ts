@@ -26,7 +26,6 @@ export default defineConfig({
           if (id.includes('react-router')) return 'vendor-router'
           if (id.includes('radix-ui')) return 'vendor-radix'
           if (id.includes('lucide')) return 'vendor-icons'
-          if (id.includes('@huggingface')) return 'vendor-whisper'
           if (id.includes('@fullcalendar')) return 'vendor-fullcalendar'
           if (id.includes('linkedom')) return 'vendor-linkedom'
           return 'vendor'

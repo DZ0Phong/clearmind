@@ -60,7 +60,6 @@ const TIPS: TipDef[] = [
   { key: "tip.focusMode" },
   { key: "tip.importPaste" },
   { key: "tip.tagFilter" },
-  { key: "tip.whisper" },
   { key: "tip.notification", cliOnly: true },
   { key: "tip.review" },
   { key: "tip.darkMode" },
