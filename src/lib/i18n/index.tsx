@@ -19,14 +19,15 @@ import React, {
   useState,
 } from "react";
 import { VI } from "./dict-vi";
-import { EN } from "./dict-en";
+// English strings are lazy-loaded (see I18nProvider) so a VI-default user —
+// the common case here — never downloads the EN table at all. VI stays
+// eager: it's both the default language AND the universal fallback inside
+// t(), so it must always be present synchronously.
 import type { Dict, Lang, TimeZoneMode } from "./types";
 
 export type { Lang, TimeZoneMode } from "./types";
 
 const LANG_STORAGE_KEY = "clearmind_lang";
-
-const ALL: Record<Lang, Dict> = { vi: VI, en: EN };
 
 /** Replace {name} placeholders. params giữ nguyên nếu key vắng. */
 function format(s: string, params?: Record<string, string | number>): string {
@@ -132,6 +133,9 @@ export function I18nProvider({ children }: { children: React.ReactNode }) {
     }
   });
   const [cliTimeZone, setCliTimeZone] = useState<string>("");
+  // English dictionary, lazy-loaded on first switch to EN (see the import
+  // note at the top of this file). null until then — t() falls back to VI.
+  const [enDict, setEnDict] = useState<Dict | null>(null);
 
   // Fetch the CLI host's tz once at mount. Normalise through the alias
   // map so a server reporting the legacy "Asia/Saigon" matches the
@@ -177,6 +181,20 @@ export function I18nProvider({ children }: { children: React.ReactNode }) {
       body: JSON.stringify({ lang }),
     }).catch(() => {});
   }, [lang]);
+
+  // Lazy-load the English string table the first time EN is selected. VI
+  // users never trigger this. Until it resolves t() falls back to VI, so
+  // the worst case is a single-frame VI flash on the very first EN switch.
+  useEffect(() => {
+    if (lang !== "en" || enDict) return;
+    let alive = true;
+    import("./dict-en").then((m) => {
+      if (alive) setEnDict(m.EN);
+    });
+    return () => {
+      alive = false;
+    };
+  }, [lang, enDict]);
 
   // Cross-tab sync: when the user flips language in another tab, mirror
   // the change here so every open Clearmind window reflects the same
@@ -250,11 +268,11 @@ export function I18nProvider({ children }: { children: React.ReactNode }) {
   }, []);
   const t = useMemo(
     () => (key: string, params?: Record<string, string | number>): string => {
-      const dict = ALL[lang];
+      const dict = lang === "en" ? enDict ?? VI : VI;
       const raw = dict[key] ?? VI[key] ?? key;
       return format(raw, params);
     },
-    [lang]
+    [lang, enDict]
   );
   const value = useMemo(
     () => ({

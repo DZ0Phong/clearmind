@@ -32,3 +32,6 @@ cli/url-handler-launcher.vbs
 *.sln
 *.sw?
 .test/
+
+# Live-view CDP driver + its screenshots — local dev tooling (see NOTES.md)
+.cm-*
