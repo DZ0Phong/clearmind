@@ -60,6 +60,36 @@ function onLocaleChange(fn) {
   return () => localeListeners.delete(fn);
 }
 
+// --- Cross-client UI settings (theme, accent, timezone, …) ---
+// Same model as locale: a small JSON file in dataDir is the shared source of
+// truth. Every client reads it on load + PUTs only the keys it changed, and a
+// `settings-changed` SSE event fans the merged result out, so a theme/accent
+// pick on one client (browser, desktop app, mobile) shows up live on the
+// others. Closes the "theme doesn't sync" gap — localStorage is per browser
+// engine (the desktop app's WebView2 ≠ Chrome ≠ Edge), the server is shared.
+function settingsFile(dataDir) {
+  return path.join(dataDir, "clearmind.settings.json");
+}
+function readSettings(dataDir) {
+  try {
+    const obj = JSON.parse(fs.readFileSync(settingsFile(dataDir), "utf8"));
+    return obj && typeof obj === "object" && !Array.isArray(obj) ? obj : {};
+  } catch (_) {
+    return {};
+  }
+}
+function writeSettings(dataDir, partial) {
+  const merged = {
+    ...readSettings(dataDir),
+    ...(partial && typeof partial === "object" ? partial : {}),
+  };
+  try {
+    fs.writeFileSync(settingsFile(dataDir), JSON.stringify(merged), "utf8");
+  } catch (_) {}
+  sseBroadcast("settings-changed", merged);
+  return merged;
+}
+
 const MIME = {
   ".html": "text/html; charset=utf-8",
   ".js":   "application/javascript; charset=utf-8",
@@ -149,7 +179,8 @@ function injectMarker(html, ctx) {
   try { tasks = storage.readTasks(ctx.dataDir); } catch (_) {}
   const mtimeMs = getMtime(ctx.dataDir);
   const cli = { port: ctx.port, version: ctx.version, dataDir: ctx.dataDir, platform: process.platform };
-  const tag = `<script>window.__CLEARMIND_CLI__=${safeJson(cli)};window.__CLEARMIND_TASKS__=${safeJson(tasks)};window.__CLEARMIND_MTIME__=${mtimeMs};</script>`;
+  const settings = readSettings(ctx.dataDir);
+  const tag = `<script>window.__CLEARMIND_CLI__=${safeJson(cli)};window.__CLEARMIND_TASKS__=${safeJson(tasks)};window.__CLEARMIND_MTIME__=${mtimeMs};window.__CLEARMIND_SETTINGS__=${safeJson(settings)};</script>`;
   if (html.includes("</head>")) return html.replace("</head>", `${tag}</head>`);
   return tag + html;
 }
@@ -432,6 +463,20 @@ function makeHandler({ distDir, dataDir, port, version }) {
         }
         const lang = writeLocale(dataDir, parsedBody && parsedBody.lang);
         return sendJson(res, 200, { ok: true, lang });
+      }
+      if (p === "/api/settings" && req.method === "GET") {
+        return sendJson(res, 200, { settings: readSettings(dataDir) });
+      }
+      if (p === "/api/settings" && req.method === "PUT") {
+        const body = await readBody(req);
+        let parsedBody;
+        try { parsedBody = JSON.parse(body); } catch (_) {
+          return sendJson(res, 400, { ok: false, error: "Invalid JSON" });
+        }
+        // Accept either {settings:{…}} or a bare {…} partial.
+        const partial =
+          parsedBody && parsedBody.settings ? parsedBody.settings : parsedBody;
+        return sendJson(res, 200, { ok: true, settings: writeSettings(dataDir, partial) });
       }
       if (p === "/api/quit" && req.method === "POST") {
         // Acknowledge first, then shut down a beat later so the client gets

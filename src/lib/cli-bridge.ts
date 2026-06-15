@@ -24,6 +24,7 @@ declare global {
     __CLEARMIND_CLI__?: CliInfo;
     __CLEARMIND_TASKS__?: Task[];
     __CLEARMIND_MTIME__?: number;
+    __CLEARMIND_SETTINGS__?: Record<string, unknown>;
   }
 }
 
@@ -156,4 +157,57 @@ export async function cliScheduledNotifications(): Promise<ScheduledNotification
 
 export async function cliTestNotification(): Promise<void> {
   await apiJson("/api/test-notification", { method: "POST" });
+}
+
+// ---- Cross-client UI settings (theme, accent, timezone) ----
+// localStorage is per browser engine, so the desktop app's WebView, Chrome
+// and Edge each keep their own theme/accent. These route the shared ones
+// through the CLI host (a JSON file on disk + an SSE fan-out) so a pick on
+// one client shows up live on every other. No-ops outside CLI mode — callers
+// keep their localStorage fallback.
+
+/** Settings the CLI injected inline into index.html (read at first paint, no flash). */
+export function inlineSettings(): Record<string, unknown> | null {
+  if (typeof window === "undefined") return null;
+  const s = window.__CLEARMIND_SETTINGS__;
+  return s && typeof s === "object" ? s : null;
+}
+
+/** Merge-write a partial settings patch to the shared store. */
+export async function cliPutSettings(partial: Record<string, unknown>): Promise<void> {
+  await fetch("/api/settings", {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(partial),
+    keepalive: true,
+  });
+}
+
+// One shared EventSource for `settings-changed`, fanned out to every
+// subscribing provider (theme, accent, timezone) so we don't open three.
+let settingsES: EventSource | null = null;
+const settingsHandlers = new Set<(s: Record<string, unknown>) => void>();
+export function subscribeSettings(
+  fn: (s: Record<string, unknown>) => void
+): () => void {
+  if (!isCliMode() || typeof window === "undefined") return () => {};
+  settingsHandlers.add(fn);
+  if (!settingsES) {
+    try {
+      settingsES = new EventSource("/api/events");
+      settingsES.addEventListener("settings-changed", (ev) => {
+        try {
+          const data = JSON.parse((ev as MessageEvent).data) as Record<string, unknown>;
+          for (const h of settingsHandlers) h(data);
+        } catch {
+          /* ignore malformed payload */
+        }
+      });
+    } catch {
+      settingsES = null;
+    }
+  }
+  return () => {
+    settingsHandlers.delete(fn);
+  };
 }

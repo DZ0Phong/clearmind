@@ -3,7 +3,7 @@
 
 const path = require("node:path");
 const fs = require("node:fs");
-const { spawn } = require("node:child_process");
+const { spawn, execFile } = require("node:child_process");
 
 const storage = require("./storage");
 const singleInstance = require("./single-instance");
@@ -156,17 +156,26 @@ async function runForeground(opts, dataDir) {
 
   let trayHandle = null;
   if (!opts.noTray) {
-    try {
-      const tray = require("./tray");
-      trayHandle = await tray.init({
-        port: actualPort,
-        dataDir,
-        onQuit: () => shutdown("tray"),
-        onRestart: () => restart("tray"),
-      });
-    } catch (e) {
-      console.warn("[clearmind] Tray không init được:", e && e.message);
-    }
+    const tray = require("./tray");
+    const trayCtx = {
+      port: actualPort,
+      dataDir,
+      onQuit: () => shutdown("tray"),
+      onRestart: () => restart("tray"),
+    };
+    const initTray = async () => {
+      try {
+        return await tray.init(trayCtx);
+      } catch (e) {
+        console.warn("[clearmind] Tray không init được:", e && e.message);
+        return null;
+      }
+    };
+    // One tray, not two: when the Tauri desktop app (clearmind.exe) is
+    // running it owns the system-tray icon, so we hide ours; when it exits
+    // we bring ours back. See startTrayCoalesce — poll-based so it self-heals
+    // if the app crashes.
+    trayHandle = startTrayCoalesce(initTray);
   }
 
   // Restart from tray — detached-spawn a new tray child with the same
@@ -215,6 +224,60 @@ async function runForeground(opts, dataDir) {
   process.on("SIGTERM", () => shutdown("SIGTERM"));
   process.on("SIGHUP",  () => shutdown("SIGHUP"));
   process.on("exit",    () => singleInstance.release(dataDir));
+}
+
+/**
+ * Coalesce the CLI's system-tray icon with the Tauri desktop app's tray so the
+ * user only ever sees ONE Clearmind icon. While `clearmind.exe` (the desktop
+ * app) is running it owns the tray, so we hide ours; when it exits we bring
+ * ours back. Poll-based (4s) on Windows so it self-heals if the app crashes —
+ * no cross-process handshake to leak. Returns a handle whose `.kill()` matches
+ * the systray2 interface so the existing shutdown path stays unchanged.
+ */
+function startTrayCoalesce(initTray) {
+  // Non-Windows: no coalescing — just init the tray and proxy its handle.
+  if (process.platform !== "win32") {
+    let real = null;
+    initTray().then((t) => { real = t; });
+    return { kill: (...a) => { try { real && real.kill && real.kill(...a); } catch (_) {} } };
+  }
+  let tray = null;
+  let appRunning = null; // null = unknown → the first check always acts
+  let stopped = false;
+  const refresh = () => {
+    if (stopped) return;
+    execFile(
+      "tasklist",
+      ["/FI", "IMAGENAME eq clearmind.exe", "/NH"],
+      { windowsHide: true },
+      (err, stdout) => {
+        if (stopped) return;
+        const running = !err && /clearmind\.exe/i.test(stdout || "");
+        if (running === appRunning) return;
+        appRunning = running;
+        if (running) {
+          try { tray && tray.kill && tray.kill(false); } catch (_) {}
+          tray = null;
+        } else if (!tray) {
+          initTray().then((t) => {
+            if (stopped) { try { t && t.kill && t.kill(false); } catch (_) {} }
+            else tray = t;
+          });
+        }
+      }
+    );
+  };
+  const timer = setInterval(refresh, 4000);
+  if (timer.unref) timer.unref();
+  refresh(); // act immediately rather than wait one interval
+  return {
+    kill: (...a) => {
+      stopped = true;
+      clearInterval(timer);
+      try { tray && tray.kill && tray.kill(...a); } catch (_) {}
+      tray = null;
+    },
+  };
 }
 
 async function main() {

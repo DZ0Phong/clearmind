@@ -1,0 +1,25 @@
+name: ci
+
+# Fast safety net on every push / PR to main: type-check + production build of
+# the SPA (Ubuntu — the web build is platform-agnostic; the Windows desktop
+# bundle is built separately by release.yml on a v* tag). Catches a broken
+# build before it ever reaches a release tag.
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: Install dependencies
+        run: npm install --no-audit --no-fund
+      - name: Type-check + build
+        run: npm run build

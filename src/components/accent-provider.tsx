@@ -8,6 +8,12 @@ import {
   useState,
   type ReactNode,
 } from "react";
+import {
+  isCliMode,
+  inlineSettings,
+  cliPutSettings,
+  subscribeSettings,
+} from "@/lib/cli-bridge";
 
 export type Accent =
   // Classic — Tailwind hue wheel (16). These were the original palette and
@@ -126,6 +132,12 @@ function isAccent(v: string | null): v is Accent {
 export function AccentProvider({ children }: { children: ReactNode }) {
   const [accent, setAccentState] = useState<Accent>(() => {
     try {
+      // CLI mode: shared server settings win (synced across app/browser/
+      // mobile); fall back to localStorage, then indigo.
+      if (isCliMode()) {
+        const a = inlineSettings()?.accent;
+        if (typeof a === "string" && isAccent(a)) return a;
+      }
       const v = localStorage.getItem(STORAGE_KEY);
       return isAccent(v) ? v : "indigo";
     } catch {
@@ -164,12 +176,21 @@ export function AccentProvider({ children }: { children: ReactNode }) {
     return () => window.removeEventListener("storage", onStorage);
   }, []);
 
+  // CLI mode: mirror accent picked on another client over the shared SSE.
+  useEffect(() => {
+    return subscribeSettings((s) => {
+      const a = s.accent;
+      if (typeof a === "string" && isAccent(a)) setAccentState(a);
+    });
+  }, []);
+
   const setAccent = useCallback((a: Accent) => {
     try {
       localStorage.setItem(STORAGE_KEY, a);
     } catch {
       /* storage full / private mode — ignore */
     }
+    if (isCliMode()) cliPutSettings({ accent: a }).catch(() => {});
     setAccentState(a);
   }, []);
 

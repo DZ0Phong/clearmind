@@ -24,6 +24,12 @@ import { VI } from "./dict-vi";
 // eager: it's both the default language AND the universal fallback inside
 // t(), so it must always be present synchronously.
 import type { Dict, Lang, TimeZoneMode } from "./types";
+import {
+  isCliMode,
+  inlineSettings,
+  cliPutSettings,
+  subscribeSettings,
+} from "@/lib/cli-bridge";
 
 export type { Lang, TimeZoneMode } from "./types";
 
@@ -113,6 +119,10 @@ export function I18nProvider({ children }: { children: React.ReactNode }) {
   });
   const [timeZoneMode, setTimeZoneModeState] = useState<TimeZoneMode>(() => {
     try {
+      if (isCliMode()) {
+        const m = inlineSettings()?.tzMode;
+        if (m === "device" || m === "cli" || m === "manual") return m;
+      }
       const v = localStorage.getItem(TZ_MODE_KEY);
       if (v === "device" || v === "cli" || v === "manual") return v;
     } catch {
@@ -122,6 +132,10 @@ export function I18nProvider({ children }: { children: React.ReactNode }) {
   });
   const [timeZoneManual, setTimeZoneManualState] = useState<string>(() => {
     try {
+      if (isCliMode()) {
+        const tz = inlineSettings()?.tzManual;
+        if (typeof tz === "string" && tz) return canonicalTimeZone(tz);
+      }
       // Canonicalise on read too — old installs may have stored a
       // legacy alias before deviceTimeZone() / setTimeZoneManual were
       // both made alias-aware. Cheap one-shot normalisation.
@@ -252,6 +266,7 @@ export function I18nProvider({ children }: { children: React.ReactNode }) {
     } catch {
       /* ignore */
     }
+    if (isCliMode()) cliPutSettings({ tzMode: m }).catch(() => {});
     setTimeZoneModeState(m);
   }, []);
   const setTimeZoneManual = useCallback((tz: string) => {
@@ -264,8 +279,24 @@ export function I18nProvider({ children }: { children: React.ReactNode }) {
     } catch {
       /* ignore */
     }
+    if (isCliMode() && canonical) cliPutSettings({ tzManual: canonical }).catch(() => {});
     setTimeZoneManualState(canonical);
   }, []);
+  // CLI mode: mirror timezone settings changed on another client (desktop
+  // app ↔ browser ↔ mobile) over the shared settings SSE.
+  useEffect(() => {
+    return subscribeSettings((s) => {
+      const m = s.tzMode;
+      if (m === "device" || m === "cli" || m === "manual") {
+        setTimeZoneModeState(m);
+      }
+      const tz = s.tzManual;
+      if (typeof tz === "string" && tz) {
+        setTimeZoneManualState(canonicalTimeZone(tz));
+      }
+    });
+  }, []);
+
   const t = useMemo(
     () => (key: string, params?: Record<string, string | number>): string => {
       const dict = lang === "en" ? enDict ?? VI : VI;

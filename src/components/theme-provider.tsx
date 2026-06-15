@@ -6,6 +6,12 @@ import React, {
   useMemo,
   useState,
 } from "react"
+import {
+  isCliMode,
+  inlineSettings,
+  cliPutSettings,
+  subscribeSettings,
+} from "@/lib/cli-bridge"
 
 type Theme = "dark" | "light" | "system"
 
@@ -35,6 +41,13 @@ export function ThemeProvider({
 }: ThemeProviderProps) {
   const [theme, setTheme] = useState<Theme>(() => {
     try {
+      // CLI mode: the server-injected settings are the shared source of
+      // truth (synced across the desktop app, browser, and mobile). Fall
+      // back to localStorage, then the default.
+      if (isCliMode()) {
+        const t = inlineSettings()?.theme;
+        if (t === "light" || t === "dark" || t === "system") return t;
+      }
       return (localStorage.getItem(storageKey) as Theme) || defaultTheme;
     } catch {
       return defaultTheme;
@@ -79,6 +92,17 @@ export function ThemeProvider({
     return () => window.removeEventListener("storage", onStorage)
   }, [storageKey])
 
+  // CLI mode: mirror theme changes from other clients (desktop app ↔
+  // browser ↔ mobile) over the shared settings SSE.
+  useEffect(() => {
+    return subscribeSettings((s) => {
+      const next = s.theme
+      if (next === "light" || next === "dark" || next === "system") {
+        setTheme(next)
+      }
+    })
+  }, [])
+
   // Memoize so consumers don't re-render on every parent update. Storage
   // write wrapped in try/catch — private mode + quota.
   const setThemeStable = useCallback(
@@ -88,6 +112,8 @@ export function ThemeProvider({
       } catch {
         /* ignore */
       }
+      // Push to the shared store so every other client mirrors it.
+      if (isCliMode()) cliPutSettings({ theme: next }).catch(() => {})
       setTheme(next)
     },
     [storageKey]

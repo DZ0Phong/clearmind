@@ -124,16 +124,22 @@ export function FirstRunWelcome() {
         </p>
 
         <div className="space-y-2">
-          <CtaTile
-            icon={Bell}
-            done={notificationsEnabled}
-            busy={notifBusy}
-            doneLabel={t("welcome.notify.granted")}
-            label={t("welcome.notify.cta")}
-            hint={t("welcome.notify.hint")}
-            onClick={handleNotify}
-            data-testid="welcome-notify"
-          />
+          {/* Browser-permission CTA only in WEB mode. In the desktop app /
+              CLI mode, deadline reminders fire as native OS toasts from the
+              CLI host — the browser Notification permission is irrelevant
+              there, so this tile would only confuse. */}
+          {!cli && (
+            <CtaTile
+              icon={Bell}
+              done={notificationsEnabled}
+              busy={notifBusy}
+              doneLabel={t("welcome.notify.granted")}
+              label={t("welcome.notify.cta")}
+              hint={t("welcome.notify.hint")}
+              onClick={handleNotify}
+              data-testid="welcome-notify"
+            />
+          )}
 
           {cli && (
             <CtaTile
