@@ -34,7 +34,11 @@ jobs:
           workspaces: "src-tauri -> target"
 
       - name: Install dependencies
-        run: npm ci
+        # npm install (not `ci`): the lockfile omits some optional wasm-fallback
+        # transitive deps (@emnapi/*, pulled via @tailwindcss/oxide) that npm's
+        # strict `ci` resolver demands on the runner. `install` reconciles them
+        # in place so the build is never blocked on a lockfile-sync quirk.
+        run: npm install --no-audit --no-fund
 
       - name: Build & release Tauri app
         uses: tauri-apps/tauri-action@v0
