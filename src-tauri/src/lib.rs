@@ -1,4 +1,5 @@
 use std::net::{TcpStream, ToSocketAddrs};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 
 use tauri::{
@@ -12,6 +13,10 @@ use tauri::{
 /// ecosystem (browser, mobile web, tray) talks to it, so pointing the desktop
 /// windows here keeps them in perfect lockstep with all of them.
 const HOST_URL: &str = "http://localhost:20129/";
+
+/// Whether the user pinned the widget on top (toggled from the tray). Starts
+/// false — the widget is a normal movable window by default, not floating.
+static WIDGET_PINNED: AtomicBool = AtomicBool::new(false);
 
 /// Fast probe for a running Clearmind host (400ms timeout keeps launch snappy).
 fn host_is_running() -> bool {
@@ -49,6 +54,42 @@ fn toggle_widget(app: &AppHandle) {
     }
 }
 
+/// Open the web dashboard in the user's default browser (tray menu).
+fn open_dashboard() {
+    let url = "http://localhost:20129/dashboard";
+    #[cfg(target_os = "windows")]
+    let _ = std::process::Command::new("cmd").args(["/C", "start", "", url]).spawn();
+    #[cfg(target_os = "macos")]
+    let _ = std::process::Command::new("open").arg(url).spawn();
+    #[cfg(all(unix, not(target_os = "macos")))]
+    let _ = std::process::Command::new("xdg-open").arg(url).spawn();
+}
+
+/// Pin / unpin the widget on top (tray menu — the single place to toggle it).
+fn toggle_widget_pin(app: &AppHandle) {
+    let pinned = !WIDGET_PINNED.load(Ordering::Relaxed);
+    WIDGET_PINNED.store(pinned, Ordering::Relaxed);
+    if let Some(w) = app.get_webview_window("widget") {
+        let _ = w.set_always_on_top(pinned);
+        let _ = w.show();
+        let _ = w.set_focus();
+    }
+}
+
+/// Toggle "start with Windows" for the desktop app (tray menu).
+#[cfg(desktop)]
+fn toggle_autostart(app: &AppHandle) {
+    use tauri_plugin_autostart::ManagerExt;
+    let m = app.autolaunch();
+    if m.is_enabled().unwrap_or(false) {
+        let _ = m.disable();
+    } else {
+        let _ = m.enable();
+    }
+}
+#[cfg(not(desktop))]
+fn toggle_autostart(_app: &AppHandle) {}
+
 /// Silent auto-update: ask the configured endpoint (GitHub Releases'
 /// `latest.json`) whether a newer *signed* build exists; if so, download +
 /// install it and relaunch into the new version. Best-effort — every error
@@ -83,6 +124,10 @@ pub fn run() {
         .plugin(tauri_plugin_window_state::Builder::default().build())
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .plugin(tauri_plugin_updater::Builder::new().build())
+        .plugin(tauri_plugin_autostart::init(
+            tauri_plugin_autostart::MacosLauncher::LaunchAgent,
+            None,
+        ))
         .setup(|app| {
             if cfg!(debug_assertions) {
                 app.handle().plugin(
@@ -113,15 +158,17 @@ pub fn run() {
                 .min_inner_size(380.0, 520.0)
                 .build()?;
 
-            // Floating "today" widget — frameless, always-on-top, off-taskbar.
-            // The injected global tells the SPA to mount WidgetView (App.tsx).
+            // "Today" widget — a normal movable window (title bar so it can be
+            // dragged, minimized and closed), shown in the taskbar, NOT forced
+            // on top (the user pins it on demand from the tray). The injected
+            // global tells the SPA to mount WidgetView (App.tsx).
             let widget = WebviewWindowBuilder::new(app, "widget", window_url(host))
-                .title("Clearmind — Today")
+                .title("Clearmind — Hôm nay")
                 .inner_size(330.0, 460.0)
                 .min_inner_size(260.0, 300.0)
-                .decorations(false)
-                .always_on_top(true)
-                .skip_taskbar(true)
+                .decorations(true)
+                .always_on_top(false)
+                .skip_taskbar(false)
                 .resizable(true)
                 .initialization_script("window.__CLEARMIND_WIDGET__=true;")
                 .build()?;
@@ -155,10 +202,34 @@ pub fn run() {
             // Tray: open the app, toggle the widget, or quit. Left-click the
             // icon also surfaces the main window.
             let open = MenuItem::with_id(app, "open", "Mở Clearmind", true, None::<&str>)?;
+            let dashboard = MenuItem::with_id(
+                app,
+                "dashboard",
+                "Mở Dashboard (trình duyệt)",
+                true,
+                None::<&str>,
+            )?;
             let toggle =
                 MenuItem::with_id(app, "toggle", "Hiện/ẩn widget hôm nay", true, None::<&str>)?;
-            let quit = MenuItem::with_id(app, "quit", "Thoát", true, None::<&str>)?;
-            let menu = Menu::with_items(app, &[&open, &toggle, &quit])?;
+            let pin = MenuItem::with_id(
+                app,
+                "pin",
+                "Ghim / bỏ ghim widget lên trên",
+                true,
+                None::<&str>,
+            )?;
+            let autostart = MenuItem::with_id(
+                app,
+                "autostart",
+                "Bật / tắt khởi động cùng Windows",
+                true,
+                None::<&str>,
+            )?;
+            let quit = MenuItem::with_id(app, "quit", "Thoát Clearmind", true, None::<&str>)?;
+            let menu = Menu::with_items(
+                app,
+                &[&open, &dashboard, &toggle, &pin, &autostart, &quit],
+            )?;
 
             let _tray = TrayIconBuilder::with_id("clearmind-tray")
                 .icon(app.default_window_icon().expect("bundled icon").clone())
@@ -166,7 +237,10 @@ pub fn run() {
                 .menu(&menu)
                 .on_menu_event(|app, event| match event.id.as_ref() {
                     "open" => show_main(app),
+                    "dashboard" => open_dashboard(),
                     "toggle" => toggle_widget(app),
+                    "pin" => toggle_widget_pin(app),
+                    "autostart" => toggle_autostart(app),
                     "quit" => app.exit(0),
                     _ => {}
                 })
@@ -189,7 +263,9 @@ pub fn run() {
         // tray menu. The frameless widget has no close button, so it's exempt.
         .on_window_event(|window, event| {
             if let WindowEvent::CloseRequested { api, .. } = event {
-                if window.label() == "main" {
+                // Both windows hide-to-tray instead of quitting; the app stays
+                // alive in the tray and either can be reopened from there.
+                if window.label() == "main" || window.label() == "widget" {
                     let _ = window.hide();
                     api.prevent_close();
                 }
