@@ -3,6 +3,7 @@ import { Lightbulb, ChevronRight, X } from "lucide-react";
 import { isCliMode } from "@/lib/cli-bridge";
 import { useT } from "@/lib/i18n";
 import { useIsMobile } from "@/hooks/use-media-query";
+import { useLocation } from "react-router-dom";
 import { cn } from "@/lib/utils";
 
 /**
@@ -100,6 +101,7 @@ function isWindowsUA(): boolean {
 export function TipBanner() {
   const t = useT();
   const isMobile = useIsMobile();
+  const { pathname } = useLocation();
   const [dismissed, setDismissed] = useState<boolean>(() => {
     try {
       return localStorage.getItem(DISMISS_KEY) === "1";
@@ -134,6 +136,13 @@ export function TipBanner() {
     return () => window.clearInterval(id);
   }, [dismissed, filtered.length]);
 
+  // Hidden on the MOBILE calendar: there it shared the <main> scroller with
+  // the calendar's own sticky toolbar and overlapped it — scrolling made the
+  // toolbar look "pushed up / misaligned", and a non-sticky tip just vanished
+  // on the first drag. The calendar is dense on mobile anyway; tips still show
+  // on every other mobile page and on desktop (incl. desktop calendar, which
+  // scrolls inside its own card so there's no collision).
+  if (isMobile && pathname.startsWith("/calendar")) return null;
   if (dismissed || filtered.length === 0) return null;
 
   const tip = filtered[index];
@@ -153,13 +162,12 @@ export function TipBanner() {
     <div
       data-testid="tip-banner"
       className={cn(
-        // DESKTOP: pin below the topbar (shares --topbar-h so they can't
-        // drift). MOBILE: NOT sticky — it scrolls away with content. The
-        // mobile scroll container is <main>, where a sticky tip banner sat at
-        // the same offset as the calendar's sticky toolbar and overlapped it
-        // ("the toolbar gets pushed up / hidden"). Letting the tip scroll off
-        // lets the calendar toolbar lock cleanly right below the topbar.
-        "relative md:sticky md:top-[calc(var(--topbar-h)+env(safe-area-inset-top,0px))] z-[15] shrink-0",
+        // Pin below the topbar (shares --topbar-h so they can't drift). The
+        // mobile calendar hides this banner entirely (early-return above)
+        // because it collided with the calendar's own sticky toolbar in the
+        // shared <main> scroller — so here it can stay sticky on every page
+        // that still shows it.
+        "sticky top-[calc(var(--topbar-h)+env(safe-area-inset-top,0px))] z-[15] shrink-0",
         // Accent-tinted frosted surface — differentiates from the topbar
         // (which uses `bg-background/60`) and follows the user's accent
         // pick because the tint comes from `--primary`. Strong backdrop
