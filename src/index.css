@@ -946,12 +946,7 @@ input[type="number"] {
    away entirely ("the header doesn't lock"). */
 .cm-cal-chrome {
   position: sticky;
-  top: calc(var(--topbar-h) + env(safe-area-inset-top, 0px));
-}
-@media (min-width: 768px) {
-  .cm-cal-chrome {
-    top: 0;
-  }
+  top: 0;
 }
 
 /* Mobile dialog → bottom sheet swap.

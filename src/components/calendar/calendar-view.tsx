@@ -950,7 +950,7 @@ export function CalendarView({ initialDate }: CalendarViewProps = {}) {
       <div
         ref={scrollRef}
         onScroll={onBodyScroll}
-        className="flex flex-col md:flex-1 md:min-h-0 md:overflow-y-auto"
+        className="flex flex-col flex-1 min-h-0 overflow-y-auto"
       >
         {/* Sticky chrome — view switcher + type chips + Hide Done,
             tag filter row, agenda paging bar (agenda only). bg-card
@@ -1021,7 +1021,7 @@ export function CalendarView({ initialDate }: CalendarViewProps = {}) {
             (An earlier `display: contents` variant ate touch events
             on some Chromium builds — pointer events need a hit-test
             box. Plain block wrapper avoids that.) */}
-        <div ref={swipeBodyRef} className="flex flex-col md:flex-1 md:min-h-0">
+        <div ref={swipeBodyRef} className="flex flex-col flex-1 min-h-0 pb-[calc(var(--mobile-tabbar-h)+var(--safe-bottom))] md:pb-0">
         {view === "agenda" ? (
           <div className="px-3 md:px-4 py-3 space-y-3">
             <AgendaView

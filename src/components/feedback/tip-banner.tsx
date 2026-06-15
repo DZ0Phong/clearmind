@@ -3,7 +3,6 @@ import { Lightbulb, ChevronRight, X } from "lucide-react";
 import { isCliMode } from "@/lib/cli-bridge";
 import { useT } from "@/lib/i18n";
 import { useIsMobile } from "@/hooks/use-media-query";
-import { useLocation } from "react-router-dom";
 import { cn } from "@/lib/utils";
 
 /**
@@ -101,7 +100,6 @@ function isWindowsUA(): boolean {
 export function TipBanner() {
   const t = useT();
   const isMobile = useIsMobile();
-  const { pathname } = useLocation();
   const [dismissed, setDismissed] = useState<boolean>(() => {
     try {
       return localStorage.getItem(DISMISS_KEY) === "1";
@@ -136,13 +134,6 @@ export function TipBanner() {
     return () => window.clearInterval(id);
   }, [dismissed, filtered.length]);
 
-  // Hidden on the MOBILE calendar: there it shared the <main> scroller with
-  // the calendar's own sticky toolbar and overlapped it — scrolling made the
-  // toolbar look "pushed up / misaligned", and a non-sticky tip just vanished
-  // on the first drag. The calendar is dense on mobile anyway; tips still show
-  // on every other mobile page and on desktop (incl. desktop calendar, which
-  // scrolls inside its own card so there's no collision).
-  if (isMobile && pathname.startsWith("/calendar")) return null;
   if (dismissed || filtered.length === 0) return null;
 
   const tip = filtered[index];

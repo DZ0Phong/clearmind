@@ -1,5 +1,5 @@
 import { useMemo, type ReactNode } from "react";
-import { Link } from "react-router-dom";
+import { Link, useLocation } from "react-router-dom";
 import { AlertCircle, Clock, HelpCircle, Plus, Search, Settings, Power, PowerOff } from "lucide-react";
 import { Sidebar } from "./sidebar";
 import { MobileTabBar } from "./mobile-tab-bar";
@@ -29,6 +29,12 @@ export function MainLayout({ children }: { children: ReactNode }) {
   // now scrolls *inside main*, keeping TopBar + TipBanner correctly pinned at
   // the top of main's scroll context, and letting Calendar's bounded chain
   // engage its own inner scroll for the agenda list.
+  // The calendar is a fixed-viewport "app view": on every size it fills the
+  // space below the topbar + tip and scrolls INSIDE its own card (toolbar
+  // pinned, only the agenda/grid scrolls). Every other page keeps the mobile
+  // page-scroll + bottom padding (cm-mobile-content-pad) that prevents the
+  // long-list cut-off behind the tab bar.
+  const calRoute = useLocation().pathname.startsWith("/calendar");
   return (
     <div
       className="flex h-dvh overflow-hidden bg-background relative selection:bg-primary/30"
@@ -64,8 +70,16 @@ export function MainLayout({ children }: { children: ReactNode }) {
               this fix on a 375x667 dashboard.
             Two `flex-1`s appear as `md:flex-1` so desktop keeps its
             chain; mobile uses block flow + the padding works. */}
-        <div className="p-4 md:p-6 lg:p-8 cm-mobile-content-pad md:flex md:flex-col md:flex-1 md:min-h-0">
-          <div className="max-w-[1600px] w-full mx-auto md:flex-1 md:flex md:flex-col md:min-h-0">
+        <div
+          className={`p-4 md:p-6 lg:p-8 md:flex md:flex-col md:flex-1 md:min-h-0 ${
+            calRoute ? "flex flex-col flex-1 min-h-0" : "cm-mobile-content-pad"
+          }`}
+        >
+          <div
+            className={`max-w-[1600px] w-full mx-auto md:flex-1 md:flex md:flex-col md:min-h-0 ${
+              calRoute ? "flex flex-1 flex-col min-h-0" : ""
+            }`}
+          >
             {children}
           </div>
         </div>

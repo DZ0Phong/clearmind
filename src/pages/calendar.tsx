@@ -23,8 +23,8 @@ export function CalendarPage() {
   // standalone "Lịch" page heading was pure duplication eating a row of
   // vertical space above the grid. Dropped — the card fills the viewport.
   return (
-    <div className="flex flex-col pb-6 md:h-full md:pb-0 md:min-h-0">
-      <div className="bg-card rounded-2xl border shadow-sm flex flex-col md:overflow-hidden md:flex-1 md:min-h-0">
+    <div className="flex flex-col h-full min-h-0">
+      <div className="bg-card rounded-2xl border shadow-sm flex flex-col overflow-hidden flex-1 min-h-0">
         <CalendarView initialDate={initialDate} />
       </div>
     </div>
