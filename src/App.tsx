@@ -1,4 +1,4 @@
-import { lazy, Suspense, type ComponentType } from "react";
+import { Suspense } from "react";
 import { BrowserRouter, Routes, Route, Navigate, useLocation } from "react-router-dom";
 import { useDocumentTitle } from "@/hooks/use-document-title";
 import { ThemeProvider } from "@/components/theme-provider";
@@ -10,75 +10,22 @@ import { TaskCommandsProvider } from "@/components/tasks/task-commands";
 import { DialogProvider } from "@/components/feedback/confirm-dialog";
 import { MainLayout } from "@/components/layout/main-layout";
 import { ErrorBoundary } from "@/components/feedback/error-boundary";
-// Dashboard stays eager — it's the default route and the user's first
-// paint. Every other page is lazy so initial bundle stays small.
 import { Dashboard } from "@/pages/dashboard";
 import { WidgetView } from "@/components/widget/widget-view";
-
-// Wrap React.lazy() with a one-shot retry: after a deploy the SPA shell can
-// still reference a chunk hash that no longer exists, which throws a generic
-// "Loading chunk failed" → white screen. Reload once to grab the fresh manifest;
-// after that, propagate so the ErrorBoundary catches it instead of looping.
-//
-// sessionStorage access is wrapped in try/catch — Safari private mode + some
-// strict tracking-protection setups throw SecurityError on storage access,
-// and the retry path is the WORST place for a secondary failure.
-function lazyWithRetry<T extends ComponentType<unknown>>(
-  factory: () => Promise<{ default: T }>
-) {
-  return lazy(async () => {
-    try {
-      return await factory();
-    } catch (e) {
-      const key = "clearmind_chunk_retry";
-      let already = false;
-      try {
-        already = !!sessionStorage.getItem(key);
-      } catch {
-        /* storage blocked */
-      }
-      if (!already) {
-        try {
-          sessionStorage.setItem(key, "1");
-        } catch {
-          /* ignore */
-        }
-        window.location.reload();
-        // Reload is async — return a never-resolving promise so React stays
-        // in Suspense fallback until the page actually reloads.
-        return new Promise<never>(() => {});
-      }
-      throw e;
-    }
-  });
-}
-
-// Code-split every page below the dashboard. FullCalendar (Calendar) +
-// import wizard (linkedom + parsers) are the heaviest; pages like Settings
-// (1k+ lines) + Review (heatmap synthesis) + Focus (audio synth) also
-// benefit. Result: main bundle ~30-40% smaller, dashboard paint faster on
-// first load.
-const CalendarPage = lazyWithRetry(() =>
-  import("@/pages/calendar").then((m) => ({ default: m.CalendarPage }))
-);
-const ImportPage = lazyWithRetry(() =>
-  import("@/pages/import").then((m) => ({ default: m.ImportPage }))
-);
-const TasksPage = lazyWithRetry(() =>
-  import("@/pages/tasks").then((m) => ({ default: m.TasksPage }))
-);
-const FocusPage = lazyWithRetry(() =>
-  import("@/pages/focus").then((m) => ({ default: m.FocusPage }))
-);
-const ReviewPage = lazyWithRetry(() =>
-  import("@/pages/review").then((m) => ({ default: m.ReviewPage }))
-);
-const SettingsPage = lazyWithRetry(() =>
-  import("@/pages/settings").then((m) => ({ default: m.SettingsPage }))
-);
-const GuidePage = lazyWithRetry(() =>
-  import("@/pages/guide").then((m) => ({ default: m.GuidePage }))
-);
+// Pages are imported EAGERLY (one bundle) rather than code-split. The desktop
+// app's WebView loads the SPA over the local host, where dynamic import() of
+// hashed chunks proved unreliable — every non-dashboard tab hung on an
+// infinite Suspense spinner because the chunk fetch never settled. A single
+// bundle is instant for a local-first app and rock-solid in every client
+// (browser / mobile / desktop). (The i18n dictionary stays lazy — it has a
+// graceful VI fallback, unlike a route.)
+import { CalendarPage } from "@/pages/calendar";
+import { ImportPage } from "@/pages/import";
+import { TasksPage } from "@/pages/tasks";
+import { FocusPage } from "@/pages/focus";
+import { ReviewPage } from "@/pages/review";
+import { SettingsPage } from "@/pages/settings";
+import { GuidePage } from "@/pages/guide";
 
 function PageFallback() {
   return (

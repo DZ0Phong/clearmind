@@ -120,8 +120,18 @@ pub fn run() {
         .plugin(tauri_plugin_single_instance::init(|app, _argv, _cwd| {
             show_main(app);
         }))
-        // Remember each window's size + position across restarts.
-        .plugin(tauri_plugin_window_state::Builder::default().build())
+        // Remember each window's size + position only — NOT always-on-top or
+        // decorations. Restoring those re-applied the widget's old frameless +
+        // always-on-top state and overrode the builder, so the widget kept
+        // floating over everything no matter what the code said.
+        .plugin(
+            tauri_plugin_window_state::Builder::default()
+                .with_state_flags(
+                    tauri_plugin_window_state::StateFlags::SIZE
+                        | tauri_plugin_window_state::StateFlags::POSITION,
+                )
+                .build(),
+        )
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_autostart::init(
