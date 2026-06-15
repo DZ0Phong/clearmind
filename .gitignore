@@ -12,6 +12,13 @@ dist
 dist-ssr
 *.local
 
+# package-lock is intentionally NOT committed: it's generated on Windows and
+# omits Linux-only optional wasm-fallback deps (@emnapi/*, via @tailwindcss/oxide
+# + rolldown), which makes the strict `npm ci` fail on Linux build hosts
+# (Cloudflare Pages/Workers auto-runs `npm ci` whenever a lock exists). Every
+# build here uses `npm install`, which reconciles deps without a committed lock.
+package-lock.json
+
 # CLI artifacts
 cli/node_modules
 cli/assets/icon.png
