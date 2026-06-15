@@ -20,7 +20,10 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          # Node 24 ships npm 11, which matches the lockfile format committed
+          # here. Node 20 (npm 10) misreads an npm-11 lock as out-of-sync and
+          # fails `npm ci`. (Node 20 runners are also being retired in 2026.)
+          node-version: 24
 
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
