@@ -4,6 +4,8 @@ A local-first task & calendar app for students — a small **synced ecosystem** 
 
 No account, no cloud backend, no telemetry. Your data stays on your device.
 
+**▶ Live web app: <https://clearmind-app.pages.dev>** — open it on any device, no install, no login.
+
 ---
 
 ## The ecosystem
@@ -21,6 +23,7 @@ Every client that reaches the host (`localhost:20129`) shares one store under `%
 
 ## Download
 
+- **Web (any device):** just open **<https://clearmind-app.pages.dev>** — nothing to install. On phones, "Add to Home Screen" for an app-like launcher.
 - **Desktop app (Windows):** grab the latest `Clearmind_x.y.z_x64-setup.exe` (or `.msi`) from **[Releases](https://github.com/DZ0Phong/clearmind/releases)**. ~2 MB, installs per-user (no admin).
 - **From source:** see [Quick start](#quick-start).
 
@@ -36,6 +39,7 @@ Every client that reaches the host (`localhost:20129`) shares one store under `%
 - **Voice capture.** Web Speech API with a VI / EN language picker for fast title entry.
 - **Theme.** Light / dark / system, 32-color accent picker, full VI / EN UI synchronized across tabs.
 - **Mobile-ready.** Bottom-tab navigation under `md`, sheet-style dialogs, safe-area handling for notched phones.
+- **Cross-device sync — no login.** "Link a device" (Settings → Data) moves all your tasks to a phone or another machine via a **QR + 8-char code**, **end-to-end encrypted** (AES-GCM, key from the code) through a zero-knowledge relay — or fully offline straight from the QR.
 
 ---
 
@@ -135,6 +139,10 @@ Drag-and-drop to reschedule; recurrence via FullCalendar's native `daysOfWeek` +
 ### Import
 
 - **Paste text** — any tabular schedule export • **Bookmarklet** — one-click extraction on a portal page • **ICS file** — drop in any standard `.ics`. Deduplicated by signature for weekly entries, by date for one-offs.
+
+### Cross-device sync ("Link a device")
+
+No login: one device shows a **QR + code**, the other scans (camera) or types it — works both directions, on every client. **End-to-end encrypted** (AES-GCM, key derived from the code via PBKDF2; payload gzipped) through a **zero-knowledge relay** that stores only ciphertext under `SHA-256(code)`, ~5-min TTL, deleted on first read. Relay backends: the CLI host's `/api/link` (localhost / LAN) and a Cloudflare **Pages Function + KV** (deployed web, same origin). When no relay is reachable it falls back to an **offline QR** carrying the encrypted snapshot directly. In **Settings → Data** and on the **Import** page.
 
 ### Host & desktop extras
 

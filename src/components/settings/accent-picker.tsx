@@ -439,7 +439,7 @@ function Swatch({
       data-testid={`accent-swatch-${accent}`}
       style={{ background: color }}
       className={cn(
-        "cm-press relative rounded-full transition-all duration-200 outline-none",
+        "cm-press relative rounded-full transition-all duration-200 outline-none shrink-0",
         dim,
         "hover:scale-110 hover:shadow-md focus-visible:scale-110 focus-visible:shadow-md",
         active

@@ -39,6 +39,7 @@ import {
   RefreshCw,
   AppWindow,
   Pin,
+  Smartphone,
 } from "lucide-react";
 import { readErrorLog, clearErrorLog, type ErrorEntry } from "@/lib/error-log";
 import { useTasks } from "@/hooks/use-tasks";
@@ -46,6 +47,7 @@ import { tagStats, cn } from "@/lib/utils";
 import { useToast } from "@/components/feedback/toast";
 import { useDialog } from "@/components/feedback/confirm-dialog";
 import { Switch } from "@/components/ui/switch";
+import { DeviceLinkDialog } from "@/components/device-link/device-link-dialog";
 import { downloadICS } from "@/lib/ics";
 import {
   isCliMode,
@@ -390,6 +392,41 @@ function NotificationsTab({
   onEnable: () => void;
 }) {
   const t = useT();
+  const { toast } = useToast();
+
+  // Fire a sample browser notification so the user can verify their browser
+  // actually shows them after granting permission. On Android the `Notification`
+  // constructor is an illegal constructor (mobile requires a service-worker
+  // showNotification, which this localStorage-first app intentionally doesn't
+  // register) — catch that and explain rather than failing silently.
+  const handleTestWeb = () => {
+    if (typeof Notification === "undefined" || Notification.permission !== "granted") {
+      toast({ title: t("settings.notif.testNeedsPermission"), variant: "destructive" });
+      return;
+    }
+    try {
+      const n = new Notification("Clearmind", {
+        body: t("settings.notif.testBody"),
+        icon: "/favicon.svg",
+        tag: "clearmind-test",
+      });
+      window.setTimeout(() => {
+        try {
+          n.close();
+        } catch {
+          /* ignore */
+        }
+      }, 6000);
+      toast({ title: t("settings.notif.testSent"), variant: "success" });
+    } catch {
+      toast({
+        title: t("settings.notif.testUnsupported"),
+        description: t("settings.notif.testUnsupportedDesc"),
+        variant: "destructive",
+      });
+    }
+  };
+
   return (
     <>
       <Card className="md:col-span-2 border-primary/10 shadow-sm bg-card">
@@ -425,6 +462,19 @@ function NotificationsTab({
                   : t("settings.notifBtnEnable")}
               </Button>
             </RowItem>
+
+            {notificationsEnabled && (
+              <RowItem
+                title={t("settings.notif.testTitle")}
+                hint={t("settings.notif.testHint")}
+                icon={Bell}
+              >
+                <Button variant="outline" onClick={handleTestWeb} className="gap-2">
+                  <Bell className="h-4 w-4" />
+                  {t("settings.notif.testButton")}
+                </Button>
+              </RowItem>
+            )}
           </CardContent>
         )}
       </Card>
@@ -451,8 +501,31 @@ function DataTab({
 }) {
   const t = useT();
   const { toast } = useToast();
+  const [linkOpen, setLinkOpen] = useState(false);
   return (
     <>
+      <Card className="md:col-span-2 border-primary/20 shadow-sm bg-card">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Smartphone className="h-5 w-5 text-primary" />
+            {t("deviceLink.title")}
+          </CardTitle>
+          <CardDescription>{t("deviceLink.desc")}</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <RowItem
+            title={t("deviceLink.row.title")}
+            hint={t("deviceLink.row.hint")}
+            icon={Smartphone}
+          >
+            <Button onClick={() => setLinkOpen(true)} className="gap-2">
+              <Smartphone className="h-4 w-4" /> {t("deviceLink.openButton")}
+            </Button>
+          </RowItem>
+        </CardContent>
+      </Card>
+      <DeviceLinkDialog open={linkOpen} onOpenChange={setLinkOpen} />
+
       <Card className="md:col-span-2 border-primary/10 shadow-sm bg-card">
         <CardHeader>
           <CardTitle className="flex items-center gap-2">

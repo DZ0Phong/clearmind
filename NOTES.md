@@ -85,6 +85,8 @@ public/                  # favicon.svg, manifest, sw.js
 | POST | `/api/test-notification` | fire toast NGAY (Test button) |
 | GET/PUT | `/api/autostart` | toggle VBS shortcut ở Startup folder |
 | POST | `/api/open-data-dir` | mở Explorer `%APPDATA%\Clearmind\` |
+| POST | `/api/link` | **device-link relay** (#8) — lưu ciphertext dưới `id=SHA-256(code)`, TTL 5p, in-memory Map, one-time |
+| GET | `/api/link?id=` | pull + xoá ciphertext (consume 1 lần); 404 nếu hết hạn/đã dùng |
 | POST | `/api/quit` | graceful shutdown (menu Stop/Restart) — ack 200 rồi SIGTERM |
 | GET | `/api/events` | **SSE stream** — server push `snapshot` lúc connect + `tasks-updated` mỗi khi đĩa đổi |
 | GET/HEAD | `/*` | static `dist/` + inject `window.__CLEARMIND_CLI__` + `__CLEARMIND_TASKS__` + `__CLEARMIND_MTIME__` |
@@ -140,6 +142,39 @@ User edit → setTasks(prev → updated)
 **Periodic re-schedule** mỗi 1h: server tự `scheduleAll(readTasks())` để cover case browser đóng nhiều ngày, task slide vào 25h window mà không có PUT mới nào trigger.
 
 **SPA tự động set notify=`at-time`** khi user vừa set deadline lần đầu (chỉ create mode, user vẫn có thể chọn "Không nhắc" sau).
+
+## Device linking — "Liên kết thiết bị" (#8)
+
+Cross-device sync **không cần login**, end-to-end encrypted, qua **QR + mã code**,
+hai chiều. Code ở `src/lib/device-link/` + UI `src/components/device-link/`.
+
+- **Crypto** (`crypto.ts`): mã `code` 8 ký tự alphabet không nhập nhằng (bỏ
+  0/O/1/I/L/U). Key = **PBKDF2-SHA256(code, salt, 200k iters) → AES-GCM-256**.
+  Snapshot JSON được **gzip (CompressionStream)** trước khi mã hoá → list task
+  thực tế đủ nhỏ để nhét vào 1 QR. `relayId = SHA-256("clearmind-link-id|"+code)`
+  — **domain-separated** với key derivation nên relay thấy id cũng không suy ra
+  được key. Payload đóng gói `ver|flags|salt(16)|iv(12)|ciphertext` → base64url.
+  GCM auth-tag fail = sai code → `WrongCodeError`.
+- **2 transport** (`index.ts`), tự chọn theo origin:
+  - **Relay** (mặc định): push ciphertext lên `${origin}/api/link`, QR chỉ chứa
+    `clearmind-link:<code>` (luôn quét được dù data lớn). Bên kia pull bằng
+    QR/nhập-mã. Relay **zero-knowledge** (chỉ giữ bản mã, 5p TTL, xoá khi đọc).
+  - **QR-direct** (offline fallback khi relay down): blob mã hoá nằm thẳng
+    trong QR `clearmind-data:<blob>` (key ngẫu nhiên nhúng kèm — QR LÀ bí mật).
+    Zero infra nhưng chỉ nhận được bằng QUÉT + phải vừa QR.
+- **2 backend relay** cùng contract: `cli/server.js` `/api/link` (in-memory, cho
+  CLI host/LAN) + **Cloudflare Pages Function** `functions/api/link.js` (KV, cho
+  web đã deploy — auto-deploy cùng Pages, **cần bind KV namespace `LINK_KV`**,
+  xem DEPLOY.md; chưa bind → 503 → SPA tự fallback QR-direct).
+- **UI** (`device-link-dialog.tsx`): 1 dialog, 2 tab **Gửi/Nhận**, có ở MỌI thiết
+  bị. Gửi = QR + code + đếm ngược 5p. Nhận = camera (`BarcodeDetector` →
+  `jsqr` fallback) + ô nhập mã. Vào từ **Settings → Data** + trang **Import**.
+- **Apply**: `useTasks().receiveSnapshot(tasks, "merge"|"replace")` — merge =
+  cộng dồn theo id (không đè edit local), replace = ghi đè toàn bộ (có confirm).
+- **Deps**: `qrcode` (gen) + `jsqr` (decode), static-import (dynamic import
+  unreliable trong desktop WebView). Bundle main +~? KB (≈415KB tổng).
+- **Validated**: crypto round-trip 15/15, relay HTTP 8/8, UI smoke 7/7, full
+  send→receive 2-context e2e 6/6 (Playwright headless, text-only).
 
 ## Bug & fix catalog (chronological)
 

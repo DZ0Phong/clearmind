@@ -45,8 +45,13 @@ declare global {
 }
 
 interface Props {
-  /** Called whenever a final or interim transcript chunk is ready. */
-  onText: (text: string, isFinal: boolean) => void;
+  /** Full current dictation transcript (REPLACE semantics) — emitted live as
+   *  the user speaks. Always the complete text since the mic was pressed, so
+   *  the consumer sets rather than appends → no duplication. */
+  onText: (text: string) => void;
+  /** Fired when the user presses the mic to START a dictation, so the consumer
+   *  can snapshot its base text (the value dictation should be added onto). */
+  onStart?: () => void;
   /** Override lang (BCP-47). When set, the variant picker is hidden. */
   lang?: string;
   className?: string;
@@ -75,6 +80,32 @@ const VARIANTS: ReadonlyArray<{
 
 const VOICE_VARIANT_KEY = "clearmind_voice_variant";
 
+/**
+ * Merge a freshly-finalized chunk into the committed transcript, tolerant of
+ * Web Speech engines (esp. on Android Chrome) that re-report the WHOLE
+ * utterance cumulatively after each restart instead of only the new words.
+ *   - n extends c (cumulative re-emit) → take the longer (replace)
+ *   - c already ends with n (duplicate tail) → keep c
+ *   - suffix(c) overlaps prefix(n) → stitch without repeating the overlap
+ *   - otherwise → append with a space
+ * Without this, "alo 1234" on mobile became "alo alo alo 1 alo 1 2 …".
+ */
+function mergeFinal(committed: string, incoming: string): string {
+  const c = committed.trim();
+  const n = incoming.trim();
+  if (!c) return n;
+  if (!n) return c;
+  if (n.toLowerCase().startsWith(c.toLowerCase())) return n;
+  if (c.toLowerCase().endsWith(n.toLowerCase())) return c;
+  const max = Math.min(c.length, n.length);
+  for (let k = max; k > 3; k--) {
+    if (c.slice(-k).toLowerCase() === n.slice(0, k).toLowerCase()) {
+      return c + n.slice(k);
+    }
+  }
+  return c + " " + n;
+}
+
 function defaultVariantKey(appLang: "vi" | "en"): string {
   return appLang === "vi" ? "vi-VN" : "en-US";
 }
@@ -89,7 +120,7 @@ function loadVariantKey(appLang: "vi" | "en"): string {
   return defaultVariantKey(appLang);
 }
 
-export function VoiceMic({ onText, lang, className, title }: Props) {
+export function VoiceMic({ onText, onStart, lang, className, title }: Props) {
   const { lang: appLang } = useI18n();
   const t = useT();
 
@@ -105,9 +136,16 @@ export function VoiceMic({ onText, lang, className, title }: Props) {
   // ref is true (user hasn't clicked stop). Cleared in stop paths to avoid loops.
   const wantsListenRef = useRef(false);
   const onTextRef = useRef(onText);
+  const onStartRef = useRef(onStart);
   useEffect(() => {
     onTextRef.current = onText;
-  }, [onText]);
+    onStartRef.current = onStart;
+  }, [onText, onStart]);
+  // Running FINAL transcript since the mic was pressed (survives the engine's
+  // onend→restart cycles) + how many results in the CURRENT engine session
+  // were already folded in, so each final result is merged exactly once.
+  const committedRef = useRef("");
+  const sessionEmittedRef = useRef(0);
 
   const variant = VARIANTS.find((v) => v.key === variantKey) ?? VARIANTS[0];
   const wsLang = lang || variant.tag || (appLang === "vi" ? "vi-VN" : "en-US");
@@ -127,11 +165,28 @@ export function VoiceMic({ onText, lang, className, title }: Props) {
     rec.lang = wsLang;
 
     rec.onresult = (e: SpeechRecognitionEvent) => {
-      for (let i = e.resultIndex; i < e.results.length; i++) {
+      // Fold each NEW final result (by index, once per engine session) into the
+      // committed transcript, then emit committed + current interim as ONE full
+      // snapshot (replace semantics). resultIndex is unreliable on some mobile
+      // engines, so we track our own per-session emitted-index counter.
+      let interim = "";
+      for (let i = 0; i < e.results.length; i++) {
         const r = e.results[i];
-        const text = r[0]?.transcript ?? "";
-        if (text.trim()) onTextRef.current(text, r.isFinal);
+        const txt = r[0]?.transcript ?? "";
+        if (r.isFinal) {
+          if (i >= sessionEmittedRef.current && txt.trim()) {
+            committedRef.current = mergeFinal(committedRef.current, txt);
+            sessionEmittedRef.current = i + 1;
+          }
+        } else {
+          interim += txt;
+        }
       }
+      const snapshot = [committedRef.current, interim.trim()]
+        .filter(Boolean)
+        .join(" ")
+        .trim();
+      if (snapshot) onTextRef.current(snapshot);
     };
     rec.onend = () => {
       // Chrome ends sessions after ~60s + some idle thresholds even with
@@ -139,6 +194,9 @@ export function VoiceMic({ onText, lang, className, title }: Props) {
       // so the experience is "press once → record until press again".
       if (wantsListenRef.current) {
         try {
+          // New engine session = fresh `results` list → reset the per-session
+          // emitted-index counter. committedRef carries the text across.
+          sessionEmittedRef.current = 0;
           rec.start();
           return;
         } catch {
@@ -191,6 +249,11 @@ export function VoiceMic({ onText, lang, className, title }: Props) {
       }
       setListening(false);
     } else {
+      // Fresh dictation press → reset accumulators + let the consumer snapshot
+      // its base text so dictation REPLACES rather than appends duplicates.
+      committedRef.current = "";
+      sessionEmittedRef.current = 0;
+      onStartRef.current?.();
       wantsListenRef.current = true;
       try {
         rec.start();

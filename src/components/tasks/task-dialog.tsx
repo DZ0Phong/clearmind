@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Plus,
   Sparkles,
@@ -131,6 +131,10 @@ export function TaskDialog(props: Mode) {
     : setInternalOpen;
 
   const [title, setTitle] = useState(existing?.title ?? "");
+  // Snapshot of the title when a voice dictation starts. VoiceMic emits the
+  // FULL transcript live (replace semantics), so we set title = base + voice
+  // rather than appending chunks — kills the mobile "alo alo alo 1 …" dup.
+  const voiceBaseRef = useRef("");
   const [description, setDescription] = useState(existing?.description ?? "");
   const [deadline, setDeadline] = useState(toLocalInput(existing?.deadline));
   const [nlHint, setNlHint] = useState("");
@@ -301,13 +305,14 @@ export function TaskDialog(props: Mode) {
                   className="flex-1"
                 />
                 <VoiceMic
-                  onText={(text, isFinal) => {
-                    // Interim chunks repeat as user speaks — only commit on
-                    // final to avoid stacking partial transcripts.
-                    if (!isFinal) return;
+                  onStart={() => {
+                    voiceBaseRef.current = title.trim();
+                  }}
+                  onText={(text) => {
+                    // `text` is the full dictation so far (replace, not append).
                     const clean = text.trim();
-                    if (!clean) return;
-                    setTitle((prev) => (prev ? prev + " " + clean : clean));
+                    const base = voiceBaseRef.current;
+                    setTitle(base ? `${base} ${clean}` : clean);
                   }}
                 />
               </div>

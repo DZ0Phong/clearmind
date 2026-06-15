@@ -55,6 +55,13 @@ interface TasksContextType {
   clearAll: () => void;
   exportJson: () => string;
   importJson: (raw: string) => { ok: boolean; added: number; error?: string };
+  /** Apply a snapshot received from another device (#8 device-linking).
+   *  "merge" adds only tasks whose id is new (never clobbers a local edit);
+   *  "replace" overwrites the entire store. Returns accurate counts. */
+  receiveSnapshot: (
+    incoming: Task[],
+    mode: "merge" | "replace"
+  ) => { added: number; total: number };
   incrementPomodoro: (id: string, minutes: number) => void;
   /** Roll any overdue recurring weekly task to its next future occurrence.
    *  Returns { moved, restore } for an undoable toast. */
@@ -700,6 +707,45 @@ export function TasksProvider({ children }: { children: React.ReactNode }) {
     }
   }, []);
 
+  const receiveSnapshot = useCallback<TasksContextType["receiveSnapshot"]>(
+    (incoming, mode) => {
+      // Read the live list from the ref (synchronous + reliable) so the
+      // returned counts are accurate — reading them out of a setTasks updater
+      // is racy (see clearDuplicates for the same lesson).
+      const prev = tasksRef.current;
+      const normalize = (raw: Task): Task => ({
+        ...raw,
+        id: raw.id || crypto.randomUUID(),
+        createdAt: raw.createdAt || new Date().toISOString(),
+        status: raw.status || "todo",
+        type: raw.type || "other",
+        priority: raw.priority || "medium",
+      });
+      const valid = (raw: Task | null | undefined): raw is Task =>
+        !!raw && typeof raw.title === "string" && raw.title.trim().length > 0;
+
+      let added = 0;
+      let next: Task[];
+      if (mode === "replace") {
+        next = incoming.filter(valid).map(normalize);
+        added = next.length;
+      } else {
+        const byId = new Map(prev.map((t) => [t.id, t]));
+        for (const raw of incoming) {
+          if (!valid(raw)) continue;
+          const task = normalize(raw);
+          if (byId.has(task.id)) continue; // additive merge — never clobber
+          byId.set(task.id, task);
+          added++;
+        }
+        next = Array.from(byId.values());
+      }
+      setTasks(next);
+      return { added, total: next.length };
+    },
+    []
+  );
+
   const incrementPomodoro = useCallback((id: string, minutes: number) => {
     setTasks((prev) =>
       prev.map((t) =>
@@ -739,6 +785,7 @@ export function TasksProvider({ children }: { children: React.ReactNode }) {
       clearAll,
       exportJson,
       importJson,
+      receiveSnapshot,
       incrementPomodoro,
       rollForwardOverdueRecurring,
       clearDuplicates,
@@ -756,6 +803,7 @@ export function TasksProvider({ children }: { children: React.ReactNode }) {
       clearAll,
       exportJson,
       importJson,
+      receiveSnapshot,
       incrementPomodoro,
       rollForwardOverdueRecurring,
       clearDuplicates,

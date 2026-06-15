@@ -90,6 +90,23 @@ function writeSettings(dataDir, partial) {
   return merged;
 }
 
+// --- Device-link relay (#8) ---
+// Zero-knowledge one-time store for cross-device pairing: holds only opaque
+// ciphertext keyed by id = SHA-256(code), with a short TTL, deleted on first
+// read. The CLI host is the relay for the localhost / LAN case; the deployed
+// web uses the mirror Cloudflare Pages Function (functions/api/link.js). The
+// server never sees the code or the plaintext.
+const linkStore = new Map(); // id -> { data, expiresAt }
+const LINK_ID_RE = /^[a-f0-9]{64}$/;
+const LINK_MAX_BYTES = 2 * 1024 * 1024;
+const LINK_MAX_ENTRIES = 500;
+function linkSweep() {
+  const now = Date.now();
+  for (const [k, v] of linkStore) {
+    if (v.expiresAt <= now) linkStore.delete(k);
+  }
+}
+
 const MIME = {
   ".html": "text/html; charset=utf-8",
   ".js":   "application/javascript; charset=utf-8",
@@ -477,6 +494,37 @@ function makeHandler({ distDir, dataDir, port, version }) {
         const partial =
           parsedBody && parsedBody.settings ? parsedBody.settings : parsedBody;
         return sendJson(res, 200, { ok: true, settings: writeSettings(dataDir, partial) });
+      }
+      if (p === "/api/link" && req.method === "POST") {
+        const body = await readBody(req, LINK_MAX_BYTES + 256 * 1024);
+        let linkBody;
+        try { linkBody = JSON.parse(body); } catch (_) {
+          return sendJson(res, 400, { ok: false, error: "Invalid JSON" });
+        }
+        const id = typeof linkBody.id === "string" ? linkBody.id : "";
+        const data = typeof linkBody.data === "string" ? linkBody.data : "";
+        if (!LINK_ID_RE.test(id)) return sendJson(res, 400, { ok: false, error: "Bad id" });
+        if (!data || data.length > LINK_MAX_BYTES) {
+          return sendJson(res, 400, { ok: false, error: "Bad data" });
+        }
+        const ttl = Math.min(Math.max(parseInt(linkBody.ttl, 10) || 300, 30), 900);
+        linkSweep();
+        if (linkStore.size >= LINK_MAX_ENTRIES) {
+          // Drop the oldest to bound memory under abuse.
+          const oldest = [...linkStore.entries()].sort((a, b) => a[1].expiresAt - b[1].expiresAt)[0];
+          if (oldest) linkStore.delete(oldest[0]);
+        }
+        linkStore.set(id, { data, expiresAt: Date.now() + ttl * 1000 });
+        return sendJson(res, 200, { ok: true });
+      }
+      if (p === "/api/link" && req.method === "GET") {
+        const id = parsed.searchParams.get("id") || "";
+        if (!LINK_ID_RE.test(id)) return sendJson(res, 400, { ok: false, error: "Bad id" });
+        linkSweep();
+        const entry = linkStore.get(id);
+        if (!entry) return sendJson(res, 404, { ok: false, error: "Not found" });
+        linkStore.delete(id); // one-time consume
+        return sendJson(res, 200, { ok: true, data: entry.data });
       }
       if (p === "/api/quit" && req.method === "POST") {
         // Acknowledge first, then shut down a beat later so the client gets

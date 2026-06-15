@@ -12,6 +12,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { useT, useLocaleTag, DOW_KEYS_MON_FIRST } from "@/lib/i18n";
+import { useIsMobile } from "@/hooks/use-media-query";
 
 interface Props {
   value: string;
@@ -154,7 +155,10 @@ export function DateTimePicker({
 }: Props) {
   const t = useT();
   const localeTag = useLocaleTag();
+  const isMobile = useIsMobile();
   const DOW_LABELS = DOW_KEYS_MON_FIRST.map((k) => t(k));
+  // Quick-pick presets are DESKTOP-ONLY — on the small mobile popover those
+  // rows crowd the panel, so the user picks via the calendar grid + steppers.
   const TIME_PRESETS: Array<[number, number, string]> = [
     [8, 0, t("dtp.timePresetMorning")],
     [12, 0, t("dtp.timePresetNoon")],
@@ -221,7 +225,8 @@ export function DateTimePicker({
       if (!trigger) return;
       const W = 300;
       const MARGIN = 8;
-      const PREF = dateOnly ? 340 : 440; // ideal full height
+      // Desktop shows the preset rows → taller ideal height; mobile hides them.
+      const PREF = isMobile ? (dateOnly ? 300 : 360) : (dateOnly ? 360 : 470);
       const vw = window.innerWidth;
       // --mobile-tabbar-h reserves the bottom nav on mobile (0 at md+).
       const rootStyle = getComputedStyle(document.documentElement);
@@ -253,7 +258,7 @@ export function DateTimePicker({
       window.removeEventListener("resize", compute);
       window.removeEventListener("scroll", compute, true);
     };
-  }, [open, dateOnly]);
+  }, [open, dateOnly, isMobile]);
 
   function commit(d: Date | null, h: number, m: number) {
     if (!d) {
@@ -384,26 +389,35 @@ export function DateTimePicker({
               top: coords.top,
               width: 300,
               maxHeight: coords.maxHeight,
+              // The task dialog is a Radix MODAL — it sets `pointer-events:none`
+              // on <body>. This popover portals to <body>, so without an
+              // explicit re-enable it inherits none → clicks fall through to
+              // whatever's behind (calendar days/steppers "dead", taps hit the
+              // element below). Re-enabling here fixes the system-wide
+              // "can't pick a deadline" regression.
+              pointerEvents: "auto",
             }}
             className="z-[60] overflow-y-auto rounded-xl border bg-popover shadow-2xl p-3 animate-in fade-in-0 zoom-in-95"
           >
-          {/* Presets */}
-          <div className="flex flex-wrap gap-1 mb-3">
-            {presets.map(({ label, build }) => (
-              <button
-                key={label}
-                type="button"
-                onClick={() => {
-                  const d = build();
-                  setViewMonth(new Date(d.getFullYear(), d.getMonth(), 1));
-                  pickDate(d);
-                }}
-                className="text-xs px-2.5 py-1 rounded-full bg-secondary hover:bg-primary/15 hover:text-primary transition-colors font-medium"
-              >
-                {label}
-              </button>
-            ))}
-          </div>
+          {/* Presets — desktop only (mobile popover is too tight). */}
+          {!isMobile && (
+            <div className="flex flex-wrap gap-1 mb-3">
+              {presets.map(({ label, build }) => (
+                <button
+                  key={label}
+                  type="button"
+                  onClick={() => {
+                    const d = build();
+                    setViewMonth(new Date(d.getFullYear(), d.getMonth(), 1));
+                    pickDate(d);
+                  }}
+                  className="text-xs px-2.5 py-1 rounded-full bg-secondary hover:bg-primary/15 hover:text-primary transition-colors font-medium"
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+          )}
 
           {/* Month nav */}
           <div className="flex items-center justify-between mb-2">
@@ -509,34 +523,37 @@ export function DateTimePicker({
                 {pad(hour)}:{pad(minute)}
               </span>
             </div>
-            <div className="flex gap-1">
-              {TIME_PRESETS.map(([h, m, label]) => {
-                const active = hour === h && minute === m;
-                return (
-                  <button
-                    key={label}
-                    type="button"
-                    onClick={() => setTime(h, m)}
-                    className={cn(
-                      "flex-1 text-[10px] px-1 py-1.5 rounded-md border transition-colors font-medium",
-                      active
-                        ? "border-primary/40 bg-primary/15 text-primary"
-                        : "border-transparent bg-secondary hover:bg-primary/10 hover:text-primary"
-                    )}
-                  >
-                    <span className="block tabular-nums text-[11px]">
-                      {pad(h)}:{pad(m)}
-                    </span>
-                    <span className={cn(
-                      "block text-[9px]",
-                      active ? "text-primary/80" : "text-muted-foreground"
-                    )}>
-                      {label}
-                    </span>
-                  </button>
-                );
-              })}
-            </div>
+            {/* Time presets — desktop only. */}
+            {!isMobile && (
+              <div className="flex gap-1">
+                {TIME_PRESETS.map(([h, m, label]) => {
+                  const active = hour === h && minute === m;
+                  return (
+                    <button
+                      key={label}
+                      type="button"
+                      onClick={() => setTime(h, m)}
+                      className={cn(
+                        "flex-1 text-[10px] px-1 py-1.5 rounded-md border transition-colors font-medium",
+                        active
+                          ? "border-primary/40 bg-primary/15 text-primary"
+                          : "border-transparent bg-secondary hover:bg-primary/10 hover:text-primary"
+                      )}
+                    >
+                      <span className="block tabular-nums text-[11px]">
+                        {pad(h)}:{pad(m)}
+                      </span>
+                      <span className={cn(
+                        "block text-[9px]",
+                        active ? "text-primary/80" : "text-muted-foreground"
+                      )}>
+                        {label}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
           </div>
           )}
 

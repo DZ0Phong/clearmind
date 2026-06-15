@@ -39,11 +39,13 @@ import {
   Globe,
   Wand2,
   HelpCircle,
+  Smartphone,
 } from "lucide-react";
 import { cn, extractSubjectCode } from "@/lib/utils";
 import { Logo } from "@/components/logo";
 import { buildBookmarklet, getBookmarkletBody } from "@/lib/bookmarklet";
 import { useT, DOW_KEYS_SUN_FIRST } from "@/lib/i18n";
+import { DeviceLinkDialog } from "@/components/device-link/device-link-dialog";
 
 type Tab = "paste" | "bookmarklet" | "ics";
 
@@ -127,6 +129,7 @@ export function ImportPage() {
   const [raw, setRaw] = useState("");
   const [parsed, setParsed] = useState<ParsedClass[]>([]);
   const [bookmarkletCopied, setBookmarkletCopied] = useState(false);
+  const [linkOpen, setLinkOpen] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   // ---- Hash-based handoff from bookmarklet -----------------------------
@@ -538,6 +541,24 @@ export function ImportPage() {
           {t("import.subtitle")}
         </p>
       </div>
+
+      {/* Cross-device sync (#8) — bring tasks from another phone/PC by QR/code. */}
+      <div className="flex items-center gap-3 rounded-xl border border-primary/20 bg-primary/5 p-3 sm:p-4">
+        <div className="h-10 w-10 rounded-lg bg-primary/10 text-primary flex items-center justify-center shrink-0">
+          <Smartphone className="h-5 w-5" />
+        </div>
+        <div className="min-w-0 flex-1">
+          <p className="font-medium text-sm">{t("import.deviceLink.title")}</p>
+          <p className="text-xs text-muted-foreground leading-snug">
+            {t("import.deviceLink.desc")}
+          </p>
+        </div>
+        <Button onClick={() => setLinkOpen(true)} className="gap-2 shrink-0">
+          <Smartphone className="h-4 w-4" />
+          <span className="hidden sm:inline">{t("import.deviceLink.button")}</span>
+        </Button>
+      </div>
+      <DeviceLinkDialog open={linkOpen} onOpenChange={setLinkOpen} />
 
       {/* Tab strip */}
       <div

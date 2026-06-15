@@ -149,6 +149,19 @@ pub fn run() {
 
             let host = host_is_running();
 
+            // Suppress the WebView's default right-click menu ("Open link in new
+            // window / Save link as / Copy link / Share…") in RELEASE builds —
+            // it's a web-page menu that looks out of place in a native desktop
+            // app and the user has no use for it. Kept in debug so devs can
+            // still right-click → Inspect. Injected as an init script so it
+            // also applies to the remote CLI-host page the windows load.
+            let no_ctx: &str = if cfg!(debug_assertions) {
+                ""
+            } else {
+                "document.addEventListener('contextmenu',function(e){e.preventDefault();},true);"
+            };
+            let widget_init = format!("window.__CLEARMIND_WIDGET__=true;{no_ctx}");
+
             // Primary window — the full app. Frameless: the SPA paints its own
             // titlebar (TitleBar.tsx) themed to match the app, and wires
             // minimize / maximize / close / drag through the window API.
@@ -157,6 +170,7 @@ pub fn run() {
                 .inner_size(1180.0, 800.0)
                 .min_inner_size(380.0, 520.0)
                 .decorations(false)
+                .initialization_script(no_ctx)
                 .build()?;
 
             // "Today" widget — a sticky-note style window: frameless (the SPA
@@ -175,7 +189,7 @@ pub fn run() {
                 .skip_taskbar(true)
                 .visible(false)
                 .resizable(true)
-                .initialization_script("window.__CLEARMIND_WIDGET__=true;")
+                .initialization_script(widget_init.as_str())
                 .build()?;
 
             // Park the widget in the top-right corner of the primary monitor.
