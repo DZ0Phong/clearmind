@@ -288,4 +288,4 @@ src-tauri/            Tauri desktop shell — src/lib.rs (windows + tray + hotke
 
 ## License
 
-Not yet licensed. Treat as source-available for review purposes.
+[MIT](LICENSE) © DZ0Phong
