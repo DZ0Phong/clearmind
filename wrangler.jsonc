@@ -1,0 +1,12 @@
+{
+  // Cloudflare now imports Git repos through the "Workers" flow. This config
+  // makes `wrangler deploy` serve the Vite build (./dist) as STATIC ASSETS —
+  // no Worker script, no backend. `single-page-application` returns index.html
+  // for unknown paths so client routes (/calendar, /settings) don't 404.
+  "name": "clearmind",
+  "compatibility_date": "2025-06-01",
+  "assets": {
+    "directory": "./dist",
+    "not_found_handling": "single-page-application"
+  }
+}
