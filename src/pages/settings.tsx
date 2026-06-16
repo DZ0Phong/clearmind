@@ -59,6 +59,7 @@ import {
   cliRecover,
   cliScheduledNotifications,
   cliTestNotification,
+  subscribeSettings,
   type CliInfo,
   type HistorySlot,
   type ScheduledNotification,
@@ -689,6 +690,19 @@ function DesktopAppCard() {
     getAppAutostart().then(setAutostart);
   }, []);
 
+  // Reflect pin / show-on-startup when they're toggled from the widget window
+  // or the tray (both broadcast through the shared settings channel) so this
+  // card's switches never show a stale state — was "cứ trơ trơ" when the pin
+  // was changed elsewhere.
+  useEffect(() => {
+    return subscribeSettings((s) => {
+      const p = s[WIDGET_PINNED_KEY];
+      if (typeof p === "boolean") setPinned(p);
+      const sos = s[WIDGET_SHOW_ON_STARTUP_KEY];
+      if (typeof sos === "boolean") setShowOnStartup(sos);
+    });
+  }, []);
+
   const onCheck = async () => {
     setChecking(true);
     const r = await checkForUpdate();
@@ -1223,38 +1237,33 @@ function useCliState() {
   const [scheduled, setScheduled] = useState<ScheduledNotification[]>([]);
   const [busy, setBusy] = useState(false);
 
+  // Probe each endpoint INDEPENDENTLY (allSettled): a single failing/absent
+  // sub-endpoint (e.g. an older host without /api/scheduled-notifications) must
+  // NOT block the health info — otherwise the card sticks on "đang đọc trạng
+  // thái server…" forever even though the server is up and reachable.
   const refresh = async () => {
-    try {
-      const [h, hist, s] = await Promise.all([
-        cliHealth(),
-        cliHistoryInfo(),
-        cliScheduledNotifications(),
-      ]);
-      setInfo(h);
-      setHistory(hist);
-      setScheduled(s);
-    } catch (e) {
-      console.warn("CLI probe failed:", e);
-    }
+    const [h, hist, s] = await Promise.allSettled([
+      cliHealth(),
+      cliHistoryInfo(),
+      cliScheduledNotifications(),
+    ]);
+    if (h.status === "fulfilled") setInfo(h.value);
+    if (hist.status === "fulfilled") setHistory(hist.value);
+    if (s.status === "fulfilled") setScheduled(s.value);
   };
 
   useEffect(() => {
     let cancelled = false;
     (async () => {
-      try {
-        const [h, hist, s] = await Promise.all([
-          cliHealth(),
-          cliHistoryInfo(),
-          cliScheduledNotifications(),
-        ]);
-        if (!cancelled) {
-          setInfo(h);
-          setHistory(hist);
-          setScheduled(s);
-        }
-      } catch (e) {
-        console.warn("CLI probe failed:", e);
-      }
+      const [h, hist, s] = await Promise.allSettled([
+        cliHealth(),
+        cliHistoryInfo(),
+        cliScheduledNotifications(),
+      ]);
+      if (cancelled) return;
+      if (h.status === "fulfilled") setInfo(h.value);
+      if (hist.status === "fulfilled") setHistory(hist.value);
+      if (s.status === "fulfilled") setScheduled(s.value);
     })();
     return () => {
       cancelled = true;
