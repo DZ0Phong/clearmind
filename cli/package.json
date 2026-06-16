@@ -1,6 +1,6 @@
 {
   "name": "clearmind-cli",
-  "version": "0.10.1",
+  "version": "0.10.2",
   "private": true,
   "description": "Chạy ngầm Clearmind với system tray + auto-start trên Windows. Lưu data ra %APPDATA%/Clearmind/.",
   "bin": {
