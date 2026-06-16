@@ -79,7 +79,14 @@ export function QrScanner({
           }
         }
         stream = await navigator.mediaDevices.getUserMedia({
-          video: { facingMode: { ideal: "environment" } },
+          // Request high resolution — a webcam's default ~640×480 can't resolve
+          // a dense QR (the offline/direct blob is a version-40 177×177 grid).
+          // Cameras downscale-fallback if 1080p is unsupported, so this is safe.
+          video: {
+            facingMode: { ideal: "environment" },
+            width: { ideal: 1920 },
+            height: { ideal: 1080 },
+          },
           audio: false,
         });
         if (stopped) {

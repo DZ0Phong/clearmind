@@ -23,16 +23,17 @@ import {
   decryptSnapshot,
   decryptDirect,
 } from "./crypto";
-import { relayPut, relayGet } from "./relay";
+import { relayPut, relayGet, RelayHttpError } from "./relay";
 
 export { formatCode, normalizeCode, WrongCodeError } from "./crypto";
 
 export const QR_LINK_PREFIX = "clearmind-link:";
 export const QR_DATA_PREFIX = "clearmind-data:";
 
-// Conservative cap on what we'll embed directly in a QR. Past this, a phone
-// camera struggles to lock on. gzip keeps typical task lists well under it.
-const QR_DIRECT_MAX = 1800;
+// Cap on what we'll embed directly in a QR. Past this a phone camera struggles
+// to lock onto the dense pattern. gzip keeps typical task lists well under it;
+// anything larger needs the relay (deployed web + LINK_KV).
+const QR_DIRECT_MAX = 2200;
 
 export const RELAY_TTL_SEC = 300;
 
@@ -73,18 +74,61 @@ export interface SendSession {
   expiresAt: number | null;
 }
 
+/** Why a send session couldn't be created — drives the UI's guidance. */
+export type SendFailReason =
+  | "localTooBig" // on localhost (no internet-reachable relay) + too big for a QR
+  | "relayUnconfigured" // deployed, but relay returned 503 (LINK_KV unbound)
+  | "relayError"; // relay unreachable/erroring + too big for a QR
+
 export class RelayUnavailableError extends Error {
-  constructor() {
+  reason: SendFailReason;
+  constructor(reason: SendFailReason) {
     super("RELAY_UNAVAILABLE");
     this.name = "RelayUnavailableError";
+    this.reason = reason;
   }
 }
 
+/** True when served from a loopback origin (CLI host on localhost / dev). */
+function isLocalOrigin(): boolean {
+  if (typeof window === "undefined") return true;
+  const h = window.location.hostname;
+  return (
+    h === "localhost" ||
+    h === "127.0.0.1" ||
+    h === "::1" ||
+    h === "[::1]" ||
+    h.endsWith(".localhost")
+  );
+}
+
+/** Pack the encrypted snapshot straight into the QR, or fail with `reason`. */
+async function directSession(
+  snapshot: DeviceSnapshot,
+  reason: SendFailReason
+): Promise<SendSession> {
+  const direct = await encryptDirect(snapshot);
+  const qrText = QR_DATA_PREFIX + direct;
+  if (qrText.length <= QR_DIRECT_MAX) {
+    return { code: "", qrText, mode: "direct", expiresAt: null };
+  }
+  throw new RelayUnavailableError(reason);
+}
+
 /**
- * Create a send session for the given snapshot. Tries the relay first; on
- * failure, falls back to embedding the encrypted blob in the QR when it fits.
+ * Create a send session for the given snapshot.
+ *
+ * On a loopback origin (CLI host / `npm run dev`) the relay is reachable only
+ * by THIS machine, so a relay code can't be pulled by a phone — we go straight
+ * to an offline QR-direct (the receiver scans it on the HTTPS site, where Web
+ * Crypto works). On a public origin (deployed web) the relay is shared and
+ * reachable, so we use it: it handles any data size and keeps the QR tiny.
  */
 export async function createSendSession(snapshot: DeviceSnapshot): Promise<SendSession> {
+  if (isLocalOrigin()) {
+    return directSession(snapshot, "localTooBig");
+  }
+
   const code = generateCode();
   try {
     const blob = await encryptSnapshot(snapshot, code);
@@ -96,14 +140,14 @@ export async function createSendSession(snapshot: DeviceSnapshot): Promise<SendS
       mode: "relay",
       expiresAt: Date.now() + RELAY_TTL_SEC * 1000,
     };
-  } catch {
-    // Relay down / unconfigured → offline QR-direct if the payload fits.
-    const direct = await encryptDirect(snapshot);
-    const qrText = QR_DATA_PREFIX + direct;
-    if (qrText.length <= QR_DIRECT_MAX) {
-      return { code: "", qrText, mode: "direct", expiresAt: null };
-    }
-    throw new RelayUnavailableError();
+  } catch (e) {
+    // Relay unreachable / not configured (503 when LINK_KV is unbound on
+    // Cloudflare Pages) → fall back to an offline QR, tagging WHY for the UI.
+    const reason: SendFailReason =
+      e instanceof RelayHttpError && e.status === 503
+        ? "relayUnconfigured"
+        : "relayError";
+    return directSession(snapshot, reason);
   }
 }
 

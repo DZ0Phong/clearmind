@@ -247,6 +247,7 @@ export const VI: Dict = {
   "dtp.increaseAria": "Tăng {label}",
   "dtp.hourLabel": "Giờ",
   "dtp.minuteLabel": "Phút",
+  "dtp.wheelHint": "Lăn chuột để tăng/giảm, hoặc bấm vào số để gõ trực tiếp",
 
   // Task dialog
   "dialog.recurrenceEnd": "Kết thúc lặp (tuỳ chọn)",
@@ -407,6 +408,7 @@ export const VI: Dict = {
   "dialog.createTitle": "Tạo task mới",
   "dialog.editTitle": "Sửa task",
   "dialog.label.title": "Tiêu đề",
+  "dialog.titleRequired": "Hãy nhập tiêu đề cho việc cần làm.",
   "dialog.label.description": "Mô tả",
   "dialog.label.type": "Loại",
   "dialog.label.priority": "Mức ưu tiên",
@@ -1111,7 +1113,11 @@ export const VI: Dict = {
   "deviceLink.send.expired": "Mã đã hết hạn — bấm “Tạo mã mới”.",
   "deviceLink.send.taskCount": "{n} việc sẽ được gửi",
   "deviceLink.send.offlineNote": "Chế độ ngoại tuyến: thiết bị kia phải QUÉT mã QR này (không nhập mã được). Dữ liệu nằm ngay trong QR, không qua máy chủ.",
-  "deviceLink.send.tooBig": "Chưa kết nối được máy chủ chuyển tiếp (relay), mà dữ liệu lại lớn hơn 1 mã QR chứa nổi. Hãy khởi động lại CLI host (hoặc bật relay/KV cho web đã deploy) rồi thử lại — relay đồng bộ được dữ liệu lớn tuỳ ý.",
+  "deviceLink.send.noCodeHint": "Chế độ này chưa có mã để gõ tay (dữ liệu nằm trong QR). Muốn có mã code + đồng bộ qua internet: mở clearmind-app.pages.dev ở cả hai thiết bị.",
+  "deviceLink.send.fail.localTooBig": "Bạn đang chạy bản trên máy này (localhost) nên thiết bị khác không kết nối tới được, mà lượng việc lại quá lớn để nhét vừa 1 mã QR. Mở Clearmind trên web (clearmind-app.pages.dev) ở CẢ HAI thiết bị — máy chủ chuyển tiếp đồng bộ được mọi dung lượng.",
+  "deviceLink.send.fail.relayUnconfigured": "Máy chủ chuyển tiếp trên web chưa bật (cần gắn KV namespace “LINK_KV” ở Cloudflare Pages → Settings → Functions), nên đã thử nhét vào mã QR nhưng dữ liệu quá lớn. Xem DEPLOY.md, hoặc bớt việc rồi thử lại.",
+  "deviceLink.send.fail.relayError": "Không kết nối được máy chủ chuyển tiếp và dữ liệu quá lớn cho 1 mã QR. Kiểm tra mạng rồi thử lại, hoặc mở web đã deploy ở cả hai thiết bị.",
+  "deviceLink.send.fail.error": "Không tạo được mã. Thử lại nhé.",
 
   "deviceLink.receive.intro": "Quét mã QR ở thiết bị kia, hoặc nhập mã.",
   "deviceLink.receive.scanButton": "Bật camera quét",

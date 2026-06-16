@@ -13,6 +13,17 @@
 
 const PUT_TTL = 300; // seconds — matches the relay default; KV min is 60.
 
+/** Carries the HTTP status so callers can distinguish 503 (relay not
+ * configured — e.g. LINK_KV unbound on Cloudflare Pages) from other failures. */
+export class RelayHttpError extends Error {
+  status: number;
+  constructor(status: number) {
+    super(`relay HTTP ${status}`);
+    this.name = "RelayHttpError";
+    this.status = status;
+  }
+}
+
 /** Same-origin base — wherever the SPA is served from already proxies /api. */
 function relayBase(): string {
   if (typeof window === "undefined") return "";
@@ -26,7 +37,7 @@ export async function relayPut(id: string, data: string, ttlSec = PUT_TTL): Prom
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ id, data, ttl: ttlSec }),
   });
-  if (!res.ok) throw new Error(`relay PUT → HTTP ${res.status}`);
+  if (!res.ok) throw new RelayHttpError(res.status);
 }
 
 /**
@@ -36,7 +47,7 @@ export async function relayPut(id: string, data: string, ttlSec = PUT_TTL): Prom
 export async function relayGet(id: string): Promise<string | null> {
   const res = await fetch(`${relayBase()}/api/link?id=${encodeURIComponent(id)}`);
   if (res.status === 404) return null;
-  if (!res.ok) throw new Error(`relay GET → HTTP ${res.status}`);
+  if (!res.ok) throw new RelayHttpError(res.status);
   const j = (await res.json()) as { data?: string };
   return typeof j.data === "string" ? j.data : null;
 }

@@ -90,6 +90,34 @@ function TimeStepper({ value, max, step, onChange, ariaLabel }: TimeStepperProps
   const wrap = (n: number) => ((n % (max + 1)) + (max + 1)) % (max + 1);
   const dec = () => onChange(wrap(value - step));
   const inc = () => onChange(wrap(value + step));
+  const rootRef = useRef<HTMLDivElement>(null);
+
+  // Mirror inc/dec into refs (updated AFTER render, not during it) so the
+  // once-attached native wheel listener always calls the latest version
+  // without re-binding every render.
+  const incRef = useRef(inc);
+  const decRef = useRef(dec);
+  useEffect(() => {
+    incRef.current = inc;
+    decRef.current = dec;
+  });
+
+  // Native, NON-passive wheel listener. React's onWheel is registered passively
+  // at the root, so its preventDefault() is a no-op (the page scrolls and the
+  // value never changes); the old handler also required the input to be focused
+  // first. Attaching here lets the user adjust by just hovering the field and
+  // scrolling — and actually stops the page from scrolling underneath.
+  useEffect(() => {
+    const el = rootRef.current;
+    if (!el) return;
+    const onWheel = (e: WheelEvent) => {
+      e.preventDefault();
+      if (e.deltaY < 0) incRef.current();
+      else decRef.current();
+    };
+    el.addEventListener("wheel", onWheel, { passive: false });
+    return () => el.removeEventListener("wheel", onWheel);
+  }, []);
 
   const handleInput = (raw: string) => {
     // Keep the LAST 2 digits, not the first 2 — otherwise the controlled
@@ -105,15 +133,12 @@ function TimeStepper({ value, max, step, onChange, ariaLabel }: TimeStepperProps
     if (Number.isFinite(n)) onChange(Math.max(0, Math.min(max, n)));
   };
 
-  const handleWheel = (e: React.WheelEvent<HTMLInputElement>) => {
-    if (document.activeElement !== e.currentTarget) return;
-    e.preventDefault();
-    if (e.deltaY < 0) inc();
-    else dec();
-  };
-
   return (
-    <div className="inline-flex items-stretch h-8 rounded-md border border-input bg-background overflow-hidden focus-within:ring-2 focus-within:ring-ring/40 focus-within:border-ring transition-all">
+    <div
+      ref={rootRef}
+      title={t("dtp.wheelHint")}
+      className="inline-flex items-stretch h-8 rounded-md border border-input bg-background overflow-hidden focus-within:ring-2 focus-within:ring-ring/40 focus-within:border-ring transition-all cursor-ns-resize"
+    >
       <button
         type="button"
         onClick={dec}
@@ -128,10 +153,9 @@ function TimeStepper({ value, max, step, onChange, ariaLabel }: TimeStepperProps
         pattern="[0-9]*"
         value={pad(value)}
         onChange={(e) => handleInput(e.target.value)}
-        onWheel={handleWheel}
         onFocus={(e) => e.currentTarget.select()}
         aria-label={ariaLabel}
-        className="w-10 text-center text-sm font-semibold tabular-nums bg-transparent focus:outline-none"
+        className="w-10 text-center text-sm font-semibold tabular-nums bg-transparent focus:outline-none cursor-text"
       />
       <button
         type="button"

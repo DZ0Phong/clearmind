@@ -39,7 +39,7 @@ export function Sidebar() {
   return (
     <aside
       aria-label={t("nav.primary")}
-      className="w-60 border-r bg-background/60 backdrop-blur-xl h-dvh flex-col hidden md:flex z-10 sticky top-0 shrink-0"
+      className="w-60 border-r bg-background/60 backdrop-blur-xl h-full flex-col hidden md:flex z-10 sticky top-0 shrink-0"
     >
       {/* Brand — compact (p-4 not p-5; tighter line-height). Plain Link
           (not NavLink) so it doesn't add a duplicate aria-current="page"

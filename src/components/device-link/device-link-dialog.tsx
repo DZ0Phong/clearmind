@@ -47,7 +47,7 @@ import {
 
 type LinkTab = "send" | "receive";
 type SendState = "idle" | "working" | "ready" | "error";
-type SendErr = "tooBig" | "error";
+type SendErr = "localTooBig" | "relayUnconfigured" | "relayError" | "error";
 type RxState = "idle" | "pulling" | "error";
 type RxErr = "notFound" | "wrongCode" | "unknownQr" | "camera" | "error";
 
@@ -96,7 +96,7 @@ export function DeviceLinkDialog({
       setSession(s);
       setSendState("ready");
     } catch (e) {
-      setSendErr(e instanceof RelayUnavailableError ? "tooBig" : "error");
+      setSendErr(e instanceof RelayUnavailableError ? e.reason : "error");
       setSendState("error");
     }
   }, [tasks]);
@@ -330,8 +330,8 @@ function SendPanel({
     return (
       <div className="flex flex-col items-center gap-3 py-8 text-center">
         <AlertCircle className="h-7 w-7 text-destructive" />
-        <p className="text-sm text-muted-foreground">
-          {sendErr === "tooBig" ? t("deviceLink.send.tooBig") : t("deviceLink.send.error")}
+        <p className="text-sm text-muted-foreground leading-relaxed px-2">
+          {t(`deviceLink.send.fail.${sendErr ?? "error"}`)}
         </p>
         <Button variant="outline" onClick={onRegenerate} className="gap-2">
           <RefreshCw className="h-4 w-4" /> {t("deviceLink.send.regenerate")}
@@ -383,10 +383,16 @@ function SendPanel({
           </p>
         </>
       ) : (
-        <p className="flex items-start gap-1.5 text-[11px] text-amber-600 dark:text-amber-400 leading-relaxed px-2">
-          <WifiOff className="h-3.5 w-3.5 mt-0.5 shrink-0" />
-          {t("deviceLink.send.offlineNote")}
-        </p>
+        <div className="flex flex-col gap-1.5 px-2">
+          <p className="flex items-start gap-1.5 text-[11px] text-amber-600 dark:text-amber-400 leading-relaxed">
+            <WifiOff className="h-3.5 w-3.5 mt-0.5 shrink-0" />
+            {t("deviceLink.send.offlineNote")}
+          </p>
+          {/* Explains WHY there's no typeable code here + how to get one. */}
+          <p className="text-[11px] text-muted-foreground leading-relaxed">
+            {t("deviceLink.send.noCodeHint")}
+          </p>
+        </div>
       )}
 
       <div className="flex items-center gap-3 pt-1">

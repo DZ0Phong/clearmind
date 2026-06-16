@@ -135,6 +135,11 @@ export function TaskDialog(props: Mode) {
   // FULL transcript live (replace semantics), so we set title = base + voice
   // rather than appending chunks — kills the mobile "alo alo alo 1 …" dup.
   const voiceBaseRef = useRef("");
+  const titleRef = useRef<HTMLInputElement>(null);
+  // Title is the ONLY required field. This flag drives the inline error shown
+  // on a submit attempt with an empty title — previously that was a silent
+  // no-op (button did nothing, no feedback).
+  const [titleError, setTitleError] = useState(false);
   const [description, setDescription] = useState(existing?.description ?? "");
   const [deadline, setDeadline] = useState(toLocalInput(existing?.deadline));
   const [nlHint, setNlHint] = useState("");
@@ -178,6 +183,7 @@ export function TaskDialog(props: Mode) {
       setUserPickedType(false);
       setUserPickedPriority(false);
       setNotifyAutoApplied(false);
+      setTitleError(false);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, isEdit]);
@@ -227,7 +233,11 @@ export function TaskDialog(props: Mode) {
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!title.trim()) return;
+    if (!title.trim()) {
+      setTitleError(true);
+      titleRef.current?.focus();
+      return;
+    }
     const isoDeadline = deadline
       ? new Date(deadline).toISOString()
       : nlHint || undefined;
@@ -295,13 +305,21 @@ export function TaskDialog(props: Mode) {
             <div>
               <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
                 {t("dialog.label.title")}
+                <span className="text-destructive ml-0.5" aria-hidden>
+                  *
+                </span>
               </label>
               <div className="flex items-start gap-2 mt-1.5">
                 <Input
+                  ref={titleRef}
                   autoFocus
                   placeholder={t("dialog.placeholder.title")}
                   value={title}
-                  onChange={(e) => setTitle(e.target.value)}
+                  onChange={(e) => {
+                    setTitle(e.target.value);
+                    if (titleError) setTitleError(false);
+                  }}
+                  aria-invalid={titleError}
                   className="flex-1"
                 />
                 <VoiceMic
@@ -316,6 +334,12 @@ export function TaskDialog(props: Mode) {
                   }}
                 />
               </div>
+              {titleError && (
+                <p className="flex items-center gap-1.5 text-[11px] text-destructive mt-1.5 font-medium">
+                  <AlertTriangle className="h-3 w-3 shrink-0" />
+                  {t("dialog.titleRequired")}
+                </p>
+              )}
               {/* Classifier + NL parse preview — pill reflects ACTUAL state
                   (auto-applied or manually picked), not raw classifier guess. */}
               {(title.length > 3 || nlHint) && (

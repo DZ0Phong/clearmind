@@ -248,6 +248,7 @@ export const EN: Dict = {
   "dtp.increaseAria": "Increase {label}",
   "dtp.hourLabel": "Hour",
   "dtp.minuteLabel": "Minute",
+  "dtp.wheelHint": "Scroll to adjust, or click the number to type it in",
 
   // Task dialog
   "dialog.recurrenceEnd": "Recurrence end (optional)",
@@ -408,6 +409,7 @@ export const EN: Dict = {
   "dialog.createTitle": "New task",
   "dialog.editTitle": "Edit task",
   "dialog.label.title": "Title",
+  "dialog.titleRequired": "Please enter a title for the task.",
   "dialog.label.description": "Description",
   "dialog.label.type": "Type",
   "dialog.label.priority": "Priority",
@@ -1112,7 +1114,11 @@ export const EN: Dict = {
   "deviceLink.send.expired": "Code expired — tap “New code”.",
   "deviceLink.send.taskCount": "{n} tasks will be sent",
   "deviceLink.send.offlineNote": "Offline mode: the other device must SCAN this QR (code entry unavailable). The data rides inside the QR — it never touches a server.",
-  "deviceLink.send.tooBig": "The relay server isn't reachable and the data is larger than a single QR can hold. Restart the CLI host (or enable the relay/KV on your deployed web), then try again — the relay syncs data of any size.",
+  "deviceLink.send.noCodeHint": "No typeable code in this mode (the data is inside the QR). For a code + internet sync, open clearmind-app.pages.dev on both devices.",
+  "deviceLink.send.fail.localTooBig": "You're running the local build (localhost), so another device can't reach it, and there's too much data to fit in one QR. Open Clearmind on the web (clearmind-app.pages.dev) on BOTH devices — the relay syncs any size.",
+  "deviceLink.send.fail.relayUnconfigured": "The web relay isn't enabled yet (bind a KV namespace “LINK_KV” in Cloudflare Pages → Settings → Functions), so we tried a QR but the data is too large. See DEPLOY.md, or remove some tasks and retry.",
+  "deviceLink.send.fail.relayError": "Couldn't reach the relay and the data is too large for one QR. Check your connection and retry, or open the deployed web on both devices.",
+  "deviceLink.send.fail.error": "Couldn't create a code. Please try again.",
 
   "deviceLink.receive.intro": "Scan the QR on the other device, or enter the code.",
   "deviceLink.receive.scanButton": "Scan with camera",
