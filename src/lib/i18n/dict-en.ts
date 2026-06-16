@@ -1096,7 +1096,9 @@ export const EN: Dict = {
 
   // Device linking (#8) — no-login, end-to-end-encrypted cross-device sync
   "deviceLink.title": "Link a device",
-  "deviceLink.desc": "Bring all your tasks to your phone or another computer — no login, end-to-end encrypted.",
+  "deviceLink.desc": "Link your devices to sync tasks AUTOMATICALLY between them — no login, end-to-end encrypted.",
+  "deviceLink.synced": "Linked — syncing automatically",
+  "deviceLink.unlink": "Unlink",
   "deviceLink.openButton": "Link a device",
   "deviceLink.row.title": "Sync via QR / code",
   "deviceLink.row.hint": "Show a QR + code for another device to scan/enter, or scan a code from another device into this one. Works both ways.",

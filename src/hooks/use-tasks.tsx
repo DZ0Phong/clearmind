@@ -9,6 +9,15 @@ import React, {
   useContext,
 } from "react";
 import { isCliMode, cliFetchTasks, cliPutTasks, cliMigrate, inlineTasks, inlineMtime } from "@/lib/cli-bridge";
+import { mergeState, sameState, pruneDeletions, type SyncState } from "@/lib/device-link/sync";
+import {
+  syncPull,
+  syncPush,
+  getSyncKey,
+  setSyncKey,
+  clearSyncKey,
+  SyncUnavailableError,
+} from "@/lib/device-link/sync-client";
 
 export type TaskType = "academic" | "personal" | "work" | "other";
 export type TaskPriority = "high" | "medium" | "low";
@@ -33,6 +42,10 @@ export interface Task {
   notify?: ReminderPref | null;
   pomodoroMinutes?: number;
   createdAt: string;
+  /** Last-modified stamp (ISO) — the per-task tiebreaker for cross-device sync
+   *  merges (newest wins). Optional for backward-compat with tasks stored
+   *  before sync existed; treated as createdAt when absent. */
+  updatedAt?: string;
   completedAt?: string;
 }
 
@@ -75,11 +88,40 @@ interface TasksContextType {
   };
   notificationsEnabled: boolean;
   requestNotifications: () => Promise<boolean>;
+  /** Continuous cross-device sync (polling milestone). */
+  sync: SyncInfo;
+}
+
+/** Continuous-sync status surfaced to the UI (Settings + device-link dialog). */
+export type SyncStatus =
+  | "idle" // not paired
+  | "syncing"
+  | "ok"
+  | "offline" // network / backend unreachable
+  | "unconfigured" // backend reachable but no D1 bound yet
+  | "error";
+
+export interface SyncInfo {
+  paired: boolean;
+  status: SyncStatus;
+  lastSyncAt: number | null;
+  /** Adopt a pairing key received from another device → start syncing. */
+  pair: (key: string) => void;
+  /** Stop syncing on this device (keeps local data). */
+  unlink: () => void;
+  /** Force a reconcile now. */
+  syncNow: () => void;
 }
 
 const TasksContext = createContext<TasksContextType | undefined>(undefined);
 
 const STORAGE_KEY = "clearmind_tasks";
+// Tombstones for cross-device sync: id → ISO deletedAt. A delete must out-rank
+// a stale remote copy on merge so it isn't "resurrected" by another device that
+// still has the task. Persisted per-client in localStorage; rides the cloud
+// sync payload. See src/lib/device-link/sync.ts (mergeState).
+const DELETIONS_KEY = "clearmind_deletions";
+const nowIso = () => new Date().toISOString();
 
 function nextRecurrence(deadline: string, rule: RecurrenceRule): string {
   const d = new Date(deadline);
@@ -165,6 +207,19 @@ export function TasksProvider({ children }: { children: React.ReactNode }) {
   // Version stamp từ server. SSE event nào có mtime ≤ này thì bỏ qua (stale).
   const lastMtimeRef = useRef<number>(0);
   const cli = isCliMode();
+  // Tombstone map (id → deletedAt ISO) for cross-device sync. localStorage-
+  // backed per client; the cloud sync engine (Phase 1) reads/merges it.
+  const [deletions, setDeletions] = useState<Record<string, string>>({});
+  const deletionsRef = useRef<Record<string, string>>({});
+  deletionsRef.current = deletions;
+  // Continuous-sync engine state (polling). A syncKey present ⇒ this device is
+  // paired and reconciles with the shared encrypted cloud doc.
+  const [syncKey, setSyncKeyState] = useState<string | null>(() => getSyncKey());
+  const [syncStatus, setSyncStatus] = useState<SyncStatus>("idle");
+  const [lastSyncAt, setLastSyncAt] = useState<number | null>(null);
+  const syncVersionRef = useRef(0); // server doc version we've reconciled with
+  const lastSyncedStateRef = useRef<SyncState | null>(null); // what the server holds
+  const syncingRef = useRef(false); // single-flight guard
 
   useEffect(() => {
     let cancelled = false;
@@ -300,6 +355,27 @@ export function TasksProvider({ children }: { children: React.ReactNode }) {
     return () => es.close();
   }, [cli]);
 
+  // Load + persist tombstones (localStorage, per client). Independent of the
+  // tasks load path so it can't interfere with the wipe-guard logic above.
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(DELETIONS_KEY);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (parsed && typeof parsed === "object") setDeletions(parsed);
+      }
+    } catch {
+      /* ignore */
+    }
+  }, []);
+  useEffect(() => {
+    try {
+      localStorage.setItem(DELETIONS_KEY, JSON.stringify(deletions));
+    } catch {
+      /* ignore */
+    }
+  }, [deletions]);
+
   // Persist on change. Only fires when the initial load succeeded AND the
   // current snapshot actually differs from what we last persisted.
   useEffect(() => {
@@ -430,14 +506,139 @@ export function TasksProvider({ children }: { children: React.ReactNode }) {
     };
   }, [tasks, notificationsEnabled, cli]);
 
+  // ---- Continuous cross-device sync (polling milestone) --------------------
+  // When paired (a syncKey exists), reconcile with the shared encrypted cloud
+  // doc: PULL (merge by updatedAt + tombstones) → PUSH if we hold anything the
+  // server doesn't. Optimistic concurrency (version) + a sameState guard stop
+  // it from looping. Runs identically on web / desktop app / CLI host / mobile.
+  const applyMerged = useCallback((merged: SyncState) => {
+    setTasks(merged.tasks);
+    setDeletions(merged.deletions);
+  }, []);
+
+  const reconcile = useCallback(async () => {
+    const key = syncKey;
+    if (!key || syncingRef.current) return;
+    syncingRef.current = true;
+    setSyncStatus("syncing");
+    try {
+      // 1) PULL anything newer than the version we last reconciled with.
+      const pull = await syncPull(key, syncVersionRef.current);
+      let local: SyncState = {
+        tasks: tasksRef.current,
+        deletions: deletionsRef.current,
+      };
+      if (pull.state) {
+        const merged = mergeState(local, pull.state);
+        if (!sameState(merged, local)) {
+          applyMerged(merged);
+          local = merged;
+        }
+        syncVersionRef.current = pull.version;
+        lastSyncedStateRef.current = pull.state;
+      } else {
+        syncVersionRef.current = pull.version;
+      }
+
+      // 2) PUSH when our local state differs from what the server holds.
+      const serverState = lastSyncedStateRef.current;
+      if (!serverState || !sameState(local, serverState)) {
+        let base = syncVersionRef.current;
+        let toPush: SyncState = {
+          tasks: local.tasks,
+          deletions: pruneDeletions(local.deletions, Date.now()),
+        };
+        for (let attempt = 0; attempt < 4; attempt++) {
+          const res = await syncPush(key, toPush, base);
+          if (res.ok) {
+            syncVersionRef.current = res.version;
+            lastSyncedStateRef.current = toPush;
+            break;
+          }
+          // 409 — someone wrote first. Merge their doc + retry on the new base.
+          base = res.version;
+          if (res.state) {
+            const merged = mergeState(toPush, res.state);
+            applyMerged(merged);
+            toPush = {
+              tasks: merged.tasks,
+              deletions: pruneDeletions(merged.deletions, Date.now()),
+            };
+            lastSyncedStateRef.current = res.state;
+          }
+        }
+      }
+      setSyncStatus("ok");
+      setLastSyncAt(Date.now());
+    } catch (e) {
+      setSyncStatus(
+        e instanceof SyncUnavailableError && e.status === 503 ? "unconfigured" : "offline"
+      );
+    } finally {
+      syncingRef.current = false;
+    }
+  }, [syncKey, applyMerged]);
+
+  const pair = useCallback((key: string) => {
+    setSyncKey(key);
+    setSyncKeyState(key);
+    syncVersionRef.current = 0;
+    lastSyncedStateRef.current = null;
+  }, []);
+
+  const unlink = useCallback(() => {
+    clearSyncKey();
+    setSyncKeyState(null);
+    setSyncStatus("idle");
+    setLastSyncAt(null);
+    syncVersionRef.current = 0;
+    lastSyncedStateRef.current = null;
+  }, []);
+
+  // Engine lifecycle: reconcile on pair/mount, every 12s while visible, and on
+  // focus / visibility / online (so picking up the other device syncs at once).
+  useEffect(() => {
+    if (!syncKey || loadState !== "loaded") return;
+    const wake = () => {
+      if (typeof document === "undefined" || document.visibilityState === "visible") {
+        void reconcile();
+      }
+    };
+    void reconcile();
+    const timer = window.setInterval(wake, 12000);
+    const onVisible = () => {
+      if (document.visibilityState === "visible") void reconcile();
+    };
+    window.addEventListener("focus", wake);
+    window.addEventListener("online", wake);
+    document.addEventListener("visibilitychange", onVisible);
+    return () => {
+      window.clearInterval(timer);
+      window.removeEventListener("focus", wake);
+      window.removeEventListener("online", wake);
+      document.removeEventListener("visibilitychange", onVisible);
+    };
+  }, [syncKey, loadState, reconcile]);
+
+  // Push shortly after a local change so linked devices see it within seconds.
+  useEffect(() => {
+    if (!syncKey || loadState !== "loaded") return;
+    const local: SyncState = { tasks, deletions };
+    if (lastSyncedStateRef.current && sameState(local, lastSyncedStateRef.current)) return;
+    const h = window.setTimeout(() => void reconcile(), 1500);
+    return () => window.clearTimeout(h);
+  }, [tasks, deletions, syncKey, loadState, reconcile]);
+
   const addTask: TasksContextType["addTask"] = useCallback((t) => {
     const id = crypto.randomUUID();
+    const ts = nowIso();
     setTasks((prev) => [
       {
         status: "todo",
         ...t,
         id,
-        createdAt: new Date().toISOString(),
+        createdAt: ts,
+        updatedAt: ts,
       } as Task,
       ...prev,
     ]);
@@ -463,12 +664,14 @@ export function TasksProvider({ children }: { children: React.ReactNode }) {
       : Number.POSITIVE_INFINITY;
     if (new Date(nextDeadline).getTime() > stopBy) return updated;
     if (nextInstanceAlreadyExists(prev, target, nextDeadline)) return updated;
+    const ts = nowIso();
     const spawn: Task = {
       ...target,
       id: crypto.randomUUID(),
       status: "todo",
       deadline: nextDeadline,
-      createdAt: new Date().toISOString(),
+      createdAt: ts,
+      updatedAt: ts,
       completedAt: undefined,
       pomodoroMinutes: 0,
     };
@@ -485,6 +688,7 @@ export function TasksProvider({ children }: { children: React.ReactNode }) {
           ? {
               ...t,
               status,
+              updatedAt: nowIso(),
               completedAt: justCompleted
                 ? new Date().toISOString()
                 : t.completedAt,
@@ -507,6 +711,7 @@ export function TasksProvider({ children }: { children: React.ReactNode }) {
           ? {
               ...t,
               status: next,
+              updatedAt: nowIso(),
               completedAt: justCompleted
                 ? new Date().toISOString()
                 : t.completedAt,
@@ -519,7 +724,9 @@ export function TasksProvider({ children }: { children: React.ReactNode }) {
 
   const updateTask = useCallback(
     (id: string, updates: Partial<Omit<Task, "id">>) => {
-      setTasks((prev) => prev.map((t) => (t.id === id ? { ...t, ...updates } : t)));
+      setTasks((prev) =>
+        prev.map((t) => (t.id === id ? { ...t, ...updates, updatedAt: nowIso() } : t))
+      );
     },
     []
   );
@@ -530,9 +737,18 @@ export function TasksProvider({ children }: { children: React.ReactNode }) {
       snapshot = prev;
       return prev.filter((t) => t.id !== id);
     });
+    // Tombstone so the delete propagates cross-device and isn't resurrected by
+    // a stale remote copy on the next sync pull.
+    const ts = nowIso();
+    setDeletions((prev) => ({ ...prev, [id]: ts }));
     return {
       restore: () => {
         if (snapshot) setTasks(snapshot);
+        setDeletions((prev) => {
+          const next = { ...prev };
+          delete next[id];
+          return next;
+        });
       },
     };
   }, []);
@@ -546,6 +762,7 @@ export function TasksProvider({ children }: { children: React.ReactNode }) {
         const hadTime = !t.deadline || t.deadline.includes("T");
         return {
           ...t,
+          updatedAt: nowIso(),
           deadline: hadTime
             ? shifted.toISOString()
             : `${shifted.getFullYear()}-${(shifted.getMonth() + 1)
@@ -556,7 +773,17 @@ export function TasksProvider({ children }: { children: React.ReactNode }) {
     );
   }, []);
 
-  const clearAll = useCallback(() => setTasks([]), []);
+  const clearAll = useCallback(() => {
+    // Tombstone every current task so "clear all" propagates to linked devices
+    // instead of those devices re-seeding everything on the next pull.
+    const ts = nowIso();
+    setDeletions((prev) => {
+      const next = { ...prev };
+      for (const t of tasksRef.current) next[t.id] = ts;
+      return next;
+    });
+    setTasks([]);
+  }, []);
 
   const rollForwardOverdueRecurring = useCallback(() => {
     let snapshot: Task[] | null = null;
@@ -579,7 +806,7 @@ export function TasksProvider({ children }: { children: React.ReactNode }) {
           return t;
         }
         moved++;
-        return { ...t, deadline: next };
+        return { ...t, deadline: next, updatedAt: nowIso() };
       });
     });
     return {
@@ -622,19 +849,34 @@ export function TasksProvider({ children }: { children: React.ReactNode }) {
       keepIds.add(t.id);
     }
     const next = snapshot.filter((t) => keepIds.has(t.id));
-    const removed = snapshot.length - next.length;
     // Surface the titles of the tasks we're about to remove so the
     // caller can show users *what* was deduplicated. Without this the
     // banner toast just said "Đã xoá 4 task" and users had no way to
     // verify the cleanup matched their mental model.
-    const removedNames = snapshot
-      .filter((t) => !keepIds.has(t.id))
-      .map((t) => t.title);
-    if (removed > 0) setTasks(next);
+    const removedTasks = snapshot.filter((t) => !keepIds.has(t.id));
+    const removed = removedTasks.length;
+    const removedNames = removedTasks.map((t) => t.title);
+    const removedIds = removedTasks.map((t) => t.id);
+    if (removed > 0) {
+      const ts = nowIso();
+      setDeletions((prev) => {
+        const d = { ...prev };
+        for (const id of removedIds) d[id] = ts;
+        return d;
+      });
+      setTasks(next);
+    }
     return {
       removed,
       removedNames,
-      restore: () => setTasks(snapshot),
+      restore: () => {
+        setTasks(snapshot);
+        setDeletions((prev) => {
+          const d = { ...prev };
+          for (const id of removedIds) delete d[id];
+          return d;
+        });
+      },
     };
   }, []);
 
@@ -672,6 +914,7 @@ export function TasksProvider({ children }: { children: React.ReactNode }) {
       }
 
       let added = 0;
+      const importedIds: string[] = [];
       setTasks((prev) => {
         const byId = new Map(prev.map((t) => [t.id, t]));
         for (const incomingTask of incoming) {
@@ -686,21 +929,32 @@ export function TasksProvider({ children }: { children: React.ReactNode }) {
           // events back onto the calendar. User explicitly wants "tuần
           // nào import tuần đó" — strip the recurrence so backups behave
           // the same as fresh paste imports.
+          const created = incomingTask.createdAt || new Date().toISOString();
           const safe: Task = {
             ...incomingTask,
             id: incomingTask.id || crypto.randomUUID(),
-            createdAt: incomingTask.createdAt || new Date().toISOString(),
+            createdAt: created,
+            updatedAt: incomingTask.updatedAt || created,
             status: incomingTask.status || "todo",
             recurrence: null,
             recurrenceEndAt: null,
           };
           if (!byId.has(safe.id)) {
             byId.set(safe.id, safe);
+            importedIds.push(safe.id);
             added++;
           }
         }
         return Array.from(byId.values());
       });
+      // Imported ids win over any local tombstone (explicit user action).
+      if (importedIds.length) {
+        setDeletions((prev) => {
+          const d = { ...prev };
+          for (const id of importedIds) delete d[id];
+          return d;
+        });
+      }
       return { ok: true, added };
     } catch (e) {
       return { ok: false, added: 0, error: (e as Error).message };
@@ -713,14 +967,18 @@ export function TasksProvider({ children }: { children: React.ReactNode }) {
       // returned counts are accurate — reading them out of a setTasks updater
       // is racy (see clearDuplicates for the same lesson).
       const prev = tasksRef.current;
-      const normalize = (raw: Task): Task => ({
-        ...raw,
-        id: raw.id || crypto.randomUUID(),
-        createdAt: raw.createdAt || new Date().toISOString(),
-        status: raw.status || "todo",
-        type: raw.type || "other",
-        priority: raw.priority || "medium",
-      });
+      const normalize = (raw: Task): Task => {
+        const created = raw.createdAt || new Date().toISOString();
+        return {
+          ...raw,
+          id: raw.id || crypto.randomUUID(),
+          createdAt: created,
+          updatedAt: raw.updatedAt || created,
+          status: raw.status || "todo",
+          type: raw.type || "other",
+          priority: raw.priority || "medium",
+        };
+      };
       const valid = (raw: Task | null | undefined): raw is Task =>
         !!raw && typeof raw.title === "string" && raw.title.trim().length > 0;
 
@@ -740,6 +998,13 @@ export function TasksProvider({ children }: { children: React.ReactNode }) {
         }
         next = Array.from(byId.values());
       }
+      // Received tasks out-rank any local tombstone for the same id.
+      const nextIds = next.map((tk) => tk.id);
+      setDeletions((prev) => {
+        const d = { ...prev };
+        for (const id of nextIds) delete d[id];
+        return d;
+      });
       setTasks(next);
       return { added, total: next.length };
     },
@@ -750,7 +1015,7 @@ export function TasksProvider({ children }: { children: React.ReactNode }) {
     setTasks((prev) =>
       prev.map((t) =>
         t.id === id
-          ? { ...t, pomodoroMinutes: (t.pomodoroMinutes || 0) + minutes }
+          ? { ...t, pomodoroMinutes: (t.pomodoroMinutes || 0) + minutes, updatedAt: nowIso() }
           : t
       )
     );
@@ -768,6 +1033,18 @@ export function TasksProvider({ children }: { children: React.ReactNode }) {
     setNotificationsEnabled(ok);
     return ok;
   }, []);
+
+  const sync = useMemo<SyncInfo>(
+    () => ({
+      paired: !!syncKey,
+      status: syncStatus,
+      lastSyncAt,
+      pair,
+      unlink,
+      syncNow: () => void reconcile(),
+    }),
+    [syncKey, syncStatus, lastSyncAt, pair, unlink, reconcile]
+  );
 
   // Memoize the context value so consumers (Dashboard, Tasks, Calendar,
   // Topbar overdue badge…) don't re-render on every TasksProvider update.
@@ -791,6 +1068,7 @@ export function TasksProvider({ children }: { children: React.ReactNode }) {
       clearDuplicates,
       notificationsEnabled,
       requestNotifications,
+      sync,
     }),
     [
       tasks,
@@ -809,6 +1087,7 @@ export function TasksProvider({ children }: { children: React.ReactNode }) {
       clearDuplicates,
       notificationsEnabled,
       requestNotifications,
+      sync,
     ]
   );
 

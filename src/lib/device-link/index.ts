@@ -42,14 +42,19 @@ export interface DeviceSnapshot {
   v: 1;
   exportedAt: string;
   tasks: Task[];
+  /** Persistent pairing key — its presence turns the one-shot transfer into a
+   *  continuous link: the receiver adopts it and both devices then sync via the
+   *  shared cloud doc. Omitted only for a pure one-shot (legacy) snapshot. */
+  syncKey?: string;
 }
 
-export function buildSnapshot(tasks: Task[]): DeviceSnapshot {
+export function buildSnapshot(tasks: Task[], syncKey?: string): DeviceSnapshot {
   return {
     kind: "clearmind-snapshot",
     v: 1,
     exportedAt: new Date().toISOString(),
     tasks,
+    ...(syncKey ? { syncKey } : {}),
   };
 }
 
@@ -89,19 +94,6 @@ export class RelayUnavailableError extends Error {
   }
 }
 
-/** True when served from a loopback origin (CLI host on localhost / dev). */
-function isLocalOrigin(): boolean {
-  if (typeof window === "undefined") return true;
-  const h = window.location.hostname;
-  return (
-    h === "localhost" ||
-    h === "127.0.0.1" ||
-    h === "::1" ||
-    h === "[::1]" ||
-    h.endsWith(".localhost")
-  );
-}
-
 /** Pack the encrypted snapshot straight into the QR, or fail with `reason`. */
 async function directSession(
   snapshot: DeviceSnapshot,
@@ -116,19 +108,13 @@ async function directSession(
 }
 
 /**
- * Create a send session for the given snapshot.
- *
- * On a loopback origin (CLI host / `npm run dev`) the relay is reachable only
- * by THIS machine, so a relay code can't be pulled by a phone — we go straight
- * to an offline QR-direct (the receiver scans it on the HTTPS site, where Web
- * Crypto works). On a public origin (deployed web) the relay is shared and
- * reachable, so we use it: it handles any data size and keeps the QR tiny.
+ * Create a send session. RELAY-FIRST: the encrypted snapshot is pushed to the
+ * shared backend (public when on localhost — see relay.ts `apiBase`, so the
+ * desktop app / CLI host hit the SAME relay as the deployed web), giving a tiny
+ * easy-to-scan QR AND a typeable code that any device can pull. Falls back to
+ * an offline QR-direct (scan-only) when the relay is unreachable / unconfigured.
  */
 export async function createSendSession(snapshot: DeviceSnapshot): Promise<SendSession> {
-  if (isLocalOrigin()) {
-    return directSession(snapshot, "localTooBig");
-  }
-
   const code = generateCode();
   try {
     const blob = await encryptSnapshot(snapshot, code);
@@ -141,8 +127,7 @@ export async function createSendSession(snapshot: DeviceSnapshot): Promise<SendS
       expiresAt: Date.now() + RELAY_TTL_SEC * 1000,
     };
   } catch (e) {
-    // Relay unreachable / not configured (503 when LINK_KV is unbound on
-    // Cloudflare Pages) → fall back to an offline QR, tagging WHY for the UI.
+    // Relay unreachable / not configured (503) → offline QR, tagged for the UI.
     const reason: SendFailReason =
       e instanceof RelayHttpError && e.status === 503
         ? "relayUnconfigured"

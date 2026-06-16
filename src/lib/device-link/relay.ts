@@ -24,15 +24,52 @@ export class RelayHttpError extends Error {
   }
 }
 
-/** Same-origin base — wherever the SPA is served from already proxies /api. */
-function relayBase(): string {
+// The public deploy that hosts the Cloudflare relay (KV) + sync (D1). When the
+// SPA runs from a loopback origin (CLI host / desktop app / `npm run dev`) its
+// OWN /api can't be reached by other devices, so we route device-link + sync to
+// this shared public backend instead. A deployed / custom-domain origin uses
+// itself. The backend only ever sees E2E ciphertext, so cross-origin is safe.
+const PUBLIC_ORIGIN = "https://clearmind-app.pages.dev";
+
+function isLoopbackHost(): boolean {
+  if (typeof window === "undefined") return true;
+  const h = window.location.hostname;
+  return (
+    h === "localhost" ||
+    h === "127.0.0.1" ||
+    h === "::1" ||
+    h === "[::1]" ||
+    h.endsWith(".localhost")
+  );
+}
+
+/** Base URL for the shared /api backend (relay + sync). Public when local so
+ *  the desktop app / CLI host reach the SAME store every other device does. */
+export function apiBase(): string {
   if (typeof window === "undefined") return "";
-  return window.location.origin;
+  return isLoopbackHost() ? PUBLIC_ORIGIN : window.location.origin;
+}
+
+/** fetch with a hard timeout so a stalled/black-holed relay can never hang the
+ *  UI forever — that was the "Nhận về cứ xoay mãi" symptom. On timeout it
+ *  aborts → throws → the caller surfaces an error instead of an infinite spin. */
+async function fetchWithTimeout(
+  url: string,
+  init: RequestInit = {},
+  ms = 12000
+): Promise<Response> {
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), ms);
+  try {
+    return await fetch(url, { ...init, signal: ctrl.signal });
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 /** Store ciphertext under `id`. Throws if the relay is unreachable/unconfigured. */
 export async function relayPut(id: string, data: string, ttlSec = PUT_TTL): Promise<void> {
-  const res = await fetch(`${relayBase()}/api/link`, {
+  const res = await fetchWithTimeout(`${apiBase()}/api/link`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ id, data, ttl: ttlSec }),
@@ -45,7 +82,7 @@ export async function relayPut(id: string, data: string, ttlSec = PUT_TTL): Prom
  * absent — expired or already consumed. Throws on transport/relay errors.
  */
 export async function relayGet(id: string): Promise<string | null> {
-  const res = await fetch(`${relayBase()}/api/link?id=${encodeURIComponent(id)}`);
+  const res = await fetchWithTimeout(`${apiBase()}/api/link?id=${encodeURIComponent(id)}`);
   if (res.status === 404) return null;
   if (!res.ok) throw new RelayHttpError(res.status);
   const j = (await res.json()) as { data?: string };

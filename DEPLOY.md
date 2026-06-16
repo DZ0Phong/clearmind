@@ -67,11 +67,40 @@ the SPA:
 
 Found in **Settings → Data → Link a device**, and on the **Import** page.
 
+## Continuous device sync (auto — the "linked devices" model)
+
+Once two devices are **linked** (the QR/code handshake also exchanges a
+persistent pairing key), they keep syncing **automatically** — add a task on one
+and it appears on the other within seconds, in both directions. Same principle
+as the relay: a single **end-to-end-encrypted** document keyed by
+`SHA-256(pairing key)` that every linked device polls + pushes to. No login; the
+server only ever sees ciphertext. Conflicts resolve per-task by newest edit, and
+deletes carry tombstones so they don't get resurrected.
+
+This needs a **D1 database** binding (one-time, free) on the Pages project:
+
+1. Cloudflare dashboard → **Storage & Databases → D1 → Create database** (name it
+   e.g. `clearmind-sync`).
+2. Your Pages project → **Settings → Bindings → Add → D1 database**. Variable
+   name **`SYNC_DB`**, bind it to the database above.
+3. Redeploy (any push). Done — `/api/sync` is live (the `docs` table is created
+   automatically on first use).
+
+Free-tier D1 (5M reads + 100k writes/day) dwarfs what personal sync needs. Until
+the binding exists, `/api/sync` returns 503 and the app stays **local-only** (no
+error — sync just doesn't activate).
+
+> The desktop app, CLI host, and `localhost` dev all route device-link **and**
+> sync to this shared public backend (`clearmind-app.pages.dev`), so **both
+> `LINK_KV` and `SYNC_DB` power every client** — that's how a phone on cellular
+> and a PC running the desktop app reach the same store. The backend sees only
+> ciphertext, so the `*` CORS on `/api/link` + `/api/sync` is safe.
+
 ## Notes
 
-- **Each device starts with its own (empty) data** — it's local-first. Move
-  data between devices via **Settings → Data → Export/Import JSON** for now;
-  #8 will make this a QR/code tap.
+- **Each device starts with its own (empty) data** — it's local-first. **Link
+  devices** (Settings → Data → Link a device) for automatic continuous sync, or
+  use **Export/Import JSON** for a manual one-off.
 - Native deadline notifications when the tab is closed are a **desktop-app /
   CLI** feature (the web can only notify while open). The deployed web is the
   universal viewer/editor; the desktop app + CLI are the always-on host.

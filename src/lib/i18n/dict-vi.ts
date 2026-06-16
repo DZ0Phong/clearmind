@@ -1095,7 +1095,9 @@ export const VI: Dict = {
 
   // ── Liên kết thiết bị (#8) — đồng bộ không cần đăng nhập, mã hoá đầu-cuối ──
   "deviceLink.title": "Liên kết thiết bị",
-  "deviceLink.desc": "Mang toàn bộ việc sang điện thoại hay máy khác — không cần đăng nhập, mã hoá đầu-cuối.",
+  "deviceLink.desc": "Liên kết để các máy TỰ ĐỘNG đồng bộ việc với nhau — không cần đăng nhập, mã hoá đầu-cuối.",
+  "deviceLink.synced": "Đã liên kết — tự đồng bộ",
+  "deviceLink.unlink": "Huỷ liên kết",
   "deviceLink.openButton": "Liên kết thiết bị",
   "deviceLink.row.title": "Đồng bộ qua QR / mã",
   "deviceLink.row.hint": "Hiện mã QR + mã code để thiết bị khác quét/nhập, hoặc quét mã từ thiết bị khác về đây. Cả hai chiều.",

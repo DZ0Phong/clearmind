@@ -17,11 +17,25 @@
 const ID_RE = /^[a-f0-9]{64}$/;
 const MAX_BYTES = 2_000_000;
 
+// The relay only ever stores opaque E2E ciphertext, so allowing any origin is
+// safe — and necessary: the desktop app / CLI host run on http://localhost and
+// must reach this public relay cross-origin to sync with phones/other PCs.
+const CORS = {
+  "access-control-allow-origin": "*",
+  "access-control-allow-methods": "GET, POST, OPTIONS",
+  "access-control-allow-headers": "content-type",
+  "access-control-max-age": "86400",
+};
+
 function json(status, obj) {
   return new Response(JSON.stringify(obj), {
     status,
-    headers: { "content-type": "application/json; charset=utf-8" },
+    headers: { "content-type": "application/json; charset=utf-8", ...CORS },
   });
+}
+
+export function onRequestOptions() {
+  return new Response(null, { status: 204, headers: CORS });
 }
 
 export async function onRequestPost(context) {

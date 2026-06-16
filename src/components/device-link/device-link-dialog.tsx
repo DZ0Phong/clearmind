@@ -44,6 +44,7 @@ import {
   type DeviceSnapshot,
   type SendSession,
 } from "@/lib/device-link";
+import { ensureSyncKey } from "@/lib/device-link/sync-client";
 
 type LinkTab = "send" | "receive";
 type SendState = "idle" | "working" | "ready" | "error";
@@ -66,7 +67,7 @@ export function DeviceLinkDialog({
   onOpenChange: (v: boolean) => void;
 }) {
   const t = useT();
-  const { tasks, receiveSnapshot } = useTasks();
+  const { tasks, receiveSnapshot, sync } = useTasks();
   const { toast } = useToast();
   const { confirm } = useDialog();
 
@@ -92,14 +93,19 @@ export function DeviceLinkDialog({
     setSendErr(null);
     setCopied(false);
     try {
-      const s = await createSendSession(buildSnapshot(tasks));
+      // Linking establishes a PERSISTENT pairing key (continuous sync), not
+      // just a one-shot transfer: adopt it here + embed it in the snapshot so
+      // the receiver adopts the same key and both devices keep syncing.
+      const key = ensureSyncKey();
+      sync.pair(key);
+      const s = await createSendSession(buildSnapshot(tasks, key));
       setSession(s);
       setSendState("ready");
     } catch (e) {
       setSendErr(e instanceof RelayUnavailableError ? e.reason : "error");
       setSendState("error");
     }
-  }, [tasks]);
+  }, [tasks, sync]);
 
   // Auto-create the first session when the Send tab opens — one fewer click.
   useEffect(() => {
@@ -192,6 +198,7 @@ export function DeviceLinkDialog({
   const applyMerge = () => {
     if (!pending) return;
     const { added, total } = receiveSnapshot(pending.tasks, "merge");
+    if (pending.syncKey) sync.pair(pending.syncKey); // adopt the pairing → keep syncing
     toast({
       title: t("deviceLink.apply.doneMerge", { added, total }),
       variant: "success",
@@ -212,6 +219,7 @@ export function DeviceLinkDialog({
     });
     if (!ok) return;
     const { total } = receiveSnapshot(pending.tasks, "replace");
+    if (pending.syncKey) sync.pair(pending.syncKey); // adopt the pairing → keep syncing
     toast({
       title: t("deviceLink.apply.doneReplace", { total }),
       variant: "success",
@@ -283,6 +291,22 @@ export function DeviceLinkDialog({
           />
         )}
 
+        {sync.paired && (
+          <div className="flex items-center justify-center gap-2 text-[11px]">
+            <span className="inline-flex items-center gap-1.5 font-medium text-emerald-600 dark:text-emerald-400">
+              <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
+              {t("deviceLink.synced")}
+            </span>
+            <span className="text-muted-foreground">·</span>
+            <button
+              type="button"
+              onClick={() => sync.unlink()}
+              className="text-muted-foreground hover:text-destructive underline underline-offset-2"
+            >
+              {t("deviceLink.unlink")}
+            </button>
+          </div>
+        )}
         <p className="flex items-center justify-center gap-1.5 text-[11px] text-muted-foreground">
           <ShieldCheck className="h-3.5 w-3.5 text-emerald-500" />
           {t("deviceLink.e2eNote")}
